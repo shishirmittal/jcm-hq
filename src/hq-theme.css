@@ -109,7 +109,7 @@ body.dark-mode .nav-row.active .nav-row-icon { background: var(--hq-gold); color
 .logo-small { color: var(--ink); font-weight: 800; letter-spacing: -0.02em; }
 /* The pinned rail already navigates on a computer; the page's ☰ is for phones. */
 @media (min-width: 800px) {
-  .pinned-sidebar ~ #app .btn-hamburger { display: none; }
+  .pinned-sidebar ~ #app .btn-hamburger, .pinned-sidebar ~ #app .cc-hamb, .pinned-sidebar ~ #app .jo-hamb { display: none; }
 }
 
 /* ---- Cards: solid, rounded, clean (look C) ---- */

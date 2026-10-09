@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import SyncChip from '../SyncChip.jsx'
 import { api } from '../lib/api.js'
 import { formatClock, shortSo } from '../lib/board-logic.js'
 import { shrinkPhoto } from '../lib/photo.js'
@@ -280,7 +281,7 @@ function Shell({ me, showRole, children }) {
         <span className="tb-head-name">{T.firstName(me.name)}</span>
         {showRole && T.roleLabel(me.role) && <span className="tb-head-role">{T.roleLabel(me.role)}</span>}
         <div className="tb-spacer" />
-        <span className="tb-head-lock">{clockLine(new Date())}</span>
+        <SyncChip />
       </div>
       {children}
     </div>

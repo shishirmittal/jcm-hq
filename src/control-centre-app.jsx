@@ -27,18 +27,23 @@ const ax = (n) => {
 const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const mlabel = (d) => { const x = new Date(d); return MON[x.getMonth()] + " " + String(x.getFullYear()).slice(2); };
 
+// JCM HQ look: page colours follow the HQ theme (day / night, src/hq-theme.css);
+// chart strokes and fills (SVG attributes, where CSS variables are not reliable)
+// use G — mid tones that read on both the white and the night-navy cards.
 const C = {
-  bg: "#0f1117", card: "#171a23", line: "#242835",
-  text: "#e6e8ef", dim: "#8b90a3", faint: "#5a5f73",
-  ind: "#6366f1", amb: "#f59e0b", grn: "#10b981", red: "#ef4444", cyn: "#06b6d4", vio: "#a855f7",
+  bg: "var(--bg)", card: "var(--surface)", line: "var(--line)",
+  text: "var(--text)", dim: "var(--muted)", faint: "var(--faint)",
+  ind: "var(--blue)", amb: "#D08A1E", grn: "#2E9B6A", red: "#D0453A", cyn: "#1C9AAE", vio: "#8E5BD0",
 };
-const PAL = ["#6366f1","#f59e0b","#10b981","#06b6d4","#a855f7","#ef4444","#ec4899","#84cc16","#f97316","#14b8a6"];
+const G = { line: "rgba(138,143,153,0.28)", tick: "#8A8F99", ind: "#3B6FD8", grn: "#2E9B6A" };
+const PAL = ["#3B6FD8","#D9AE55","#2E9B6A","#1C9AAE","#8E5BD0","#D0453A","#D9558A","#7FA82B","#E0822C","#14A08A"];
 
 export default function ControlCentreApp({ isAdmin }) {
   const [tab, setTab] = useState("Overview");
   const [d, setD] = useState(null);
   const [err, setErr] = useState(null);
   const [months, setMonths] = useState(12);
+  const [synced, setSynced] = useState(null);
 
   const load = useCallback(async () => {
     setErr(null);
@@ -55,6 +60,13 @@ export default function ControlCentreApp({ isAdmin }) {
       ]);
       setD({ mrev, drev, cust, sgrp, items, dsum, droute, stock });
     } catch (e) { setErr(e.message); }
+    // When the nightly Busy sync (sales, invoices, customers) last ran — the
+    // figures here come from it. Never stops the page if it can't be read.
+    try {
+      const log = await q("sync_log", "select=*&order=run_at.desc&limit=30");
+      const row = (log || []).find(r => !r.job || r.job === "nightly") || null;
+      setSynced(row ? row.run_at : null);
+    } catch { /* leave the chip off */ }
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -94,15 +106,17 @@ export default function ControlCentreApp({ isAdmin }) {
 
   return (
     <Shell>
-      <div style={{ background: C.card, borderBottom: `1px solid ${C.line}`, padding: "0 20px", height: 52,
+      <div style={{ background: C.card, borderBottom: `1px solid ${C.line}`, padding: "0 20px", height: 64, gap: 10,
                     display: "flex", alignItems: "center", justifyContent: "space-between",
                     position: "sticky", top: 0, zIndex: 30 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <button onClick={() => openSidebar({ isAdmin })} style={hamburgerStyle} aria-label="Menu">☰</button>
-          <span style={{ fontWeight: 700, fontSize: 15, color: C.text }}>JCM Retails</span>
-          <span style={{ fontSize: 11, color: C.faint, letterSpacing: ".08em", textTransform: "uppercase" }}>Control Centre</span>
+          <button className="cc-hamb" onClick={() => openSidebar({ isAdmin })} style={hamburgerStyle} aria-label="Menu">☰</button>
+          <span style={{ fontWeight: 800, fontSize: 20, letterSpacing: "-0.02em", color: "var(--ink)" }}>Control Centre</span>
         </div>
-        <button onClick={load} style={btn(false)}>Refresh</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {synced && <SyncChip at={synced} />}
+          <button onClick={load} style={btn(false)}>Refresh</button>
+        </div>
       </div>
 
       <div style={{ background: C.card, borderBottom: `1px solid ${C.line}`, padding: "0 20px",
@@ -147,15 +161,15 @@ export default function ControlCentreApp({ isAdmin }) {
                   <AreaChart data={shown}>
                     <defs>
                       <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={C.ind} stopOpacity={0.35} />
-                        <stop offset="100%" stopColor={C.ind} stopOpacity={0} />
+                        <stop offset="0%" stopColor={G.ind} stopOpacity={0.35} />
+                        <stop offset="100%" stopColor={G.ind} stopOpacity={0} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid stroke={C.line} strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="label" tick={{ fontSize: 11, fill: C.faint }} axisLine={false} tickLine={false} />
-                    <YAxis tickFormatter={ax} tick={{ fontSize: 11, fill: C.faint }} axisLine={false} tickLine={false} width={46} />
+                    <CartesianGrid stroke={G.line} strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="label" tick={{ fontSize: 11, fill: G.tick }} axisLine={false} tickLine={false} />
+                    <YAxis tickFormatter={ax} tick={{ fontSize: 11, fill: G.tick }} axisLine={false} tickLine={false} width={46} />
                     <Tooltip content={<TT />} />
-                    <Area type="monotone" dataKey="revenue" stroke={C.ind} strokeWidth={2} fill="url(#g1)" />
+                    <Area type="monotone" dataKey="revenue" stroke={G.ind} strokeWidth={2} fill="url(#g1)" />
                   </AreaChart>
                 </ResponsiveContainer>
               </Card>
@@ -204,12 +218,12 @@ export default function ControlCentreApp({ isAdmin }) {
             <Card title="Monthly revenue">
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={shown}>
-                  <CartesianGrid stroke={C.line} strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: C.faint }} axisLine={false} tickLine={false} />
-                  <YAxis tickFormatter={ax} tick={{ fontSize: 11, fill: C.faint }} axisLine={false} tickLine={false} width={50} />
+                  <CartesianGrid stroke={G.line} strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: G.tick }} axisLine={false} tickLine={false} />
+                  <YAxis tickFormatter={ax} tick={{ fontSize: 11, fill: G.tick }} axisLine={false} tickLine={false} width={50} />
                   <Tooltip content={<TT />} />
                   <Bar dataKey="revenue" radius={[4, 4, 0, 0]}>
-                    {shown.map((_, i) => <Cell key={i} fill={i === shown.length - 1 ? C.amb : C.ind} />)}
+                    {shown.map((_, i) => <Cell key={i} fill={i === shown.length - 1 ? C.amb : G.ind} />)}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
@@ -223,11 +237,11 @@ export default function ControlCentreApp({ isAdmin }) {
                       <stop offset="100%" stopColor={C.grn} stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid stroke={C.line} strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: C.faint }} axisLine={false} tickLine={false} interval={6} />
-                  <YAxis tickFormatter={ax} tick={{ fontSize: 11, fill: C.faint }} axisLine={false} tickLine={false} width={46} />
+                  <CartesianGrid stroke={G.line} strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: G.tick }} axisLine={false} tickLine={false} interval={6} />
+                  <YAxis tickFormatter={ax} tick={{ fontSize: 11, fill: G.tick }} axisLine={false} tickLine={false} width={46} />
                   <Tooltip content={<TT />} />
-                  <Area type="monotone" dataKey="revenue" stroke={C.grn} strokeWidth={2} fill="url(#g2)" />
+                  <Area type="monotone" dataKey="revenue" stroke={G.grn} strokeWidth={2} fill="url(#g2)" />
                 </AreaChart>
               </ResponsiveContainer>
             </Card>
@@ -247,9 +261,9 @@ export default function ControlCentreApp({ isAdmin }) {
               <ResponsiveContainer width="100%" height={Math.max(300, d.droute.slice(0, 20).length * 26)}>
                 <BarChart data={d.droute.slice(0, 20).map(r => ({ ...r, total: N(r.total) }))}
                           layout="vertical" margin={{ left: 8, right: 24 }}>
-                  <CartesianGrid stroke={C.line} strokeDasharray="3 3" horizontal={false} />
-                  <XAxis type="number" tickFormatter={ax} tick={{ fontSize: 10, fill: C.faint }} axisLine={false} tickLine={false} />
-                  <YAxis type="category" dataKey="group_name" tick={{ fontSize: 11, fill: C.text }}
+                  <CartesianGrid stroke={G.line} strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" tickFormatter={ax} tick={{ fontSize: 10, fill: G.tick }} axisLine={false} tickLine={false} />
+                  <YAxis type="category" dataKey="group_name" tick={{ fontSize: 11, fill: G.tick }}
                          width={165} axisLine={false} tickLine={false} />
                   <Tooltip content={<TT />} />
                   <Bar dataKey="total" radius={[0, 4, 4, 0]}>
@@ -283,12 +297,12 @@ export default function ControlCentreApp({ isAdmin }) {
               <ResponsiveContainer width="100%" height={620}>
                 <BarChart data={d.cust.map(r => ({ ...r, revenue: N(r.revenue) }))}
                           layout="vertical" margin={{ left: 8, right: 24 }}>
-                  <CartesianGrid stroke={C.line} strokeDasharray="3 3" horizontal={false} />
-                  <XAxis type="number" tickFormatter={ax} tick={{ fontSize: 10, fill: C.faint }} axisLine={false} tickLine={false} />
-                  <YAxis type="category" dataKey="customer" tick={{ fontSize: 10, fill: C.text }}
+                  <CartesianGrid stroke={G.line} strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" tickFormatter={ax} tick={{ fontSize: 10, fill: G.tick }} axisLine={false} tickLine={false} />
+                  <YAxis type="category" dataKey="customer" tick={{ fontSize: 10, fill: G.tick }}
                          width={175} axisLine={false} tickLine={false} />
                   <Tooltip content={<TT />} />
-                  <Bar dataKey="revenue" fill={C.ind} radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="revenue" fill={G.ind} radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </Card>
@@ -313,9 +327,9 @@ export default function ControlCentreApp({ isAdmin }) {
               <ResponsiveContainer width="100%" height={Math.max(320, d.sgrp.slice(0, 22).length * 24)}>
                 <BarChart data={d.sgrp.slice(0, 22).map(r => ({ ...r, revenue: N(r.revenue) }))}
                           layout="vertical" margin={{ left: 8, right: 24 }}>
-                  <CartesianGrid stroke={C.line} strokeDasharray="3 3" horizontal={false} />
-                  <XAxis type="number" tickFormatter={ax} tick={{ fontSize: 10, fill: C.faint }} axisLine={false} tickLine={false} />
-                  <YAxis type="category" dataKey="product_group" tick={{ fontSize: 10, fill: C.text }}
+                  <CartesianGrid stroke={G.line} strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" tickFormatter={ax} tick={{ fontSize: 10, fill: G.tick }} axisLine={false} tickLine={false} />
+                  <YAxis type="category" dataKey="product_group" tick={{ fontSize: 10, fill: G.tick }}
                          width={185} axisLine={false} tickLine={false} />
                   <Tooltip content={<TT />} />
                   <Bar dataKey="revenue" radius={[0, 4, 4, 0]}>
@@ -386,6 +400,18 @@ export default function ControlCentreApp({ isAdmin }) {
   );
 }
 
+// Same look as the sync chips on every HQ page (.hq-sync in hq-theme.css).
+// The nightly sync runs once a day: amber when the last run is over 30 hours old.
+const SyncChip = ({ at }) => {
+  const d = new Date(at);
+  if (Number.isNaN(d.getTime())) return null;
+  const late = Date.now() - d.getTime() > 30 * 3600 * 1000;
+  const opt = { timeZone: "Asia/Kolkata" };
+  const text = d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", ...opt }) + ", " +
+    d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", ...opt });
+  return <span className={`hq-sync${late ? " is-late" : ""}`} title="Last nightly Busy sync">Busy {text}</span>;
+};
+
 const hamburgerStyle = {
   fontSize: 18, padding: "6px 10px", lineHeight: 1, border: "none",
   background: "none", color: C.text, cursor: "pointer",
@@ -417,11 +443,11 @@ const Two = ({ children }) => (
 
 const btn = (on) => ({
   padding: "4px 10px", fontSize: 11, borderRadius: 5, cursor: "pointer", border: "none",
-  background: on ? C.ind : "#232735", color: on ? "#fff" : C.dim, fontFamily: "inherit",
+  background: on ? "var(--blue)" : "var(--hq-head)", color: on ? "var(--on-blue)" : C.dim, fontFamily: "inherit",
 });
 
 const Card = ({ title, right, children }) => (
-  <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, padding: 18 }}>
+  <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 16, padding: 18 }}>
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
       <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".1em", textTransform: "uppercase", color: C.dim }}>{title}</span>
       {right}
@@ -431,7 +457,7 @@ const Card = ({ title, right, children }) => (
 );
 
 const Stat = ({ label, value, sub, accent }) => (
-  <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, padding: "16px 18px",
+  <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 16, padding: "16px 18px",
                 borderLeft: `3px solid ${accent || C.ind}` }}>
     <div style={{ fontSize: 11, color: C.dim, letterSpacing: ".06em", textTransform: "uppercase", marginBottom: 6 }}>{label}</div>
     <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em" }}>{value}</div>
@@ -457,7 +483,7 @@ const Rank = ({ rows }) => {
             <span style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</span>
             <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>{r.value}</span>
           </div>
-          <div style={{ height: 4, background: "#20242f", borderRadius: 2, overflow: "hidden" }}>
+          <div style={{ height: 4, background: "var(--line-soft)", borderRadius: 2, overflow: "hidden" }}>
             <div style={{ height: "100%", width: `${(r.n / max) * 100}%`, background: PAL[i % PAL.length], borderRadius: 2 }} />
           </div>
           {r.sub && <div style={{ fontSize: 10, color: C.faint, marginTop: 2 }}>{r.sub}</div>}
@@ -508,7 +534,7 @@ const TT = ({ active, payload, label, money }) => {
   if (!active || !payload?.length) return null;
   const p = payload[0];
   return (
-    <div style={{ background: "#1c2029", border: `1px solid ${C.line}`, borderRadius: 8, padding: "9px 13px" }}>
+    <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 10, boxShadow: "0 6px 18px var(--shadow)", padding: "9px 13px" }}>
       <div style={{ color: C.dim, fontSize: 11, marginBottom: 3 }}>{label || p.name}</div>
       <div style={{ fontWeight: 700, fontSize: 14 }}>{rs(p.value)}</div>
       {p.payload?.invoices != null && !money && (

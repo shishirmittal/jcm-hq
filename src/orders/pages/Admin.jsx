@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import SyncChip from '../SyncChip.jsx'
 import { api } from '../lib/api.js'
 import { getDeviceToken, setDeviceToken } from '../lib/storage.js'
 import { openSidebar } from '../../sidebar.js'
@@ -43,6 +44,7 @@ export function HqHead({ title, sub }) {
       <span className="jo-title">{title}</span>
       {sub && <span className="jo-sub">{sub}</span>}
       <div className="jo-spacer" />
+      <SyncChip />
     </header>
   )
 }
