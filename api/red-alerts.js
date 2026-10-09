@@ -174,7 +174,9 @@ function applyFilters(query, f, { skipStatus = false, skipGroup = false } = {}) 
   return query
 }
 
-const COLUMNS = 'id, alert_type, happened_at, title, subtitle, amount, qty, busy_user, computer_name, details, status, reviewed_by, reviewed_at, review_note, asked_user_id, asked_name, asked_by, asked_at, question, whatsapp_status, reply, replied_at'
+// '*' rather than a column list: the page keeps working whether or not the
+// ask/reply columns have been added to red_alerts yet.
+const COLUMNS = '*'
 
 async function handleCount(busy, res) {
   const [fresh, answered] = await Promise.all([
