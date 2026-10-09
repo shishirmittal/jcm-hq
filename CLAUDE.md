@@ -18,6 +18,16 @@ Live at **hq.jcmretails.com** (Vercel project `jcm-hq`, auto-deploys from `main`
 - Stack: Vite. CRM pages are vanilla JS (`src/*.js`, hash routes, `src/nav-config.js`), Control Centre is React; Orders pages are React (`src/pages/*.jsx` in jcm-orders) and can be mounted as React islands.
 - JCM-Server scripts (Busy sync, print agent) run on Shishir's office PC and are updated by him with `update-server.bat` — keep their contracts unchanged.
 
+## Several chats work on this repo (Shishir's choice, 2026-10-10)
+Each module may be built in its own Claude chat that pushes straight to `main` (which deploys live at once). To keep them from tripping over each other:
+- Before starting, and again right before every push: `git pull --rebase origin main`. Commit small, push often. Never force-push `main`.
+- Shared files every module touches: `src/nav-config.js` (sidebar), `src/main.js` (routes), `src/sidebar.js` (badges), `src/style.css`, this file. Change only your own lines there; if a pull brings conflicts, keep both sides.
+- Put module code in its own files (e.g. `src/red-alerts.js` + `api/red-alerts.js`), and its CSS under its own class prefix.
+- Vercel Hobby: max 12 functions in `api/` (files not starting with `_`). Now 5: pin-login, admin-users, db-chat, orders, red-alerts. One function per module at most; put many actions behind one function.
+- Run `npx vite build` before pushing; a broken build stops every deploy. Local install: the `xlsx` package comes from cdn.sheetjs.com, which some sandboxes block — temporarily install `xlsx@0.18.5` from npm to build, and never commit that change to package.json / package-lock.json.
+- New pages: add the sidebar row in nav-config (id = permission id for Manage Users), check access on the server too (admin, or the id in profiles.allowed_tabs), and add a line to the Plan below.
+- Module owners right now: Red Alerts → its own chat. Payment Follow-up → its own chat. Everything else (TV board, phone app, gaps found in side-by-side testing) → the main HQ chat.
+
 ## Vercel env vars (set by Shishir)
 - `SUPABASE_SERVICE_ROLE_KEY` (CRM project), `SUPABASE_BUSY_SERVICE_ROLE_KEY` (Busy project). `ANTHROPIC_API_KEY` not set yet (only Ask AI needs it).
 
