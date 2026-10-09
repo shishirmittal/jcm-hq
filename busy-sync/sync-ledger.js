@@ -149,8 +149,16 @@ async function main() {
     const asked = process.argv[process.argv.indexOf('--party') + 1];
     if (process.argv.includes('--party') && asked) {
       const want = String(asked).toLowerCase();
-      const code = /^\d+$/.test(want) ? want : [...codes].find(([, n]) => String(n).toLowerCase().includes(want))?.[0];
-      if (code == null) log(`no customer matches "${asked}"`); else showParty(out, codes, code, 'customer you asked for');
+      const matches = /^\d+$/.test(want) ? [Number(want)] : [...codes].filter(([, n]) => String(n).toLowerCase().includes(want)).map(([c]) => c);
+      if (!matches.length) log(`no customer matches "${asked}"`);
+      else {
+        if (matches.length > 1) {
+          log(`${matches.length} customers match "${asked}":`);
+          for (const c of matches.slice(0, 15)) log(`  ${codes.get(c) || '(no name)'} — Busy code ${c} — ${counts[String(c)] || 0} entries`);
+        }
+        const best = [...matches].sort((a, b) => (counts[String(b)] || 0) - (counts[String(a)] || 0))[0];
+        showParty(out, codes, best, 'customer you asked for');
+      }
     } else {
       if (busiest) showParty(out, codes, busiest, 'most entries (probably the cash account)');
       if (credit) showParty(out, codes, credit, 'most receipts (a normal credit customer)');
