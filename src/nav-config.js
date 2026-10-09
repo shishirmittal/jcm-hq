@@ -45,6 +45,13 @@ export const NAV_CONFIG = [
     { id: 'quotations', label: 'Quotations', icon: 'file', hash: '#quotations', badge: 'pendingQuotes' },
     { id: 'payments', label: 'Payments', icon: 'card', hash: '#payments', adminOnly: true },
   ] },
+  // JCM Orders admin screens (from orders.jcmretails.com /owner and /logs).
+  // adminOnly as on the orders site, but grantable: tick one for a person in
+  // Manage Users and api/orders.js lets them in too.
+  { section: 'Warehouse', items: [
+    { id: 'material', label: 'Pending Material', icon: 'box', hash: '#material' },
+    { id: 'order-log', label: 'Order Log', icon: 'history', hash: '#order-log', adminOnly: true },
+  ] },
   { section: 'Purchase & Stock', items: [
     { id: 'orders', label: 'Order Planning', icon: 'truck', hash: '#order-planning' },
     { id: 'stock', label: 'Stock', icon: 'box', hash: '#stock', open: true },
@@ -59,5 +66,6 @@ export const NAV_CONFIG = [
   ] },
   { section: 'Admin', items: [
     { id: 'users', label: 'Manage Users', icon: 'users', hash: '#admin', adminOnly: true, grantable: false },
+    { id: 'warehouse', label: 'Warehouse & Devices', icon: 'truck', hash: '#warehouse', adminOnly: true },
   ] },
 ]

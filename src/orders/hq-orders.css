@@ -1,0 +1,30 @@
+/* JCM Orders screens inside JCM HQ. The orders stylesheets (admin.css,
+   logs.css) are used as they are; this file only fits them into HQ's frame:
+   the sidebar, HQ's global resets, and the fonts. Everything is scoped to
+   .jo-hq so no CRM page is touched. */
+.jo-hq { min-height: 100vh; background: #F6F3EC; font-family: 'Roboto Condensed', Arial, sans-serif; color: #0C111B; line-height: normal; }
+.jo-hq .jo-admin { min-height: 100vh; font-family: inherit; }
+
+/* HQ's global button rule (padding, radius, transparent background) must not
+   reach the orders buttons, which carry their own complete styles. */
+.jo-hq button { font-family: inherit; }
+
+/* The header: same navy bar and gold rule, but HQ's sidebar does the
+   navigation now, so it is shorter and has no logo or links. */
+.jo-hq .jo-hqhead { height: 64px; padding: 0 28px; position: sticky; top: 0; z-index: 40; }
+.jo-hq .jo-hqhead .jo-title { font-size: 22px; }
+.jo-hq .jo-hamb { display: none; height: 40px; width: 40px; padding: 0; border: 1px solid rgba(255,255,255,.3); border-radius: 8px; background: transparent; color: #FFFFFF; font-size: 18px; cursor: pointer; }
+.jo-hq .jo-hamb:hover { background: rgba(255,255,255,.1); }
+@media (max-width: 799px) {
+  .jo-hq .jo-hamb { display: inline-flex; align-items: center; justify-content: center; }
+  .jo-hq .jo-hqhead { padding: 0 14px; gap: 10px; }
+  .jo-hq .jo-hqhead .jo-sub { display: none; }
+  .jo-hq .jo-hqhead .jo-title { font-size: 19px; }
+}
+
+/* The bulk-action bar is fixed to the bottom of the window; start it after
+   the pinned sidebar instead of underneath it. */
+@media (min-width: 800px) {
+  .pinned-sidebar ~ #app .jo-bulkbar { left: 248px; }
+  .pinned-sidebar.collapsed ~ #app .jo-bulkbar { left: 64px; }
+}

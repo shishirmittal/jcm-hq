@@ -1,0 +1,48 @@
+/* /logs — "JCM Orders - Admin Logs.dc.html" (desktop, 1440 wide). Prefix lg- (never "ad"/"ads"). */
+.lg .jo-head { padding: 0 48px; }
+.lg-frame { max-width: 1440px; margin: 0 auto; }
+.lg-tabs { padding: 28px 48px 0; display: flex; gap: 4px; border-bottom: 1px solid #E2DCCD; }
+.lg-tab { padding: 12px 20px; font: inherit; font-size: 17px; font-weight: 500; color: #5A606C; background: none; border: 0; border-bottom: 3px solid transparent; margin-bottom: -1px; cursor: pointer; }
+.lg-tab-on { font-weight: 600; color: #12213B; border-bottom-color: #D9AE55; }
+.lg-filters { padding: 24px 48px; display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+.lg-filters .jo-input { min-width: 150px; }
+.lg-total { font-size: 15px; color: #3E4553; padding-bottom: 12px; }
+.lg-pad { padding: 0 48px 48px; }
+.lg-table { background: #FFFFFF; border: 1px solid #E2DCCD; border-radius: 8px; overflow-x: auto; }
+.lg-tr { display: grid; grid-template-columns: minmax(150px, 1.6fr) 70px 100px 80px 110px 110px 96px 66px 74px 60px 52px 96px 70px 120px; gap: 12px; padding: 12px 18px; border-bottom: 1px solid #F0EBDF; font-size: 15px; align-items: center; font-variant-numeric: tabular-nums; min-width: 1340px; }
+.lg-via { color: #2C3240; line-height: 1.25; }
+.lg-tr:hover:not(.lg-th) { background: #FBF8F1; }
+.lg-th { background: #F1ECE0; border-bottom: 1px solid #E2DCCD; font-size: 12px; font-weight: 700; letter-spacing: .06em; color: #3E4553; }
+.lg-tr-s { grid-template-columns: minmax(140px, 1.2fr) 70px 130px 80px 100px 64px minmax(110px, 1fr); min-width: 760px; }
+.lg-two { display: flex; flex-direction: column; min-width: 0; }
+.lg-small { font-size: 13px; color: #5A606C; }
+.lg-r { text-align: right; }
+.lg-red { color: #C2452D; }
+.lg-amber { color: #9A5F10; font-weight: 600; }
+.lg-grey { color: #8A8F99; }
+.lg-ellipsis { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lg-empty { padding: 24px 18px; font-size: 15px; color: #5A606C; }
+.lg-foot { display: flex; justify-content: space-between; gap: 16px; padding: 14px 18px; font-size: 14px; color: #5A606C; flex-wrap: wrap; }
+.lg-pager { display: flex; gap: 14px; align-items: center; white-space: nowrap; }
+.lg-pager .jo-link { font-size: 14px; }
+.lg-pager .jo-link:disabled { color: #B8B1A2; text-decoration: none; cursor: default; }
+.lg-staff { display: grid; grid-template-columns: 420px minmax(0, 1fr); gap: 24px; align-items: start; }
+.lg-bars { gap: 16px; }
+.lg-bars-title { font-size: 22px; font-weight: 700; }
+.lg-bar-row { display: grid; grid-template-columns: 90px minmax(0, 1fr) 40px; align-items: center; gap: 12px; font-size: 15px; }
+.lg-bar-track { height: 22px; background: #F1ECE0; border-radius: 3px; overflow: hidden; display: block; }
+.lg-bar { display: block; height: 100%; border-radius: 3px; }
+.lg-legend { display: flex; gap: 16px; font-size: 13px; color: #5A606C; padding-top: 8px; border-top: 1px solid #F0EBDF; }
+.lg-legend span { display: flex; align-items: center; gap: 6px; }
+.lg-legend i { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+@media (max-width: 900px) {
+  .lg .jo-head, .lg-tabs, .lg-filters, .lg-pad { padding-left: 16px; padding-right: 16px; }
+  .lg-staff { grid-template-columns: 1fr; }
+}
+
+/* LR photo viewer */
+.lg-photo-link { font-size: 13px; text-align: left; padding: 0; }
+.lg-photo-back { position: fixed; inset: 0; background: rgba(12, 17, 27, .7); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 50; }
+.lg-photo-box { background: #FFFFFF; border-radius: 10px; padding: 16px; width: min(900px, 100%); max-height: 100%; display: flex; flex-direction: column; gap: 12px; box-sizing: border-box; }
+.lg-photo-head { display: flex; align-items: center; gap: 16px; font-size: 16px; }
+.lg-photo { max-width: 100%; max-height: calc(100vh - 120px); object-fit: contain; align-self: center; }

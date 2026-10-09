@@ -16,6 +16,7 @@ import { renderPriceUpdate } from './price-update.js'
 import { renderTaskBoard, unmountTaskBoard } from './task-board.js'
 import { mountPinnedSidebar, unmountPinnedSidebar } from './sidebar.js'
 import { renderStock, unmountStock } from './stock.js'
+import { getCurrentProfile as loadProfileForOrders } from './supabase.js'
 import { IS_NATIVE } from './native.js'
 import { mountNativeShell, unmountNativeShell, syncNativeShell, NATIVE_HOME } from './native-shell.js'
 import { setPermissions, clearPermissions, routeDecision, hasAnyTab, fallbackHash, isAdminProfile } from './permissions.js'
@@ -28,6 +29,9 @@ let hasSession = false
 // actually navigate to #dashboard, and cached here (once loaded) so leaving
 // the page can unmount its React root without re-fetching the chunk.
 let ccModule = null
+// The JCM Orders screens (React) load the same way, only when first opened.
+let ordersModule = null
+const ORDERS_HASHES = { '#material': 'material', '#order-log': 'order-log', '#warehouse': 'warehouse' }
 
 async function init() {
   const { data: { session } } = await supabase.auth.getSession()
@@ -59,6 +63,7 @@ async function init() {
       hasSession = false
       clearPermissions()
       ccModule?.unmountControlCentre()
+      ordersModule?.unmountOrdersPage()
       unmountTaskBoard()
       unmountStock()
       unmountPinnedSidebar()
@@ -153,6 +158,7 @@ function route() {
   if (hash !== '#tasks') unmountTaskBoard()
   // Stock holds a debounce and a one-minute ticker for its freshness line.
   if (hash !== '#stock') unmountStock()
+  if (!ORDERS_HASHES[hash]) ordersModule?.unmountOrdersPage()
 
   if (IS_NATIVE) syncNativeShell()
 
@@ -205,6 +211,13 @@ function route() {
     renderItemsManagement(app)
   } else if (hash === '#price-update') {
     renderPriceUpdate(app, () => { window.location.hash = '' })
+  } else if (ORDERS_HASHES[hash]) {
+    const which = ORDERS_HASHES[hash]
+    Promise.all([import('./orders/mount.jsx'), loadProfileForOrders()]).then(([m, profile]) => {
+      ordersModule = m
+      // Still on the same page? (a fast second click elsewhere wins)
+      if (window.location.hash === hash) m.renderOrdersPage(app, which, profile)
+    })
   } else if (hash === '#dashboard') {
     import('./control-centre.js').then(m => { ccModule = m; m.renderControlCentre(app) })
   } else {

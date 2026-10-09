@@ -23,7 +23,7 @@ Live at **hq.jcmretails.com** (Vercel project `jcm-hq`, auto-deploys from `main`
 
 ## Plan (phases, each tested before the next)
 - A: JCM HQ name, photo + PIN login cards, grouped sidebar (MAIN / CRM / SALES / COLLECTIONS / WAREHOUSE / PURCHASE & STOCK / INSIGHTS / ADMIN), per-user page access.
-- B: Orders pages from jcm-orders (/admin, /owner, /logs → Orders, Pending Material, Warehouse & Devices).
+- B (built 2026-10-10): Orders admin pages from jcm-orders as React islands — #material (/owner), #order-log (/logs), #warehouse (/admin). Code in src/orders/ (pages copied, api.js maps /api/admin/X → /api/orders?h=X and sends the HQ Supabase token) and api/_orders/ (handlers + lib copied; auth.js findAdmin also accepts an HQ JWT: admin, or allowed_tabs has the page id set by api/orders.js). One function api/orders.js. Registering new screens stays on orders.jcmretails.com/admin until the board moves; the 17:30 cron stays on jcm-orders (no cron here, or the email would go twice). vercel.json regions hnd1.
 - C: New modules — Payment Follow-up (manual calls by account group + WhatsApp reminders via Whatshub360), Customer 360, Red Alerts.
 - D: TV board at board.jcmretails.com with screen token.
 - E: Phone layout + Android app (JCM HQ).
