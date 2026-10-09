@@ -163,6 +163,21 @@ function phonesFrom(...values) {
   return out
 }
 
+// party_dues is written by sync-dues-final.js on JCM-Server, which only
+// updates parties that still owe money: someone who has paid in full keeps
+// their last balance in the table. So a row the latest run did not touch
+// counts as nothing due. One run takes about a minute; 30 minutes of slack.
+async function dueFreshness(busy) {
+  const last = check(await busy.from('party_dues').select('synced_at')
+    .not('synced_at', 'is', null).order('synced_at', { ascending: false }).limit(1), 'last sync')
+  const lastSync = last[0]?.synced_at || null
+  if (!lastSync) return { lastSync: null, stale: new Set() }
+  const cutoff = new Date(new Date(lastSync).getTime() - 30 * 60 * 1000).toISOString()
+  const rows = await fetchAll(() => busy.from('party_dues').select('party_code')
+    .or(`synced_at.lt.${cutoff},synced_at.is.null`), 'stale dues')
+  return { lastSync, stale: new Set(rows.map(r => String(r.party_code))) }
+}
+
 // ---------------------------------------------------------------------------
 // count / meta
 // ---------------------------------------------------------------------------
@@ -174,7 +189,11 @@ async function handleCount(busy, res) {
 }
 
 async function handleMeta(busy, res) {
-  const rows = await fetchAll(receivables(busy, 'group_name, segment, outstanding_balance'), 'groups')
+  const [fresh, allRows] = await Promise.all([
+    dueFreshness(busy),
+    fetchAll(receivables(busy, 'party_code, group_name, segment, outstanding_balance'), 'groups'),
+  ])
+  const rows = allRows.filter(r => !fresh.stale.has(String(r.party_code)))
   const map = new Map()
   for (const r of rows) {
     const name = r.group_name || '(No group)'
@@ -195,6 +214,7 @@ async function handleMeta(busy, res) {
     dndGroup: DND_GROUP,
     whatsappReady: !!process.env.WHATSHUB_SEND_URL,
     today: todayIST(),
+    lastSync: fresh.lastSync,
   })
 }
 
@@ -207,6 +227,7 @@ async function handleList(busy, body, res) {
   const today = todayIST()
   const cols = 'party_code, party_name, phone_primary, outstanding_balance, group_name, group_path, segment'
 
+  const fresh = await dueFreshness(busy)
   let parties
   let latestRows = null
   if (view === 'due') {
@@ -223,6 +244,12 @@ async function handleList(busy, body, res) {
   } else {
     if (!group) return send(res, 400, { error: 'Pick an account group.' })
     parties = await fetchAll(() => receivables(busy, cols)().eq('group_name', group), 'dues')
+  }
+  // Paid up since the last sync run: hide from the lists, show as nothing due on the due view.
+  if (view === 'due') {
+    for (const p of parties) if (fresh.stale.has(String(p.party_code))) p.outstanding_balance = 0
+  } else {
+    parties = parties.filter(p => !fresh.stale.has(String(p.party_code)))
   }
 
   const codes = [...new Set(parties.map(p => String(p.party_code)))]
@@ -269,7 +296,7 @@ async function handleList(busy, body, res) {
       needs_review: pd.needs_review === true,
       phones,
       whatsapp,
-      ageing: ag && {
+      ageing: ag && !fresh.stale.has(code) && {
         last_bill_date: ag.last_bill_date,
         oldest_unpaid_date: ag.oldest_unpaid_date,
         d0_30: Number(ag.d0_30) || 0,
@@ -283,7 +310,7 @@ async function handleList(busy, body, res) {
     }
   })
 
-  return send(res, 200, { parties: out, view, group, today })
+  return send(res, 200, { parties: out, view, group, today, lastSync: fresh.lastSync })
 }
 
 // ---------------------------------------------------------------------------
@@ -319,9 +346,10 @@ async function handleSave(busy, body, me, res) {
   if (nextFollowup && !dateOk(nextFollowup)) return send(res, 400, { error: 'Next follow-up date is not a valid date.' })
 
   // Name, group and balance come from the dues data, not from the page.
-  const [seg, pd] = await Promise.all([
+  const [seg, pd, fresh] = await Promise.all([
     busy.from('dues_segmented').select('party_name, group_name, outstanding_balance').eq('party_code', code).limit(1),
     busy.from('party_dues').select('party_name, group_name, outstanding_balance').eq('party_code', code).limit(1),
+    dueFreshness(busy),
   ])
   const party = (seg.data && seg.data[0]) || (pd.data && pd.data[0])
   if (!party) return send(res, 404, { error: 'That party was not found in the dues list.' })
@@ -336,7 +364,7 @@ async function handleSave(busy, body, me, res) {
     promised_amount: promisedAmount,
     promised_date: promisedDate,
     next_followup: nextFollowup,
-    balance_at_time: Number(party.outstanding_balance) || 0,
+    balance_at_time: fresh.stale.has(code) ? 0 : (Number(party.outstanding_balance) || 0),
     created_by: me.id,
     created_by_name: me.name,
   }
@@ -398,12 +426,13 @@ async function handleSendReminders(busy, body, me, res) {
 
   const intCodes = codes.filter(c => /^\d+$/.test(c)).map(Number)
   const since = new Date(Date.now() - REMINDER_GAP_HOURS * 3600 * 1000).toISOString()
-  const [seg, pd, cu, recent] = await Promise.all([
+  const [seg, pd, cu, recent, fresh] = await Promise.all([
     busy.from('dues_segmented').select('party_code, party_name, outstanding_balance, group_name, group_path, due_type').in('party_code', codes),
     busy.from('party_dues').select('party_code, phone_primary, phone_all, needs_review').in('party_code', codes),
     intCodes.length ? busy.from('customers').select('party_code, mobile, whatsapp_no').in('party_code', intCodes) : Promise.resolve({ data: [] }),
     busy.from('collection_followups').select('party_code').eq('channel', 'reminder').eq('outcome', 'sent')
       .in('party_code', codes).gte('created_at', since),
+    dueFreshness(busy),
   ])
   const segMap = new Map(check(seg, 'dues').map(r => [String(r.party_code), r]))
   const pdMap = new Map(check(pd, 'party_dues').map(r => [String(r.party_code), r]))
@@ -421,7 +450,7 @@ async function handleSendReminders(busy, body, me, res) {
     if (!s || s.due_type !== 'Receivable') skip = 'not_found'
     else if (isDnd(s)) skip = 'dnd'
     else if (p.needs_review === true) skip = 'needs_review'
-    else if (party.balance <= 0) skip = 'nothing_due'
+    else if (party.balance <= 0 || fresh.stale.has(code)) skip = 'nothing_due'
     else if (recentSet.has(code)) skip = 'recent'
     if (skip) { results.push({ party_code: code, status: skip }); continue }
     const mobile = cleanPhone(c.whatsapp_no) || phonesFrom(c.mobile, s.phone_primary, p.phone_primary, p.phone_all)[0] || null

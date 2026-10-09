@@ -189,3 +189,7 @@ body.pf-modal-open { overflow: hidden; }
 .pfr-bulkbar { position: sticky; top: 56px; z-index: 4; }
 .pfr-jump { display: none; margin-left: auto; border: none; border-radius: 8px; background: #25D366; color: #fff; font-weight: 600; font-size: 12.5px; padding: 6px 10px; cursor: pointer; font-family: inherit; }
 @media (max-width: 900px) { .pfr-jump { display: inline-block; } }
+
+/* "Dues as of …" */
+.pf-sync { font-size: 12px; color: var(--muted); margin: -6px 0 10px; }
+.pf-sync-old { color: var(--red-dk); background: var(--red-bg); border-radius: 8px; padding: 8px 12px; font-size: 13px; font-weight: 600; margin: 0 0 12px; }

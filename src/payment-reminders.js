@@ -13,7 +13,7 @@
 import { openSidebar } from './sidebar.js'
 import { esc } from './utils.js'
 import {
-  callCollections as call, pfTabsHtml, rupees, shortRupees, fmtDateTime, daysBetween, store,
+  callCollections as call, pfTabsHtml, syncNoteHtml, rupees, shortRupees, fmtDateTime, daysBetween, store,
 } from './payment-followup.js'
 
 const BATCH = 10
@@ -65,6 +65,7 @@ export function renderPaymentReminders(container) {
       </header>
       <main class="app-main">
         ${pfTabsHtml('reminders')}
+        <div id="pfrSync"></div>
         <div class="pf-note" id="pfrNote"></div>
 
         <div class="pfr-layout">
@@ -167,6 +168,7 @@ export function renderPaymentReminders(container) {
         state.group = ''
         loadList()
       }
+      $('pfrSync').innerHTML = syncNoteHtml(m.lastSync)
       const dnd = m.groups.find(g => g.dnd)
       const allTotal = sendable.reduce((s, g) => s + g.total, 0)
       const allCount = sendable.reduce((s, g) => s + g.parties, 0)

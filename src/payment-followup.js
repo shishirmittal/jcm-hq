@@ -140,6 +140,17 @@ export function pfTabsHtml(active) {
     </nav>`
 }
 
+// "Dues as of …" — the amounts come from the dues sync on JCM-Server; say when
+// it last ran, and shout if it has stopped.
+export function syncNoteHtml(lastSync) {
+  if (!lastSync) return ''
+  const hours = (Date.now() - new Date(lastSync).getTime()) / 3600000
+  if (hours > 3) {
+    return `<div class="pf-sync pf-sync-old">Dues last updated ${esc(fmtDateTime(lastSync))} — the dues sync on JCM-Server (run-dues.bat) has not run since. Amounts may be out of date.</div>`
+  }
+  return `<div class="pf-sync">Dues as of ${esc(fmtDateTime(lastSync))}</div>`
+}
+
 export function renderPaymentFollowup(container, sub) {
   if (!canSee(TAB_ID)) {
     container.innerHTML = '<div class="empty-state">You do not have access to this page.</div>'
@@ -171,6 +182,7 @@ export function renderPaymentFollowup(container, sub) {
       </header>
       <main class="app-main">
         ${pfTabsHtml('calls')}
+        <div id="pfSync"></div>
         <div class="pf-tiles" id="pfTiles"></div>
         <div class="pf-toolbar">
           <select id="pfGroup" class="pf-select" aria-label="Account group"><option>Loading groups…</option></select>
@@ -333,6 +345,7 @@ export function renderPaymentFollowup(container, sub) {
       }
       drawGroupSelect()
       drawTiles()
+      $('pfSync').innerHTML = syncNoteHtml(state.meta.lastSync)
     } catch (err) {
       $('pfGroup').innerHTML = `<option>${esc(err.message)}</option>`
     }
