@@ -3,9 +3,9 @@ name: Android APK
 # Every push to main produces a downloadable APK, so nobody needs Android
 # Studio installed to get a build onto a phone. Also runnable by hand from the
 # Actions tab when you want a fresh APK without pushing anything.
+# JCM HQ: manual only for now (Actions tab → Run workflow). The phone app is
+# Phase E; building an APK on every web change would only burn Actions time.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 jobs:

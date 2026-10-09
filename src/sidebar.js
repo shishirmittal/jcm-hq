@@ -153,8 +153,8 @@ export function mountPinnedSidebar({ profile }) {
     <div class="pinned-sidebar-top">
       <img src="${logoUrl}" alt="JCM Retails" class="pinned-logo" />
       <div class="pinned-sidebar-brand">
-        <div class="pinned-sidebar-name">JCM Retails</div>
-        <div class="pinned-sidebar-sub">CRM</div>
+        <div class="pinned-sidebar-name">JCM HQ</div>
+        <div class="pinned-sidebar-sub">J.C. Mittal &amp; Sons</div>
       </div>
     </div>
     <nav class="pinned-nav">${renderNavHtml()}</nav>

@@ -2430,3 +2430,38 @@ body.native-app .app-main > * { animation: appScreenIn 0.18s ease-out both; }
   .pu-footer-actions { justify-content: stretch; }
   .pu-footer-actions .btn-ghost, .pu-footer-actions .btn-primary { flex: 1 1 auto; justify-content: center; }
 }
+
+/* ---- JCM HQ login: photo-and-name cards, then that person's PIN pad ---- */
+.hq-login .hq-login-card { max-width: 560px; padding: 2rem 1.75rem 1.5rem; }
+.hq-login .login-logo h1 { color: var(--ink); letter-spacing: -0.01em; }
+.hq-login-loading { text-align: center; color: var(--muted); padding: 2rem 0; }
+.hq-login-title { text-align: center; font-size: 15px; font-weight: 600; color: var(--body); margin-bottom: 14px; }
+.hq-login-msg { text-align: center; margin-bottom: 10px; }
+.hq-people { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 10px; }
+.hq-person {
+  display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 16px 8px 12px;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 14px; font-family: inherit; cursor: pointer;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease, transform 0.12s ease;
+  animation: hq-pop 0.22s ease-out both;
+}
+.hq-person:nth-child(2) { animation-delay: 0.03s; } .hq-person:nth-child(3) { animation-delay: 0.06s; }
+.hq-person:nth-child(4) { animation-delay: 0.09s; } .hq-person:nth-child(5) { animation-delay: 0.12s; }
+.hq-person:nth-child(n+6) { animation-delay: 0.15s; }
+.hq-person:hover { border-color: var(--blue); box-shadow: 0 4px 14px var(--shadow); transform: translateY(-1px); }
+.hq-person:active { transform: scale(0.97); }
+.hq-person:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.hq-avatar { display: inline-grid; place-items: center; border-radius: 50%; color: #fff; font-weight: 700; line-height: 1; flex-shrink: 0; }
+.hq-person-name { font-size: 14px; font-weight: 600; color: var(--ink); text-align: center; line-height: 1.25; }
+.hq-person-role { font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--blue); margin-top: -4px; }
+.hq-login-link { display: block; margin: 16px auto 0; background: none; border: none; color: var(--muted); font-size: 13px; font-family: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.hq-login-link:hover { color: var(--blue); }
+.hq-pin-head { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-bottom: 14px; animation: hq-pop 0.2s ease-out both; }
+.hq-pin-name { font-size: 17px; font-weight: 600; color: var(--ink); }
+.hq-login #hqLoginBody .pin-pad { max-width: 300px; margin-left: auto; margin-right: auto; }
+.pin-key { transition: background 0.1s ease, transform 0.08s ease; cursor: pointer; }
+.pin-key:not(:disabled):hover { background: var(--line-soft); }
+.pin-key:not(:disabled):active { transform: scale(0.95); }
+.hq-shake { animation: hq-shake 0.35s ease; }
+@keyframes hq-pop { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes hq-shake { 0%, 100% { transform: translateX(0); } 20%, 60% { transform: translateX(-8px); } 40%, 80% { transform: translateX(8px); } }
+@media (prefers-reduced-motion: reduce) { .hq-person, .hq-pin-head, .hq-shake { animation: none; } }

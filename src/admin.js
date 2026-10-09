@@ -21,6 +21,13 @@ function tabPermissionsHtml(checkedIds) {
           <div class="tabperm-section-label">${esc(section.section)}</div>
           <div class="tabperm-grid">
             ${section.items.map(item => `
+              ${item.open ? `
+              <label class="tabperm-row ungrantable" title="Everyone can open this page">
+                <input type="checkbox" value="${esc(item.id)}" disabled checked />
+                <span class="tabperm-icon">${icon(item.icon, 15)}</span>
+                <span class="tabperm-label">${esc(item.label)}</span>
+                <span class="tabperm-warn" title="Everyone can open this page">✓ all</span>
+              </label>` : `
               <label class="tabperm-row${item.grantable === false ? ' ungrantable' : ''}"${item.grantable === false ? ' title="Admin only — cannot be granted individually"' : ''}>
                 <input type="checkbox" value="${esc(item.id)}"${item.grantable === false ? ' disabled' : ''}${item.grantable !== false && checked.has(item.id) ? ' checked' : ''} />
                 <span class="tabperm-icon">${icon(item.icon, 15)}</span>
@@ -28,7 +35,7 @@ function tabPermissionsHtml(checkedIds) {
                 ${item.grantable === false
                   ? '<span class="tabperm-warn" title="Admin only — cannot be granted individually" aria-label="Admin only — cannot be granted individually">🔒</span>'
                   : item.adminOnly ? '<span class="tabperm-warn" title="Sensitive — normally admin only" aria-label="Sensitive — normally admin only">⚠</span>' : ''}
-              </label>
+              </label>`}
             `).join('')}
           </div>
         </div>

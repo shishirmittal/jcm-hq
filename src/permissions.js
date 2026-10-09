@@ -35,8 +35,11 @@ export function isAdminProfile(p = profile) {
 // only thing consulted: a missing or null column reads as "nothing granted
 // yet", never as "everything" — the failure direction has to be locked out,
 // not wide open.
+const OPEN_TABS = new Set(NAV_CONFIG.flatMap(section => section.items.filter(item => item.open).map(item => item.id)))
+
 export function canSee(tabId, p = profile) {
   if (isAdminProfile(p)) return true
+  if (OPEN_TABS.has(tabId)) return true
   const allowed = Array.isArray(p?.allowed_tabs) ? p.allowed_tabs : []
   return allowed.includes(tabId)
 }

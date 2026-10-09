@@ -58,6 +58,29 @@ export default async function handler(req, res) {
     auth: { autoRefreshToken: false, persistSession: false }
   })
 
+  // The login screen's photo-and-name cards. Answered before the rate limit
+  // and the PIN check: it reveals only first names of active people who have
+  // a PIN and are not hidden from the roster — what anyone standing at the
+  // shop counter could already read off the screen — and never a PIN.
+  if (req.body?.action === 'roster') {
+    const [{ data: people, error: pErr }, { data: pins, error: pinListErr }] = await Promise.all([
+      supabaseAdmin.from('profiles').select('id, name, role, is_admin, hide_from_roster, active').eq('active', true),
+      supabaseAdmin.from('user_pins').select('user_id'),
+    ])
+    if (pErr || pinListErr) {
+      console.error('Roster load failed:', pErr || pinListErr)
+      res.status(500).json({ error: 'Could not load the staff list' })
+      return
+    }
+    const hasPin = new Set((pins || []).map(r => r.user_id))
+    const roster = (people || [])
+      .filter(p => p.name && !p.hide_from_roster && hasPin.has(p.id))
+      .map(p => ({ id: p.id, name: p.name, admin: p.is_admin === true || p.role === 'admin' }))
+      .sort((a, b) => Number(b.admin) - Number(a.admin) || a.name.localeCompare(b.name))
+    res.status(200).json({ roster })
+    return
+  }
+
   const ip = getClientIp(req)
   const windowStart = new Date(Date.now() - RATE_LIMIT_WINDOW_MINUTES * 60 * 1000).toISOString()
 
@@ -82,12 +105,15 @@ export default async function handler(req, res) {
   }
 
   const pin = typeof req.body?.pin === 'string' ? req.body.pin.trim() : ''
+  // From the card screen the PIN must belong to the person whose card was
+  // tapped, so the lookup is narrowed to them. Without user_id (the "PIN
+  // only" link, kept for accounts hidden from the roster) any matching PIN
+  // signs in, exactly as the CRM always has.
+  const wantedUser = typeof req.body?.user_id === 'string' ? req.body.user_id : ''
 
-  const { data: pinRow, error: pinErr } = await supabaseAdmin
-    .from('user_pins')
-    .select('user_id')
-    .eq('pin', pin)
-    .maybeSingle()
+  let pinQuery = supabaseAdmin.from('user_pins').select('user_id').eq('pin', pin)
+  if (wantedUser) pinQuery = pinQuery.eq('user_id', wantedUser)
+  const { data: pinRow, error: pinErr } = await pinQuery.maybeSingle()
 
   if (pinErr) {
     console.error('PIN lookup failed:', pinErr)

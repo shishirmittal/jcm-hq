@@ -23,6 +23,14 @@
 //
 // badge keys are looked up against the counts object sidebar.js fetches
 // (loadNavBadges) and omitted entirely when the count is 0 or missing.
+// JCM HQ grouping (Phase A, 2026-10-10). Page ids are unchanged from the
+// CRM on purpose: profiles.allowed_tabs stores them, so every person keeps
+// exactly the pages they had. Collections and Warehouse sections arrive with
+// their pages in later phases.
+//
+// open: true — shown to everyone signed in, never gated by allowed_tabs.
+// Stock has always been reachable by every user (main.js routes #stock before
+// any permission check); it simply had no row in the web sidebar until now.
 export const NAV_CONFIG = [
   { section: 'Main', items: [
     { id: 'dashboard', label: 'Dashboard', icon: 'grid', hash: '' },
@@ -35,18 +43,21 @@ export const NAV_CONFIG = [
   ] },
   { section: 'Sales', items: [
     { id: 'quotations', label: 'Quotations', icon: 'file', hash: '#quotations', badge: 'pendingQuotes' },
-    { id: 'orders', label: 'Order Planning', icon: 'box', hash: '#order-planning' },
     { id: 'payments', label: 'Payments', icon: 'card', hash: '#payments', adminOnly: true },
   ] },
-  { section: 'Management', items: [
-    { id: 'control', label: 'Control Centre', icon: 'chart', hash: '#dashboard', adminOnly: true },
-    { id: 'users', label: 'Manage Users', icon: 'users', hash: '#admin', adminOnly: true, grantable: false },
-    // grantable: false for the same reason as Manage Users above — the gate
-    // that actually matters is the "Admins can update catalog" RLS policy on
-    // catalog_items, which a ticked box here could never satisfy. Offering
-    // the tab to a non-admin would hand them a screen whose Save button is
-    // guaranteed to write nothing.
+  { section: 'Purchase & Stock', items: [
+    { id: 'orders', label: 'Order Planning', icon: 'truck', hash: '#order-planning' },
+    { id: 'stock', label: 'Stock', icon: 'box', hash: '#stock', open: true },
+    // grantable: false — the gate that actually matters is the "Admins can
+    // update catalog" RLS policy on catalog_items, which a ticked box here
+    // could never satisfy.
     { id: 'price-update', label: 'Price Update', icon: 'pencil', hash: '#price-update', adminOnly: true, grantable: false },
     { id: 'items-management', label: 'Items Management', icon: 'layers', hash: '#items-management', adminOnly: true },
+  ] },
+  { section: 'Insights', items: [
+    { id: 'control', label: 'Control Centre', icon: 'chart', hash: '#dashboard', adminOnly: true },
+  ] },
+  { section: 'Admin', items: [
+    { id: 'users', label: 'Manage Users', icon: 'users', hash: '#admin', adminOnly: true, grantable: false },
   ] },
 ]
