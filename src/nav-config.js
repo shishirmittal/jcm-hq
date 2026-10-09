@@ -45,6 +45,9 @@ export const NAV_CONFIG = [
     { id: 'electricians', label: 'Electricians', icon: 'bolt', hash: '#electricians' },
   ] },
   { section: 'Sales', items: [
+    // One customer on one screen (phone tab): contact, dues + ageing, bills,
+    // ledger, orders, follow-ups. api/customers.js: admins or 'customers' ticked.
+    { id: 'customers', label: 'Customer Card', icon: 'idcard', hash: '#customers' },
     { id: 'quotations', label: 'Quotations', icon: 'file', hash: '#quotations', badge: 'pendingQuotes' },
     { id: 'payments', label: 'Payments', icon: 'rupee', hash: '#payments', adminOnly: true },
   ] },

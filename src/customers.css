@@ -1,0 +1,96 @@
+/* Customer Card (src/customers.js) — classes cu-*. Colours come from the HQ
+   theme variables (src/hq-theme.css) so day and night both work. */
+.cu-main { max-width: 760px; margin: 0 auto; width: 100%; box-sizing: border-box; padding: 16px 16px 32px; display: flex; flex-direction: column; gap: 14px; }
+.cu-back { display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; padding: 0; color: var(--ink); }
+
+.cu-searchbar { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; background: var(--surface); border: 1.5px solid var(--line); border-radius: var(--hq-radius); padding: 0 14px; box-shadow: 0 4px 14px var(--shadow); }
+.cu-searchbar:focus-within { border-color: var(--blue); }
+.cu-search-icon { color: var(--muted); display: flex; }
+.cu-search { flex: 1; border: 0; background: transparent; color: var(--text); font: inherit; font-size: 17px; padding: 14px 10px; outline: none; min-width: 0; }
+.cu-count { font-size: 13px; color: var(--muted); margin: 2px 4px 8px; }
+#cuList.is-busy, .is-busy { opacity: .55; transition: opacity .15s; }
+
+.cu-results { background: var(--surface); border: 1px solid var(--line); border-radius: var(--hq-radius); overflow: hidden; }
+.cu-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; color: var(--text); text-decoration: none; border-top: 1px solid var(--line-soft); }
+.cu-row:first-child { border-top: 0; }
+.cu-row:hover { background: var(--hq-head); }
+.cu-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cu-row-name { font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cu-row-sub { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cu-chev { color: var(--faint); display: flex; }
+.cu-ava { flex: none; width: 38px; height: 38px; border-radius: 50%; background: var(--blue-bg); color: var(--ink); display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; }
+body.dark-mode .cu-ava { background: #22314D; color: var(--hq-gold); }
+.cu-ava-lg { width: 58px; height: 58px; font-size: 20px; border: 2px solid var(--hq-gold); }
+.cu-due-pill { flex: none; background: var(--red-bg, #FDECEA); color: var(--red, #B3261E); font-weight: 700; font-size: 13px; padding: 4px 10px; border-radius: 999px; }
+
+.cu-pager { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 4px 4px; font-size: 13px; color: var(--muted); }
+.cu-pager .btn-small { display: inline-flex; align-items: center; gap: 4px; }
+.cu-pager button:disabled { opacity: .35; }
+
+.cu-empty, .cu-error { background: var(--surface); border: 1px dashed var(--line); border-radius: var(--hq-radius); padding: 28px 18px; text-align: center; color: var(--muted); }
+.cu-error { border-style: solid; color: var(--red, #B3261E); }
+.cu-muted { color: var(--muted); }
+.cu-small { font-size: 12.5px; }
+.cu-pad { padding: 14px 16px; }
+
+.cu-hero { display: flex; align-items: center; gap: 14px; padding: 4px 2px; }
+.cu-hero-text { min-width: 0; }
+.cu-name { font-size: 24px; line-height: 1.2; margin: 0; color: var(--ink); font-weight: 700; }
+.cu-sub { font-size: 13.5px; color: var(--muted); margin-top: 4px; }
+
+.cu-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 10px; }
+.cu-act { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 6px; border-radius: var(--hq-radius-sm); background: var(--blue); color: var(--on-blue); text-decoration: none; font-weight: 600; font-size: 13.5px; }
+.cu-act:active { transform: scale(.97); }
+
+.cu-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--hq-radius); overflow: hidden; }
+.cu-h { font-size: 14px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink); margin: 0; }
+.cu-card > .cu-h { padding: 14px 16px 4px; }
+.cu-k { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+
+.cu-due { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.cu-due-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+.cu-due-amt { font-size: 28px; font-weight: 800; color: var(--ink); margin-top: 2px; }
+.cu-due.is-owing .cu-due-amt { color: var(--red, #B3261E); }
+body.dark-mode .cu-due.is-owing .cu-due-amt { color: #FF8A80; }
+.cu-due.is-clear .cu-due-amt { color: var(--grn, #2E7D5B); font-size: 22px; }
+.cu-agebar { display: flex; height: 10px; border-radius: 999px; overflow: hidden; background: var(--line-soft); gap: 2px; }
+.cu-agelist { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--body); }
+.cu-agelist i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: 0; }
+.cu-age-0 { background: #2E7D5B; } .cu-age-1 { background: #D9AE55; } .cu-age-2 { background: #E0822C; } .cu-age-3 { background: #C0392B; } .cu-age-4 { background: #7B1E16; }
+.cu-due-foot { font-size: 12.5px; color: var(--muted); }
+
+.cu-dl { margin: 0; padding: 4px 16px 12px; }
+.cu-dl > div { display: grid; grid-template-columns: 110px 1fr; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line-soft); }
+.cu-dl > div:first-child { border-top: 0; }
+.cu-dl dt { color: var(--muted); font-size: 13px; }
+.cu-dl dd { margin: 0; color: var(--text); word-break: break-word; }
+.cu-dl a { color: var(--ink); font-weight: 600; }
+
+.cu-fold-head { width: 100%; display: flex; align-items: center; gap: 10px; padding: 14px 16px; background: transparent; border: 0; cursor: pointer; color: var(--ink); font: inherit; text-align: left; }
+.cu-fold-count { background: var(--hq-head); color: var(--muted); font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+.cu-fold-chev { margin-left: auto; display: flex; color: var(--muted); transition: transform .2s; transform: rotate(-90deg); }
+.cu-fold.is-open .cu-fold-chev { transform: none; }
+.cu-fold-body { display: none; border-top: 1px solid var(--line-soft); }
+.cu-fold.is-open .cu-fold-body { display: block; }
+.cu-fold-body .cu-pager { padding: 10px 12px; }
+
+.cu-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.cu-table th { background: var(--hq-head); color: var(--muted); font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; text-align: left; padding: 9px 12px; font-weight: 700; }
+.cu-table td { padding: 10px 12px; border-top: 1px solid var(--line-soft); color: var(--text); vertical-align: top; }
+.cu-table .num { text-align: right; white-space: nowrap; }
+.cu-ledger-sync { padding-bottom: 6px; }
+
+.cu-orders, .cu-follow { display: flex; flex-direction: column; }
+.cu-order { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 11px 16px; border-top: 1px solid var(--line-soft); font-size: 14px; color: var(--text); }
+.cu-order:first-child, .cu-fu:first-child { border-top: 0; }
+.cu-order-side { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.cu-stage { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: #D9AE55; color: #12213B; white-space: nowrap; }
+.cu-stage.is-done { background: var(--grn-bg, #E6F2EC); color: var(--grn, #2E7D5B); }
+.cu-fu { padding: 11px 16px; border-top: 1px solid var(--line-soft); font-size: 14px; color: var(--text); display: flex; flex-direction: column; gap: 3px; }
+.cu-fu-top { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+
+@media (max-width: 420px) {
+  .cu-dl > div { grid-template-columns: 1fr; gap: 2px; }
+  .cu-table { font-size: 13px; }
+  .cu-table th, .cu-table td { padding: 8px 9px; }
+}
