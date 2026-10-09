@@ -2,7 +2,7 @@
    logs.css) are used as they are; this file only fits them into HQ's frame:
    the sidebar, HQ's global resets, and the fonts. Everything is scoped to
    .jo-hq so no CRM page is touched. */
-.jo-hq { min-height: 100vh; background: #F6F3EC; font-family: 'Roboto Condensed', Arial, sans-serif; color: #0C111B; line-height: normal; }
+.jo-hq { min-height: 100vh; background: var(--bg); font-family: 'Inter', -apple-system, 'Segoe UI', sans-serif; color: var(--text); line-height: normal; }
 .jo-hq .jo-admin { min-height: 100vh; font-family: inherit; }
 
 /* HQ's global button rule (padding, radius, transparent background) must not
@@ -11,10 +11,18 @@
 
 /* The header: same navy bar and gold rule, but HQ's sidebar does the
    navigation now, so it is shorter and has no logo or links. */
-.jo-hq .jo-hqhead { height: 64px; padding: 0 28px; position: sticky; top: 0; z-index: 40; }
-.jo-hq .jo-hqhead .jo-title { font-size: 22px; }
-.jo-hq .jo-hamb { display: none; height: 40px; width: 40px; padding: 0; border: 1px solid rgba(255,255,255,.3); border-radius: 8px; background: transparent; color: #FFFFFF; font-size: 18px; cursor: pointer; }
-.jo-hq .jo-hamb:hover { background: rgba(255,255,255,.1); }
+/* JCM HQ look: the same white (night: navy) top bar as every other HQ page. */
+.jo-hq .jo-hqhead { height: 64px; padding: 0 28px; position: sticky; top: 0; z-index: 40; background: var(--surface); border-bottom: 1px solid var(--line); }
+body.dark-mode .jo-hq .jo-hqhead { background: var(--bg); }
+.jo-hq .jo-hqhead .jo-title { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink); }
+.jo-hq .jo-hqhead .jo-sub { color: var(--muted); font-size: 14px; }
+.jo-hq .jo-hamb { display: none; height: 40px; width: 40px; padding: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font-size: 18px; cursor: pointer; }
+.jo-hq .jo-hamb:hover { background: var(--line-soft); }
+/* Solid, rounded cards and buttons (look C). The TV preview keeps the board's own condensed font. */
+.jo-hq .jo-card { border-radius: var(--hq-radius); }
+.jo-hq .jo-btn { border-radius: 12px; }
+.jo-hq .jo-input { border-radius: 10px; background: var(--surface); color: var(--text); }
+.jo-hq .tv { font-family: 'Roboto Condensed', Arial, sans-serif; }
 @media (max-width: 799px) {
   .jo-hq .jo-hamb { display: inline-flex; align-items: center; justify-content: center; }
   .jo-hq .jo-hqhead { padding: 0 14px; gap: 10px; }
@@ -32,32 +40,32 @@
 /* Warehouse & Devices → TV display (v2 design, "Admin → TV display"). */
 .jo-hq .jo-tv-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px 28px; }
 .jo-hq .jo-tv-group { display: flex; flex-direction: column; gap: 8px; }
-.jo-hq .jo-tv-label { font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #5A606C; }
+.jo-hq .jo-tv-label { font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .jo-hq .jo-tv-choices { display: grid; gap: 8px; }
 .jo-hq .jo-tv-2 { grid-template-columns: repeat(2, 1fr); }
 .jo-hq .jo-tv-3 { grid-template-columns: repeat(3, 1fr); }
 .jo-hq .jo-tv-4 { grid-template-columns: repeat(4, 1fr); }
-.jo-hq .jo-tv-choice { min-height: 48px; padding: 6px 10px; border: 1.5px solid #D6CFBE; border-radius: 6px; background: #FFFFFF; color: #12213B; font-size: 16px; font-weight: 600; cursor: pointer; transition: background .12s ease, border-color .12s ease, color .12s ease; }
-.jo-hq .jo-tv-choice:hover { border-color: #12213B; }
-.jo-hq .jo-tv-choice.on { background: #12213B; border-color: #12213B; color: #FFFFFF; }
+.jo-hq .jo-tv-choice { min-height: 48px; padding: 6px 10px; border: 1.5px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font-size: 16px; font-weight: 600; cursor: pointer; transition: background .12s ease, border-color .12s ease, color .12s ease; }
+.jo-hq .jo-tv-choice:hover { border-color: var(--ink); }
+.jo-hq .jo-tv-choice.on { background: var(--blue); border-color: var(--blue); color: var(--on-blue); }
 .jo-hq .jo-tv-preset { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 64px; }
 .jo-hq .jo-tv-preset b { font-size: 18px; }
 .jo-hq .jo-tv-preset span { font-size: 13px; font-weight: 500; opacity: .8; }
 .jo-hq .jo-tv-stepper { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.jo-hq .jo-tv-step { width: 48px; height: 48px; padding: 0; border: 1.5px solid #D6CFBE; border-radius: 6px; background: #FFFFFF; color: #12213B; font-size: 24px; font-weight: 700; cursor: pointer; }
-.jo-hq .jo-tv-step:hover:not(:disabled) { border-color: #12213B; }
+.jo-hq .jo-tv-step { width: 48px; height: 48px; padding: 0; border: 1.5px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font-size: 24px; font-weight: 700; cursor: pointer; }
+.jo-hq .jo-tv-step:hover:not(:disabled) { border-color: var(--ink); }
 .jo-hq .jo-tv-step:disabled { opacity: .4; cursor: default; }
-.jo-hq .jo-tv-count { min-width: 36px; text-align: center; font-size: 30px; font-weight: 800; color: #12213B; }
-.jo-hq .jo-tv-hint { font-size: 14px; color: #5A606C; }
-.jo-hq .jo-tv-switchrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1.5px solid #D6CFBE; border-radius: 6px; background: #FFFFFF; text-align: left; cursor: pointer; color: #0C111B; font-size: 15px; }
-.jo-hq .jo-tv-switchrow small { color: #5A606C; font-size: 13px; }
+.jo-hq .jo-tv-count { min-width: 36px; text-align: center; font-size: 30px; font-weight: 800; color: var(--ink); }
+.jo-hq .jo-tv-hint { font-size: 14px; color: var(--muted); }
+.jo-hq .jo-tv-switchrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 10px; background: var(--surface); text-align: left; cursor: pointer; color: var(--text); font-size: 15px; }
+.jo-hq .jo-tv-switchrow small { color: var(--muted); font-size: 13px; }
 .jo-hq .jo-tv-switch { flex: none; width: 56px; height: 32px; border-radius: 16px; background: #C9CDD5; position: relative; transition: background .15s ease; }
 .jo-hq .jo-tv-switch span { position: absolute; top: 4px; left: 4px; width: 24px; height: 24px; border-radius: 12px; background: #FFFFFF; transition: left .15s ease; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
 .jo-hq .jo-tv-switchrow.on .jo-tv-switch { background: #2E7D5B; }
 .jo-hq .jo-tv-switchrow.on .jo-tv-switch span { left: 28px; }
 .jo-hq .jo-tv-actions { align-items: center; }
-.jo-hq .jo-tv-draftnote { font-size: 14px; font-weight: 600; color: #9A5F10; }
-.jo-hq .jo-tv-showing { display: flex; flex-direction: column; gap: 4px; font-size: 15px; color: #2C3240; padding-top: 4px; border-top: 1px solid #EEE8DA; }
+.jo-hq .jo-tv-draftnote { font-size: 14px; font-weight: 600; color: var(--hq-late-fg); }
+.jo-hq .jo-tv-showing { display: flex; flex-direction: column; gap: 4px; font-size: 15px; color: var(--body); padding-top: 4px; border-top: 1px solid var(--line); }
 .jo-hq .jo-tv-preview { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
 .jo-hq .jo-tv-preview-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 .jo-hq .jo-tv-frame { position: relative; width: 100%; overflow: hidden; border-radius: 8px; background: #0C111B; box-shadow: 0 0 0 6px #0C111B; }
