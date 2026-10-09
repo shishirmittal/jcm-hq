@@ -76,7 +76,12 @@ async function readDeletions(pool) {
   const r = await pool.request().query(`
     SELECT Type, VchMastType, [Identity] AS Ident, DeletedBy,
            CONVERT(VARCHAR(19), DeletionTime, 126) AS DeletedAt,
-           OrgVchAmtBaseCur, ModVchAmtBaseCur, ComputerName
+           OrgVchAmtBaseCur, ModVchAmtBaseCur, ComputerName,
+           -- Several deletions can share the same name/number and the same second
+           -- (e.g. blank-numbered vouchers removed together). Number them so each
+           -- one gets its own alert; the first keeps the plain key.
+           ROW_NUMBER() OVER (PARTITION BY Type, VchMastType, [Identity], CONVERT(VARCHAR(19), DeletionTime, 126)
+                              ORDER BY OrgVchAmtBaseCur, ModVchAmtBaseCur, ComputerName, DeletedBy) AS Occurrence
     FROM DeletedInfo`);
 
   return r.recordset.map((d) => {
@@ -100,7 +105,7 @@ async function readDeletions(pool) {
     }
 
     return {
-      alert_key: `del|${d.Type}|${d.VchMastType}|${d.Ident}|${d.DeletedAt}`,
+      alert_key: `del|${d.Type}|${d.VchMastType}|${d.Ident}|${d.DeletedAt}${d.Occurrence > 1 ? `|${d.Occurrence}` : ''}`,
       alert_type: alertType,
       happened_at: ist(d.DeletedAt),
       title,
