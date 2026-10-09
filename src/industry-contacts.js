@@ -1,4 +1,5 @@
 import { supabase, getCurrentProfile } from './supabase.js'
+import { showMore } from './show-more.js'
 import { esc, telHref, waHref, slug } from './utils.js'
 import { openSidebar } from './sidebar.js'
 import { renderProjectDetail } from './project-detail.js'
@@ -107,6 +108,7 @@ async function renderContactList(container, contactType) {
     list.querySelectorAll('.project-card').forEach(card => {
       card.addEventListener('click', () => { window.location.hash = `#${hashSegment}/${card.dataset.id}` })
     })
+    showMore(list, '.project-card')
   }
 
   renderList()

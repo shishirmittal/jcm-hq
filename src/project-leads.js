@@ -1,4 +1,5 @@
 import { supabase, getCurrentProfile } from './supabase.js'
+import { showMore } from './show-more.js'
 import { renderProjectForm } from './project-form.js'
 import { renderProjectDetail } from './project-detail.js'
 import { openSidebar } from './sidebar.js'
@@ -184,5 +185,6 @@ export async function renderProjectLeads(container) {
         renderProjectDetail(app, card.dataset.id, () => renderProjectLeads(app))
       })
     })
+    showMore(list, '.project-card')
   }
 }

@@ -1,4 +1,5 @@
 import { supabase } from './supabase.js'
+import { showMore } from './show-more.js'
 import { openSidebar } from './sidebar.js'
 import { esc, formatMoney } from './utils.js'
 import { canSee } from './permissions.js'
@@ -119,6 +120,7 @@ function renderPaymentsTable(el, payments) {
       </table>
     </div>
   `
+  showMore(el.querySelector('.op-table-wrap'), 'tbody tr')
 }
 
 function renderFeedbackTable(el, feedback) {
@@ -143,4 +145,5 @@ function renderFeedbackTable(el, feedback) {
       </table>
     </div>
   `
+  showMore(el.querySelector('.op-table-wrap'), 'tbody tr')
 }

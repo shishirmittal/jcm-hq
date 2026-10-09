@@ -199,3 +199,10 @@ body.dark-mode .app-tab.active .app-tab-icon { background: var(--hq-gold); color
   body.has-tabbar .tb-toast { bottom: calc(84px + var(--app-nav-h, 0px)); }
   body.has-tabbar .jo-bulkbar { bottom: var(--app-nav-h, 0px); }
 }
+
+/* "Show 25 more" under long lists (src/show-more.js) */
+.hq-more { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 14px 8px 4px; }
+.hq-more-btn { border: 1.5px solid var(--line); border-radius: 999px; padding: 9px 18px; background: var(--surface); color: var(--ink); font-weight: 600; cursor: pointer; }
+.hq-more-btn:hover { border-color: var(--blue); }
+.hq-more-count { color: var(--muted); font-size: 13px; }
+[hidden].project-card, tr[hidden] { display: none !important; }
