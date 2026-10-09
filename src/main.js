@@ -13,6 +13,7 @@ import { renderOrderPlanning } from './order-planning.js'
 import { renderPayments } from './payments.js'
 import { renderItemsManagement } from './items-management.js'
 import { renderPriceUpdate } from './price-update.js'
+import { renderRedAlerts } from './red-alerts.js'
 import { renderTaskBoard, unmountTaskBoard } from './task-board.js'
 import { mountPinnedSidebar, unmountPinnedSidebar } from './sidebar.js'
 import { renderStock, unmountStock } from './stock.js'
@@ -209,6 +210,8 @@ function route() {
     renderTaskBoard(app)
   } else if (hash === '#items-management') {
     renderItemsManagement(app)
+  } else if (hash === '#red-alerts') {
+    renderRedAlerts(app)
   } else if (hash === '#price-update') {
     renderPriceUpdate(app, () => { window.location.hash = '' })
   } else if (ORDERS_HASHES[hash]) {

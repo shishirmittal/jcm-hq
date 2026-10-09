@@ -63,6 +63,10 @@ export const NAV_CONFIG = [
   ] },
   { section: 'Insights', items: [
     { id: 'control', label: 'Control Centre', icon: 'chart', hash: '#dashboard', adminOnly: true },
+    // ₹0 sales lines and deletions in Busy, fed by busy-sync/sync-red-alerts.js.
+    // Grantable like Payments: api/red-alerts.js lets in admins and anyone with
+    // 'red-alerts' in allowed_tabs. Badge = alerts still New.
+    { id: 'red-alerts', label: 'Red Alerts', icon: 'alert-triangle', hash: '#red-alerts', adminOnly: true, badge: 'redAlerts' },
   ] },
   { section: 'Admin', items: [
     { id: 'users', label: 'Manage Users', icon: 'users', hash: '#admin', adminOnly: true, grantable: false },
