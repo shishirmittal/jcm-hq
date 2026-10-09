@@ -1,9 +1,9 @@
 {
-  "appId": "com.jcmretails.tools",
-  "appName": "JCM Tools",
+  "appId": "com.jcmretails.hq",
+  "appName": "JCM HQ",
   "webDir": "dist",
   "server": {
-    "url": "https://jcm-crm.vercel.app",
+    "url": "https://hq.jcmretails.com",
     "errorPath": "offline.html"
   }
 }

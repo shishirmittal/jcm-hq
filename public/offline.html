@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>JCM Tools — No internet</title>
 <!-- Served from inside the APK, not from the website: this is the page the
-     WebView falls back to when it cannot reach jcm-crm.vercel.app, so it has
+     WebView falls back to when it cannot reach hq.jcmretails.com, so it has
      to stand on its own with no network, no fonts and no stylesheet. Hence
      the inline CSS and the system font stack. -->
 <style>
@@ -72,7 +72,7 @@
     document.getElementById('retry').addEventListener('click', function () {
       // Back to the live site. If it is still unreachable the WebView lands
       // right back here, which is the correct outcome.
-      window.location.replace('https://jcm-crm.vercel.app/');
+      window.location.replace('https://hq.jcmretails.com/');
     });
   </script>
 </body>
