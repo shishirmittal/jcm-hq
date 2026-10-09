@@ -22,7 +22,7 @@ import { mountPinnedSidebar, unmountPinnedSidebar } from './sidebar.js'
 import { renderStock, unmountStock } from './stock.js'
 import { getCurrentProfile as loadProfileForOrders } from './supabase.js'
 import { IS_NATIVE } from './native.js'
-import { mountNativeShell, unmountNativeShell, syncNativeShell, NATIVE_HOME } from './native-shell.js'
+import { mountNativeShell, unmountNativeShell, syncNativeShell, phoneHome } from './native-shell.js'
 import { setPermissions, clearPermissions, routeDecision, hasAnyTab, fallbackHash, isAdminProfile } from './permissions.js'
 
 const app = document.getElementById('app')
@@ -106,11 +106,13 @@ async function enterApp() {
     // three-tab shell has no tab for — landing there would show a page with
     // no tab lit and no way back to one except the drawer.
     if (!window.location.hash) {
-      window.location.hash = NATIVE_HOME
+      window.location.hash = phoneHome()
       return // the hashchange above calls route()
     }
   } else {
     mountPinnedSidebar({ isAdmin: isAdminProfile(profile), profile })
+    // Phones get the bottom tab bar too (CSS shows it below 800 px only).
+    mountNativeShell()
   }
   route()
 }
@@ -164,7 +166,7 @@ function route() {
   if (hash !== '#stock') unmountStock()
   if (!ORDERS_HASHES[hash]) ordersModule?.unmountOrdersPage()
 
-  if (IS_NATIVE) syncNativeShell()
+  syncNativeShell()
 
   if (hash === '#stock') {
     renderStock(app)
@@ -181,7 +183,7 @@ function route() {
   // Access is decided before a single render*() call below, so a blocked page
   // never paints and then yanks itself away.
   if (!routeDecision(hash).allowed) {
-    const target = IS_NATIVE && routeDecision(NATIVE_HOME).allowed ? NATIVE_HOME : fallbackHash()
+    const target = IS_NATIVE && routeDecision(phoneHome()).allowed ? phoneHome() : fallbackHash()
     showNotice("You don't have access to that page.")
     // Assigning the hash we are already on fires no hashchange, which would
     // leave the blocked page on screen. Only reachable if the fallback itself

@@ -178,3 +178,24 @@ body.dark-mode .im-topbar { background: var(--bg); }
 .im-chat-sql summary { color: var(--blue); }
 .im-chat-sql code { background: var(--bg); border-color: var(--line); color: var(--text); }
 .jo-hq input[type="checkbox"], .jo-hq input[type="radio"] { accent-color: var(--blue); }
+
+/* The Stock page's navy band carries its search box, so it is taller than other headers. */
+.app-header.stock-header { height: auto; }
+
+/* ---- Phone tab bar (website below 800 px, and the APK) ---- */
+@media (min-width: 800px) { body:not(.native-app) .app-tabs { display: none; } }
+.app-tabs { background: var(--surface); border-top-color: var(--line); box-shadow: 0 -4px 18px var(--shadow); }
+body.dark-mode .app-tabs { background: #0A1324; border-top-color: #1C2A44; }
+.app-tab { height: 60px; gap: 3px; color: var(--muted); font-size: 11px; font-weight: 600; }
+.app-tab-icon { width: 46px; height: 28px; border-radius: 999px; display: grid; place-items: center; transition: background 0.15s ease, color 0.15s ease; }
+.app-tab.active { color: var(--ink); font-weight: 700; }
+.app-tab.active .app-tab-icon { background: var(--hq-gold); color: #12213B; }
+body.dark-mode .app-tab.active .app-tab-icon { background: var(--hq-gold); color: #0E1A2E; }
+@media (max-width: 799px) {
+  body.has-tabbar:not(.native-app) #app { padding-bottom: var(--app-nav-h, 0px); }
+  body.has-tabbar.keyboard-open .app-tabs { transform: translateY(100%); }
+  body.has-tabbar .tb-compose { bottom: calc(var(--tb-keyboard, 0px) + var(--app-nav-h, 0px)); padding-bottom: 0; }
+  body.has-tabbar .tb-main .tb-board { padding-bottom: calc(96px + var(--app-nav-h, 0px)); }
+  body.has-tabbar .tb-toast { bottom: calc(84px + var(--app-nav-h, 0px)); }
+  body.has-tabbar .jo-bulkbar { bottom: var(--app-nav-h, 0px); }
+}

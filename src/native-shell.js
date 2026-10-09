@@ -1,24 +1,38 @@
 import { icon } from './icons.js'
 import { canSee } from './permissions.js'
 import { IS_NATIVE } from './native.js'
+import { openSidebar } from './sidebar.js'
 
-// The app's whole navigation: three tabs along the bottom, in place of the
-// sidebar. Mounted only inside the APK — the website keeps mountPinnedSidebar
-// and is not touched by any of this.
+// The phone's navigation: tabs along the bottom (JCM HQ, 2026-10-10).
+// Used in the APK, and on the website whenever the screen is phone-sized
+// (CSS shows the bar below 800 px; the computer keeps the sidebar).
 //
-// Kept deliberately separate from NAV_CONFIG rather than filtered out of it.
-// NAV_CONFIG is the website's nav and will keep growing; this is a fixed
-// three-tab shell, and tying them together would mean every new CRM page had
-// to be explicitly excluded from the phone.
+// Shishir's order of importance for staff on phones. Each person sees only
+// the ones they are allowed (Manage Users); admins see all. The bar holds
+// five: with more than five allowed, the first four show and "More" opens
+// the full menu, where the rest — and every other page — are.
 const TABS = [
+  { id: 'stock', label: 'Stock', hash: '#stock', icon: 'warehouse' },
+  { id: 'customers', label: 'Customers', hash: '#customers', icon: 'idcard' },
+  { id: 'payment-followup', label: 'Follow-up', hash: '#payment-followup', icon: 'phone' },
+  { id: 'floor-orders', label: 'Orders', hash: '#floor-orders', icon: 'package' },
+  { id: 'quotations', label: 'Quotes', hash: '#quotations', icon: 'file' },
   { id: 'tasks', label: 'Tasks', hash: '#tasks', icon: 'clipboard' },
-  { id: 'quotations', label: 'Quotations', hash: '#quotations', icon: 'file' },
-  // Not in NAV_CONFIG and not permission-gated: a placeholder with no data
-  // behind it is not something to grant.
-  { id: 'stock', label: 'Stock', hash: '#stock', icon: 'box', always: true },
 ]
+const MAX_TABS = 5
 
 export const NATIVE_HOME = '#tasks'
+
+// The first tab this person may open — where the app opens.
+export function phoneHome() {
+  return TABS.find(t => canSee(t.id))?.hash || NATIVE_HOME
+}
+
+function visibleTabs() {
+  const mine = TABS.filter(t => canSee(t.id))
+  if (mine.length <= MAX_TABS) return { tabs: mine, more: false }
+  return { tabs: mine.slice(0, MAX_TABS - 1), more: true }
+}
 
 let keyboardHandler = null
 
@@ -30,25 +44,29 @@ function allowed(tab) {
 }
 
 export function mountNativeShell() {
-  if (!IS_NATIVE) return
-  document.body.classList.add('native-app')
-  if (document.getElementById('appTabs')) { syncNativeShell(); return }
+  document.body.classList.add('has-tabbar')
+  if (IS_NATIVE) document.body.classList.add('native-app')
+  document.getElementById('appTabs')?.remove()
 
+  const { tabs, more } = visibleTabs()
   const bar = document.createElement('nav')
   bar.className = 'app-tabs'
   bar.id = 'appTabs'
-  bar.setAttribute('role', 'tablist')
   bar.setAttribute('aria-label', 'Sections')
-  bar.innerHTML = TABS.map(tab => `
-    <button type="button" class="app-tab" role="tab" data-tab="${tab.id}" data-hash="${tab.hash}"
-            aria-selected="false"${allowed(tab) ? '' : ' disabled title="You do not have access to this"'}>
+  bar.style.gridTemplateColumns = `repeat(${tabs.length + (more ? 1 : 0)}, 1fr)`
+  bar.innerHTML = tabs.map(tab => `
+    <button type="button" class="app-tab" data-tab="${tab.id}" data-hash="${tab.hash}" aria-current="false">
       <span class="app-tab-icon">${icon(tab.icon, 21)}</span>
       <span class="app-tab-label">${tab.label}</span>
     </button>
-  `).join('')
+  `).join('') + (more ? `
+    <button type="button" class="app-tab" data-more="1" aria-label="More pages">
+      <span class="app-tab-icon">${icon('more', 21)}</span>
+      <span class="app-tab-label">More</span>
+    </button>` : '')
   document.body.appendChild(bar)
 
-  bar.querySelectorAll('.app-tab').forEach(btn => {
+  bar.querySelectorAll('.app-tab[data-hash]').forEach(btn => {
     btn.addEventListener('click', () => {
       const next = btn.dataset.hash
       // Assigning the hash we are already on fires no hashchange, so a second
@@ -58,6 +76,7 @@ export function mountNativeShell() {
       else window.location.hash = next
     })
   })
+  bar.querySelector('[data-more]')?.addEventListener('click', () => openSidebar())
 
   // The keyboard and a bottom bar want the same strip of screen. Collapsing
   // the bar while typing gives the field the room, and zeroing --app-nav-h is
@@ -104,18 +123,21 @@ export function syncNativeShell() {
   const bar = document.getElementById('appTabs')
   if (!bar) return
   const hash = window.location.hash
-  bar.querySelectorAll('.app-tab').forEach(btn => {
+  bar.querySelectorAll('.app-tab[data-hash]').forEach(btn => {
     // startsWith so a detail route under a tab (#quotations/<id>) keeps its
     // parent tab lit rather than leaving the bar with nothing selected.
     const on = hash === btn.dataset.hash || hash.startsWith(btn.dataset.hash + '/')
     btn.classList.toggle('active', on)
-    btn.setAttribute('aria-selected', String(on))
+    btn.setAttribute('aria-current', on ? 'page' : 'false')
   })
+  // Any other page was reached through "More", so that one reads as current.
+  const more = bar.querySelector('[data-more]')
+  if (more) more.classList.toggle('active', !bar.querySelector('.app-tab[data-hash].active'))
 }
 
 export function unmountNativeShell() {
   document.getElementById('appTabs')?.remove()
-  document.body.classList.remove('native-app', 'keyboard-open')
+  document.body.classList.remove('native-app', 'keyboard-open', 'has-tabbar')
   document.body.style.removeProperty('--app-nav-h')
   if (keyboardHandler && window.visualViewport) {
     window.visualViewport.removeEventListener('resize', keyboardHandler)
