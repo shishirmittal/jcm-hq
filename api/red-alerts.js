@@ -11,7 +11,9 @@ import { createClient } from '@supabase/supabase-js'
 //                         status: new → seen / asked → answered → ok
 //   red_alert_skip_items  give-away items the ₹0 checks ignore
 //   red_alert_skip_parties parties billed below cost on purpose: the below-cost check ignores them
-//   busy_user_names       Busy login -> person's name, HQ account and WhatsApp number
+//   busy_user_names       (fallback only) names for Busy logins with no HQ account, e.g. '0'
+// People — HQ account, WhatsApp number, Busy login — live in Manage Users
+// (profiles.busy_login / whatsapp, CRM project). That is the one place.
 // All three have RLS on and no policies, so the browser (anon key) cannot read
 // them. Everything goes through this function with the Busy project's service
 // key, after the caller's HQ session has been checked here.
@@ -34,7 +36,7 @@ import { createClient } from '@supabase/supabase-js'
 //   skip-add / skip-remove  item_name        gift items
 //   party-add / party-remove party_name      parties skipped by the below-cost check
 //   band-save  from, to                      below-cost % band skipped as deliberate billing (red_alert_settings)
-//   people  /  people-save  busy_user, display_name, hq_user_id, whatsapp
+//   people                                   HQ people for the Ask dialog, and which Busy logins are linked
 // Staff actions:
 //   my-count, my-list, reply { id, reply }
 
@@ -127,7 +129,7 @@ export default async function handler(req, res) {
 
     if (!canReview) return send(res, 403, { error: 'You do not have access to Red Alerts.' })
     if (action === 'count') return await handleCount(busy, res)
-    if (action === 'list') return await handleList(busy, body, res)
+    if (action === 'list') return await handleList(busy, hq, body, res)
     if (action === 'update') return await handleUpdate(busy, body, me, res)
     if (action === 'update-matching') return await handleUpdateMatching(busy, body, me, res)
     if (action === 'ask') return await handleAsk(busy, hq, me, body, res)
@@ -137,7 +139,6 @@ export default async function handler(req, res) {
     if (action === 'party-remove') return await handlePartyRemove(busy, body, res)
     if (action === 'band-save') return await handleBandSave(busy, body, me, res)
     if (action === 'people') return await handlePeople(busy, hq, res)
-    if (action === 'people-save') return await handlePeopleSave(busy, body, res)
     return send(res, 400, { error: 'Unknown request.' })
   } catch (err) {
     console.error('red-alerts handler error:', err)
@@ -184,6 +185,19 @@ function applyFilters(query, f, { skipStatus = false, skipGroup = false } = {}) 
 // ask/reply columns have been added to red_alerts yet.
 const COLUMNS = '*'
 
+// Everyone in Manage Users with a Busy login. If the staff columns have not
+// been added yet, nobody is linked (and asking needs a person picked by hand).
+async function loadStaff(hq) {
+  const { data, error } = await hq.from('profiles').select('*').eq('active', true)
+  if (error) { console.error('red-alerts staff read failed:', error); return [] }
+  return data || []
+}
+function staffByLogin(staff) {
+  const map = new Map()
+  for (const p of staff) if (p.busy_login) map.set(String(p.busy_login).trim().toLowerCase(), p)
+  return map
+}
+
 async function handleCount(busy, res) {
   const [fresh, answered] = await Promise.all([
     busy.from('red_alerts').select('id', { count: 'exact', head: true }).eq('status', 'new'),
@@ -193,7 +207,7 @@ async function handleCount(busy, res) {
   return send(res, 200, { new: fresh.count || 0, answered: answered.count || 0 })
 }
 
-async function handleList(busy, body, res) {
+async function handleList(busy, hq, body, res) {
   const f = readFilters(body)
   const offset = Math.max(0, Math.min(100000, Number(body.offset) || 0))
   const ascending = body.sort === 'oldest'
@@ -211,7 +225,8 @@ async function handleList(busy, body, res) {
     { ...f, changedOnly: false }, { skipGroup: true })
   const statusCount = s => busy.from('red_alerts').select('id', { count: 'exact', head: true }).eq('status', s)
 
-  const [list, names, skips, skipParties, settings, ...counts] = await Promise.all([
+  const [staff, list, names, skips, skipParties, settings, ...counts] = await Promise.all([
+    loadStaff(hq),
     query,
     busy.from('busy_user_names').select('busy_user, display_name'),
     busy.from('red_alert_skip_items').select('item_name, added_by, added_at').order('item_name'),
@@ -231,6 +246,8 @@ async function handleList(busy, body, res) {
 
   const userNames = {}
   for (const n of names.data || []) userNames[String(n.busy_user).toLowerCase()] = n.display_name
+  // Manage Users wins over the old fallback list.
+  for (const [login, p] of staffByLogin(staff)) userNames[login] = p.name || p.email
 
   const tiles = {}
   TILE_GROUPS.forEach((g, i) => { tiles[g] = counts[i].count || 0 })
@@ -340,32 +357,32 @@ async function handleAsk(busy, hq, me, body, res) {
   const override = typeof body.hq_user_id === 'string' && body.hq_user_id ? body.hq_user_id : null
   if (!ids.length) return send(res, 400, { error: 'Tick at least one alert.' })
 
-  const [{ data: alerts, error: aErr }, { data: people, error: pErr }] = await Promise.all([
+  const [{ data: alerts, error: aErr }, staff] = await Promise.all([
     busy.from('red_alerts').select('id, alert_type, happened_at, title, subtitle, busy_user, details, status').in('id', ids),
-    busy.from('busy_user_names').select('busy_user, display_name, hq_user_id, whatsapp'),
+    loadStaff(hq),
   ])
-  if (aErr || pErr) return send(res, 500, { error: 'Could not load the alerts. Try again.' })
+  if (aErr) return send(res, 500, { error: 'Could not load the alerts. Try again.' })
 
-  const byLogin = new Map((people || []).map(p => [String(p.busy_user).toLowerCase(), p]))
+  const byLogin = staffByLogin(staff)
   const groups = new Map() // hq_user_id -> alerts
   const unassigned = []
   for (const a of alerts || []) {
     const person = override ? null : byLogin.get(String(a.busy_user || '').toLowerCase())
-    const target = override || person?.hq_user_id
+    const target = override || person?.id
     if (!target) { unassigned.push(a); continue }
     if (!groups.has(target)) groups.set(target, [])
     groups.get(target).push(a)
   }
   if (!groups.size) {
     return send(res, 400, {
-      error: 'No HQ person is linked to who made these entries. Pick a person, or link Busy logins under People.',
+      error: 'Nobody in Manage Users has the Busy login of who made these entries. Pick a person, or add their Busy login in Manage Users.',
       unassigned: unassigned.length,
     })
   }
 
   const { data: targets } = await hq.from('profiles').select('id, name, email, active').in('id', [...groups.keys()])
   const targetById = new Map((targets || []).map(t => [t.id, t]))
-  const phoneByHqId = new Map((people || []).filter(p => p.hq_user_id && p.whatsapp).map(p => [p.hq_user_id, p.whatsapp]))
+  const phoneByHqId = new Map(staff.filter(p => p.whatsapp).map(p => [p.id, p.whatsapp]))
 
   const results = []
   for (const [hqUserId, list] of groups) {
@@ -594,56 +611,11 @@ async function handleSkipRemove(busy, body, res) {
 }
 
 async function handlePeople(busy, hq, res) {
-  const [{ data: names, error: nErr }, { data: profiles, error: pErr }] = await Promise.all([
-    busy.from('busy_user_names').select('busy_user, display_name, hq_user_id, whatsapp').order('busy_user'),
-    hq.from('profiles').select('id, name, email, active, hide_from_roster').eq('active', true).order('name'),
-  ])
-  if (nErr || pErr) return send(res, 500, { error: 'Could not load people. Try again.' })
-
-  // Every Busy login that appears on an alert, so a new one shows up here to be linked.
-  const logins = new Set((names || []).map(n => n.busy_user))
-  for (let from = 0; from < 20000; from += 1000) {
-    const { data, error } = await busy.from('red_alerts').select('busy_user').not('busy_user', 'is', null).range(from, from + 999)
-    if (error || !data?.length) break
-    data.forEach(r => logins.add(r.busy_user))
-    if (data.length < 1000) break
-  }
-  const byLogin = new Map((names || []).map(n => [n.busy_user.toLowerCase(), n]))
-  const seen = new Set()
-  const rows = []
-  for (const login of logins) {
-    const key = String(login).toLowerCase()
-    if (seen.has(key)) continue
-    seen.add(key)
-    const n = byLogin.get(key)
-    rows.push({ busy_user: n?.busy_user || login, display_name: n?.display_name || '', hq_user_id: n?.hq_user_id || null, whatsapp: n?.whatsapp || '' })
-  }
-  rows.sort((a, b) => a.busy_user.localeCompare(b.busy_user))
-
+  const staff = await loadStaff(hq)
   return send(res, 200, {
-    people: rows,
-    hqUsers: (profiles || []).filter(p => !p.hide_from_roster).map(p => ({ id: p.id, name: p.name || p.email })),
+    hqUsers: staff.filter(p => !p.hide_from_roster).map(p => ({ id: p.id, name: p.name || p.email }))
+      .sort((a, b) => String(a.name).localeCompare(String(b.name))),
+    linkedLogins: [...staffByLogin(staff).keys()],
     whatsappReady: !!process.env.WHATSHUB_SEND_URL,
   })
-}
-
-async function handlePeopleSave(busy, body, res) {
-  const login = String(body.busy_user || '').trim().slice(0, 40)
-  if (!login) return send(res, 400, { error: 'Busy login is required.' })
-  const displayName = String(body.display_name || '').trim().slice(0, 80) || login
-  const hqUserId = typeof body.hq_user_id === 'string' && /^[0-9a-f-]{36}$/i.test(body.hq_user_id) ? body.hq_user_id : null
-  const whatsapp = String(body.whatsapp || '').replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '')
-  if (whatsapp && !/^[6-9]\d{9}$/.test(whatsapp)) return send(res, 400, { error: 'WhatsApp number should be a 10-digit mobile.' })
-
-  // Match case-insensitively so 'RM' and 'Rm' never become two people.
-  const { data: existing } = await busy.from('busy_user_names').select('busy_user').ilike('busy_user', login)
-  const key = existing?.[0]?.busy_user || login
-  const { error } = await busy.from('busy_user_names').upsert(
-    { busy_user: key, display_name: displayName, hq_user_id: hqUserId, whatsapp: whatsapp || null },
-    { onConflict: 'busy_user' })
-  if (error) {
-    console.error('red-alerts people-save failed:', error)
-    return send(res, 500, { error: 'Could not save. Try again.' })
-  }
-  return send(res, 200, { ok: true })
 }

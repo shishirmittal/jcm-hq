@@ -18,6 +18,38 @@ function sanitizeTabs(value) {
 }
 
 const PIN_RE = /^\d{4}$/
+
+// Staff details kept on profiles (added 2026-10-10 so every person lives in
+// one place): employee_id, whatsapp (10-digit Indian mobile, used for staff
+// WhatsApp messages such as Red Alerts questions) and busy_login (their login
+// name in Busy, which is how Busy's audit log names them). Each is only
+// written when the request carries it, so an older form cannot blank them.
+const MOBILE_RE = /^[6-9]\d{9}$/
+function readStaffFields(body) {
+  const out = {}
+  const errors = []
+  if (typeof body?.employee_id === 'string') out.employee_id = body.employee_id.trim().slice(0, 30) || null
+  if (typeof body?.whatsapp === 'string') {
+    const digits = body.whatsapp.replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '')
+    if (digits && !MOBILE_RE.test(digits)) errors.push('WhatsApp number should be a 10-digit mobile number')
+    out.whatsapp = digits || null
+  }
+  if (typeof body?.busy_login === 'string') out.busy_login = body.busy_login.trim().slice(0, 40) || null
+  return { fields: out, error: errors[0] || null }
+}
+
+// Two people cannot share a Busy login: Busy's log only has the login, so
+// it would be impossible to tell whose entry it was.
+async function busyLoginTaken(supabaseAdmin, login, exceptId) {
+  if (!login) return false
+  const { data } = await supabaseAdmin.from('profiles').select('id').ilike('busy_login', login.replace(/[%_\\]/g, m => `\\${m}`))
+  return (data || []).some(r => r.id !== exceptId)
+}
+
+// The new columns may not exist until the Supabase update has been run.
+function columnHint(err) {
+  return /employee_id|whatsapp|busy_login/.test(err?.message || '') ? 'Run the latest Supabase update for Manage Users first (new staff columns).' : null
+}
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 // Never returned to the client or logged anywhere -- accounts created here
@@ -103,7 +135,7 @@ export default async function handler(req, res) {
 async function handleList(supabaseAdmin, res) {
   const { data: profiles, error: profErr } = await supabaseAdmin
     .from('profiles')
-    .select('id, name, email, is_admin, active, allowed_tabs, hide_from_roster')
+    .select('*')
     .order('created_at', { ascending: true })
   if (profErr) { res.status(500).json({ error: profErr.message }); return }
 
@@ -123,6 +155,9 @@ async function handleList(supabaseAdmin, res) {
     active: p.active !== false,
     allowed_tabs: Array.isArray(p.allowed_tabs) ? p.allowed_tabs : [],
     hide_from_roster: !!p.hide_from_roster,
+    employee_id: p.employee_id ?? null,
+    whatsapp: p.whatsapp ?? null,
+    busy_login: p.busy_login ?? null,
     pin: pinByUser[p.id] ?? null,
   }))
   res.status(200).json({ users })
@@ -136,8 +171,11 @@ async function handleCreate(supabaseAdmin, body, res) {
   // never a default set, and never "everything".
   const allowedTabs = sanitizeTabs(body?.allowed_tabs) || []
   const hideFromRoster = body?.hide_from_roster === true
+  const staff = readStaffFields(body)
 
   if (!name) { res.status(400).json({ error: 'Name is required' }); return }
+  if (staff.error) { res.status(400).json({ error: staff.error }); return }
+  if (await busyLoginTaken(supabaseAdmin, staff.fields.busy_login, null)) { res.status(400).json({ error: 'That Busy login is already linked to someone else' }); return }
   if (!EMAIL_RE.test(email)) { res.status(400).json({ error: 'Enter a valid email address' }); return }
   if (!PIN_RE.test(pin)) { res.status(400).json({ error: 'PIN must be exactly 4 digits' }); return }
 
@@ -168,12 +206,13 @@ async function handleCreate(supabaseAdmin, body, res) {
   // frontend's own comment on why that stays a manual, deliberate action).
   const { error: profileInsertErr } = await supabaseAdmin
     .from('profiles')
-    .upsert({ id: newUserId, name, email, is_admin: false, role: 'staff', active: true, allowed_tabs: allowedTabs, hide_from_roster: hideFromRoster }, { onConflict: 'id' })
+    .upsert({ id: newUserId, name, email, is_admin: false, role: 'staff', active: true, allowed_tabs: allowedTabs, hide_from_roster: hideFromRoster, ...staff.fields }, { onConflict: 'id' })
   if (profileInsertErr) {
+    const hint = columnHint(profileInsertErr)
     // Partial failure: the auth user exists but has no profile. Clean it up
     // rather than leaving an orphaned, broken account behind.
     await supabaseAdmin.auth.admin.deleteUser(newUserId)
-    res.status(400).json({ error: `Could not save profile: ${profileInsertErr.message}` })
+    res.status(400).json({ error: hint || `Could not save profile: ${profileInsertErr.message}` })
     return
   }
 
@@ -197,6 +236,9 @@ async function handleUpdate(supabaseAdmin, body, res) {
   const pin = String(body?.pin || '').trim()
 
   if (!id) { res.status(400).json({ error: 'Missing user id' }); return }
+  const staff = readStaffFields(body)
+  if (staff.error) { res.status(400).json({ error: staff.error }); return }
+  if (await busyLoginTaken(supabaseAdmin, staff.fields.busy_login, id)) { res.status(400).json({ error: 'That Busy login is already linked to someone else' }); return }
   if (!name) { res.status(400).json({ error: 'Name is required' }); return }
   if (!EMAIL_RE.test(email)) { res.status(400).json({ error: 'Enter a valid email address' }); return }
   if (!PIN_RE.test(pin)) { res.status(400).json({ error: 'PIN must be exactly 4 digits' }); return }
@@ -222,7 +264,7 @@ async function handleUpdate(supabaseAdmin, body, res) {
   // so the column is meaningless for them, and writing [] would turn into a
   // silent lockout the day is_admin was cleared. Enforced here as well as in
   // the UI, so a stale form cannot do it either.
-  const profileUpdate = { name, email }
+  const profileUpdate = { name, email, ...staff.fields }
   // Only written when the caller actually sent it, so a payload that predates
   // this field cannot silently un-hide someone.
   if (typeof body?.hide_from_roster === 'boolean') profileUpdate.hide_from_roster = body.hide_from_roster
@@ -231,7 +273,7 @@ async function handleUpdate(supabaseAdmin, body, res) {
 
   const { error: profileUpdateErr } = await supabaseAdmin
     .from('profiles').update(profileUpdate).eq('id', id)
-  if (profileUpdateErr) { res.status(400).json({ error: profileUpdateErr.message }); return }
+  if (profileUpdateErr) { res.status(400).json({ error: columnHint(profileUpdateErr) || profileUpdateErr.message }); return }
 
   const { data: currentPinRow, error: currentPinErr } = await supabaseAdmin
     .from('user_pins').select('pin').eq('user_id', id).maybeSingle()

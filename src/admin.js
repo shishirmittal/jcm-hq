@@ -95,6 +95,21 @@ function showUserForm({ existing, onSaved }) {
           <label>Email *</label>
           <input type="email" id="uf_email" value="${esc(existing?.email || '')}" placeholder="name@email.com" />
         </div>
+        <div class="uf-row">
+          <div class="form-group">
+            <label>Employee ID</label>
+            <input type="text" id="uf_empid" value="${esc(existing?.employee_id || '')}" placeholder="e.g. JCM-012" maxlength="30" />
+          </div>
+          <div class="form-group">
+            <label>WhatsApp number</label>
+            <input type="tel" inputmode="numeric" id="uf_whatsapp" value="${esc(existing?.whatsapp || '')}" placeholder="10-digit mobile" maxlength="14" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Busy login</label>
+          <input type="text" id="uf_busy" value="${esc(existing?.busy_login || '')}" placeholder="The user name they log into Busy with, e.g. Rm" maxlength="40" />
+          <p class="form-check-hint">Links their entries in Busy to them — Red Alerts uses it to say who did what and to ask them about it.</p>
+        </div>
         <div class="form-group">
           <label>PIN (4 digits) *</label>
           <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" id="uf_pin" value="${esc(existing?.pin || '')}" placeholder="1234" />
@@ -146,10 +161,14 @@ function showUserForm({ existing, onSaved }) {
     const name = document.getElementById('uf_name').value.trim()
     const email = document.getElementById('uf_email').value.trim()
     const pin = document.getElementById('uf_pin').value.trim()
+    const employeeId = document.getElementById('uf_empid').value.trim()
+    const whatsapp = document.getElementById('uf_whatsapp').value.replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '')
+    const busyLogin = document.getElementById('uf_busy').value.trim()
 
     if (!name) { errEl.textContent = 'Name is required'; return }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { errEl.textContent = 'Enter a valid email address'; return }
     if (!/^\d{4}$/.test(pin)) { errEl.textContent = 'PIN must be exactly 4 digits'; return }
+    if (whatsapp && !/^[6-9]\d{9}$/.test(whatsapp)) { errEl.textContent = 'WhatsApp number should be a 10-digit mobile number'; return }
 
     // Never sent for an admin: the block is not rendered for them, and an
     // empty array here would quietly overwrite their row with a lockout that
@@ -162,9 +181,10 @@ function showUserForm({ existing, onSaved }) {
     btn.textContent = 'Saving...'
     const hideFromRoster = document.getElementById('uf_hide').checked
 
+    const staff = { employee_id: employeeId, whatsapp, busy_login: busyLogin }
     const payload = isEdit
-      ? { action: 'update', id: existing.id, name, email, pin, hide_from_roster: hideFromRoster, ...(allowedTabs ? { allowed_tabs: allowedTabs } : {}) }
-      : { action: 'create', name, email, pin, hide_from_roster: hideFromRoster, allowed_tabs: allowedTabs || [] }
+      ? { action: 'update', id: existing.id, name, email, pin, hide_from_roster: hideFromRoster, ...staff, ...(allowedTabs ? { allowed_tabs: allowedTabs } : {}) }
+      : { action: 'create', name, email, pin, hide_from_roster: hideFromRoster, ...staff, allowed_tabs: allowedTabs || [] }
     const result = await callAdminUsersApi(payload)
     if (!overlay.isConnected) return
     if (result.error) {
@@ -237,7 +257,8 @@ export async function renderAdmin(container, onBack) {
                   ${u.name ? esc(u.name) : '<em>Not set</em>'}${u.id === myProfile.id ? ' <em>(you)</em>' : ''}
                   ${u.is_admin ? '<span class="admin-badge">Admin</span>' : ''}
                 </div>
-                <div class="user-meta">${esc(u.email)}</div>
+                <div class="user-meta">${esc(u.email)}${u.employee_id ? ` · Emp ID ${esc(u.employee_id)}` : ''}</div>
+                <div class="user-meta">WhatsApp: ${u.whatsapp ? `+91 ${esc(u.whatsapp)}` : '<em>Not set</em>'} · Busy login: ${u.busy_login ? esc(u.busy_login) : '<em>Not set</em>'}</div>
                 <div class="user-meta">PIN: ${u.pin ? esc(u.pin) : '<em>Not set</em>'}</div>
               </div>
               <div class="user-card-controls">

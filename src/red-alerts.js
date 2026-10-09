@@ -168,7 +168,7 @@ export async function renderRedAlerts(container) {
     offset: 0, total: 0, pageSize: 200,
     alerts: [], userNames: {}, skipItems: [], skipParties: [], band: { from: 80, to: 97 }, tiles: {}, statusCounts: {},
     selected: new Set(), allMatching: false, expanded: null, busy: false,
-    people: null, hqUsers: [], whatsappReady: false,
+    people: null, hqUsers: [], linkedLogins: [], whatsappReady: false,
   }
 
   container.innerHTML = `
@@ -179,7 +179,7 @@ export async function renderRedAlerts(container) {
           <span class="logo-small ra-title">${icon('alert-triangle', 18)} Red Alerts</span>
         </div>
         <div class="ra-header-actions">
-          <button class="btn-ghost btn-small" id="raSettingsBtn">Skip lists & people</button>
+          <button class="btn-ghost btn-small" id="raSettingsBtn">Skip lists</button>
           <button class="btn-ghost btn-small" id="raRefreshBtn">Refresh</button>
         </div>
       </header>
@@ -215,15 +215,14 @@ export async function renderRedAlerts(container) {
       </main>
 
       <div class="ra-drawer-backdrop" id="raDrawerBackdrop" hidden></div>
-      <aside class="ra-drawer" id="raDrawer" hidden aria-label="Gift items and people">
+      <aside class="ra-drawer" id="raDrawer" hidden aria-label="Skip lists">
         <div class="ra-drawer-head">
-          <div class="ra-drawer-tabs">
-            <button class="op-tab active" data-dtab="gift">Skip lists</button>
-            <button class="op-tab" data-dtab="people">People</button>
-          </div>
+          <strong>Skip lists</strong>
           <button class="btn-ghost btn-small" id="raDrawerClose" aria-label="Close">${icon('x', 16)}</button>
         </div>
         <section id="raGiftPane">
+          <p class="ra-drawer-hint">People — names, WhatsApp numbers and Busy logins — are managed in <a href="#admin">Manage Users</a>.</p>
+          <h4 class="ra-drawer-sub">Gift items</h4>
           <p class="ra-drawer-hint">Items given away free on purpose. A ₹0 line for these is not flagged. The name must match the item name in Busy exactly.</p>
           <form class="ra-gift-form" id="raGiftForm">
             <input id="raGiftInput" type="text" placeholder="Exact item name, e.g. Umbrella" autocomplete="off" />
@@ -247,11 +246,6 @@ export async function renderRedAlerts(container) {
             <button class="btn-primary btn-small" type="submit">Add</button>
           </form>
           <ul class="ra-gift-list" id="raPartyList"></ul>
-        </section>
-        <section id="raPeoplePane" hidden>
-          <p class="ra-drawer-hint">Link each Busy login to the person's HQ account, so "Ask for explanation" reaches them on the Task Board, and their WhatsApp number for the message.</p>
-          <p class="ra-drawer-hint" id="raWaState"></p>
-          <div id="raPeopleList"><div class="loading-state">Loading…</div></div>
         </section>
       </aside>
 
@@ -370,12 +364,6 @@ export async function renderRedAlerts(container) {
   $('raSettingsBtn').addEventListener('click', () => toggleDrawer(true))
   $('raDrawerClose').addEventListener('click', () => toggleDrawer(false))
   $('raDrawerBackdrop').addEventListener('click', () => toggleDrawer(false))
-  $('raDrawer').querySelectorAll('[data-dtab]').forEach(btn => btn.addEventListener('click', () => {
-    $('raDrawer').querySelectorAll('[data-dtab]').forEach(b => b.classList.toggle('active', b === btn))
-    $('raGiftPane').hidden = btn.dataset.dtab !== 'gift'
-    $('raPeoplePane').hidden = btn.dataset.dtab !== 'people'
-    if (btn.dataset.dtab === 'people') loadPeople()
-  }))
   $('raGiftForm').addEventListener('submit', async e => {
     e.preventDefault()
     const name = $('raGiftInput').value.trim()
@@ -420,26 +408,6 @@ export async function renderRedAlerts(container) {
       await call({ action: 'party-remove', party_name: btn.dataset.removeParty })
       await load()
     } catch (err) { flash(err.message); btn.disabled = false }
-  })
-  $('raPeopleList').addEventListener('submit', async e => {
-    e.preventDefault()
-    const form = e.target.closest('form[data-login]')
-    if (!form) return
-    const btn = form.querySelector('button')
-    btn.disabled = true
-    try {
-      await call({
-        action: 'people-save',
-        busy_user: form.dataset.login,
-        display_name: form.elements.name.value,
-        hq_user_id: form.elements.hq.value || null,
-        whatsapp: form.elements.wa.value,
-      })
-      flash(`Saved ${form.dataset.login}.`)
-      state.people = null
-      await Promise.all([loadPeople(), load()])
-    } catch (err) { flash(err.message) }
-    btn.disabled = false
   })
 
   // ---- Ask dialog ----
@@ -683,41 +651,6 @@ export async function renderRedAlerts(container) {
       : '<li class="ra-gift-empty">No parties yet.</li>'
   }
 
-  async function loadPeople() {
-    if (state.people) return paintPeople()
-    $('raPeopleList').innerHTML = '<div class="loading-state">Loading…</div>'
-    try {
-      const data = await call({ action: 'people' })
-      state.people = data.people || []
-      state.hqUsers = data.hqUsers || []
-      state.whatsappReady = !!data.whatsappReady
-      paintPeople()
-    } catch (err) {
-      $('raPeopleList').innerHTML = `<div class="empty-state">${esc(err.message)}</div>`
-    }
-  }
-
-  function paintPeople() {
-    $('raWaState').textContent = state.whatsappReady
-      ? 'WhatsApp is switched on.'
-      : 'WhatsApp is not switched on yet — questions still go to the Task Board.'
-    if (!state.people.length) {
-      $('raPeopleList').innerHTML = '<div class="empty-state">No Busy logins seen yet.</div>'
-      return
-    }
-    $('raPeopleList').innerHTML = state.people.map(p => `
-      <form class="ra-person" data-login="${esc(p.busy_user)}">
-        <div class="ra-person-login">Busy login <strong>${esc(p.busy_user)}</strong></div>
-        <input name="name" type="text" placeholder="Name" value="${esc(p.display_name)}" />
-        <select name="hq" class="ra-select">
-          <option value="">— HQ account —</option>
-          ${state.hqUsers.map(u => `<option value="${esc(u.id)}" ${u.id === p.hq_user_id ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}
-        </select>
-        <input name="wa" type="tel" inputmode="numeric" placeholder="WhatsApp (10 digits)" value="${esc(p.whatsapp || '')}" />
-        <button class="btn-primary btn-small" type="submit">Save</button>
-      </form>`).join('')
-  }
-
   function toggleDrawer(show) {
     $('raDrawer').hidden = !show
     $('raDrawerBackdrop').hidden = !show
@@ -738,17 +671,18 @@ export async function renderRedAlerts(container) {
     try {
       if (!state.people) {
         const data = await call({ action: 'people' })
-        state.people = data.people || []
+        state.people = true
         state.hqUsers = data.hqUsers || []
+        state.linkedLogins = data.linkedLogins || []
         state.whatsappReady = !!data.whatsappReady
       }
       $('raAskPerson').innerHTML = '<option value="">The person who made each entry</option>' +
         state.hqUsers.map(u => `<option value="${esc(u.id)}">${esc(u.name)}</option>`).join('')
-      const unlinked = who.length && chosen.some(a => !state.people.find(p => p.busy_user.toLowerCase() === String(a.busy_user || '').toLowerCase() && p.hq_user_id))
+      const unlinked = chosen.some(a => a.busy_user && !state.linkedLogins.includes(String(a.busy_user).toLowerCase()))
       $('raAskWa').textContent = [
         'They get a task on the Task Board and answer under My Explanations.',
-        state.whatsappReady ? 'A WhatsApp goes too, if their number is saved under People.' : '',
-        unlinked ? 'Some of these Busy logins are not linked to an HQ person yet — pick a person above, or link them under People.' : '',
+        state.whatsappReady ? 'A WhatsApp goes too, if their number is saved in Manage Users.' : '',
+        unlinked ? 'Some of these Busy logins are not set on anyone in Manage Users yet — pick a person above, or add their Busy login in Manage Users.' : '',
       ].filter(Boolean).join(' ')
     } catch (err) { $('raAskWa').textContent = err.message }
     $('raAskQuestion').focus()
