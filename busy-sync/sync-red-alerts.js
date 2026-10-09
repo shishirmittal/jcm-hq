@@ -12,6 +12,7 @@
 //   3. Below purchase cost (below_cost): a sales line whose price per piece before GST
 //        (|Value3| / |qty|) is lower than the item's average purchase cost this financial
 //        year (total Value3 / total qty over purchase bills, VchType 2). Both sides exclude GST.
+//        Parties on red_alert_skip_parties (billed below cost on purpose) are skipped for this check only.
 //   4. Bill edits (modified / old_bill_edited): every "modified" entry in Busy's audit log
 //        (CheckList Type 2, Action 2) with who, when, which computer, the amount and quantity
 //        before and after, and whether the bill had already been printed (Tran12).
@@ -160,7 +161,7 @@ async function readDeletions(pool) {
 }
 
 // ---------- 2 + 3. SALES LINES: ₹0 BILLING AND BELOW PURCHASE COST ----------
-async function readSalesLines(pool, skipNames) {
+async function readSalesLines(pool, skipNames, skipCostParties) {
   const r = await pool.request().query(`
     WITH ${CREATOR_CTE},
     cost AS (
@@ -196,6 +197,8 @@ async function readSalesLines(pool, skipNames) {
       )`);
 
   const skip = new Set(skipNames.map((n) => n.trim().toLowerCase()));
+  // Parties billed below cost on purpose (red_alert_skip_parties): only the below-cost check is skipped.
+  const skipParty = new Set(skipCostParties.map((n) => n.trim().toLowerCase()));
   const zero = [];
   const below = [];
 
@@ -225,6 +228,7 @@ async function readSalesLines(pool, skipNames) {
         details: common,
       });
     } else {
+      if (skipParty.has(String(z.PartyName || '').trim().toLowerCase())) continue;
       const qty = Math.abs(Number(z.Qty));
       const saleUnit = Math.abs(Number(z.Amount)) / qty;
       const cost = Number(z.AvgCost);
@@ -346,13 +350,18 @@ async function main() {
     const { data: skipRows, error: skipErr } = await supabase
       .from('red_alert_skip_items').select('item_name');
     if (skipErr) throw skipErr;
+    // Optional table: if it has not been created yet, nothing is skipped.
+    const { data: partyRows, error: partyErr } = await supabase
+      .from('red_alert_skip_parties').select('party_name');
+    if (partyErr) log(`note: red_alert_skip_parties not readable (${partyErr.message}) - no parties skipped`);
 
     const { count: before, error: cntErr } = await supabase
       .from('red_alerts').select('id', { count: 'exact', head: true });
     if (cntErr) throw cntErr;
 
     const deletions = await readDeletions(pool);
-    const { zero, below } = await readSalesLines(pool, (skipRows || []).map((s) => s.item_name));
+    const { zero, below } = await readSalesLines(pool, (skipRows || []).map((s) => s.item_name),
+      (partyRows || []).map((p) => p.party_name));
     const audit = await readAudit(pool);
     let rows = [...deletions, ...zero, ...below, ...audit];
 

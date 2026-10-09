@@ -13,7 +13,9 @@ Busy and adds any new alerts to the JCM-Busysql Supabase project:
 | old_bill_edited | an edit to a sales-side bill (sales, sales return, credit note, sales challan) made 2+ days after its own date | same |
 | backdated | a sales-side bill typed in 2+ days after the date it carries | `CheckList` Action 1 time vs `Tran1.Date` |
 
-Gift items (`red_alert_skip_items`) are skipped by the ₹0 checks. Quotations,
+Gift items (`red_alert_skip_items`) are skipped by the ₹0 checks. Parties billed below cost on
+purpose (`red_alert_skip_parties`, e.g. the counter-sale parties Nexus Enterprises, Silver Electric
+House, Cash) are skipped by the below-cost check only. Quotations,
 sales orders and purchase orders are not checked for edits or backdating.
 
 ## What we learned about Busy's tables (Oct 2026)
@@ -33,7 +35,7 @@ sales orders and purchase orders are not checked for edits or backdating.
 
 ## Tables (JCM-Busysql)
 
-`red_alerts`, `red_alert_skip_items`, `busy_user_names` — RLS on, no policies; only the service key
+`red_alerts`, `red_alert_skip_items`, `red_alert_skip_parties`, `busy_user_names` — RLS on, no policies; only the service key
 (this script, and `api/red-alerts.js` in HQ) can read or write them. Columns for "Ask for
 explanation": red_alerts.asked_user_id / asked_name / asked_by / asked_at / question / task_id /
 whatsapp_status / reply / replied_at; busy_user_names.hq_user_id / whatsapp.

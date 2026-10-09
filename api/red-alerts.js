@@ -10,6 +10,7 @@ import { createClient } from '@supabase/supabase-js'
 //   red_alerts            one row per alert (alert_key unique)
 //                         status: new → seen / asked → answered → ok
 //   red_alert_skip_items  give-away items the ₹0 checks ignore
+//   red_alert_skip_parties parties billed below cost on purpose: the below-cost check ignores them
 //   busy_user_names       Busy login -> person's name, HQ account and WhatsApp number
 // All three have RLS on and no policies, so the browser (anon key) cannot read
 // them. Everything goes through this function with the Busy project's service
@@ -31,6 +32,7 @@ import { createClient } from '@supabase/supabase-js'
 //   update-matching filters, status, note?   same, for everything the filters match
 //   ask     ids, question, hq_user_id?       ask the person who did it (or someone chosen)
 //   skip-add / skip-remove  item_name        gift items
+//   party-add / party-remove party_name      parties skipped by the below-cost check
 //   people  /  people-save  busy_user, display_name, hq_user_id, whatsapp
 // Staff actions:
 //   my-count, my-list, reply { id, reply }
@@ -130,6 +132,8 @@ export default async function handler(req, res) {
     if (action === 'ask') return await handleAsk(busy, hq, me, body, res)
     if (action === 'skip-add') return await handleSkipAdd(busy, body, me, res)
     if (action === 'skip-remove') return await handleSkipRemove(busy, body, res)
+    if (action === 'party-add') return await handlePartyAdd(busy, body, me, res)
+    if (action === 'party-remove') return await handlePartyRemove(busy, body, res)
     if (action === 'people') return await handlePeople(busy, hq, res)
     if (action === 'people-save') return await handlePeopleSave(busy, body, res)
     return send(res, 400, { error: 'Unknown request.' })
@@ -205,10 +209,11 @@ async function handleList(busy, body, res) {
     { ...f, changedOnly: false }, { skipGroup: true })
   const statusCount = s => busy.from('red_alerts').select('id', { count: 'exact', head: true }).eq('status', s)
 
-  const [list, names, skips, ...counts] = await Promise.all([
+  const [list, names, skips, skipParties, ...counts] = await Promise.all([
     query,
     busy.from('busy_user_names').select('busy_user, display_name'),
     busy.from('red_alert_skip_items').select('item_name, added_by, added_at').order('item_name'),
+    busy.from('red_alert_skip_parties').select('party_name, added_by, added_at').order('party_name'),
     ...TILE_GROUPS.map(tileCount),
     ...['new', 'asked', 'answered'].map(statusCount),
   ])
@@ -235,6 +240,8 @@ async function handleList(busy, body, res) {
     pageSize: PAGE_SIZE,
     userNames,
     skipItems: skips.data || [],
+    // Missing table (not created yet) just means an empty list.
+    skipParties: skipParties.error ? [] : (skipParties.data || []),
     tiles,
     statusCounts: { new: cNew.count || 0, asked: cAsked.count || 0, answered: cAnswered.count || 0 },
   })
@@ -494,6 +501,34 @@ async function handleSkipAdd(busy, body, me, res) {
   if (closeErr) console.error('red-alerts skip-add close failed:', closeErr)
 
   return send(res, 200, { ok: true, closed: closed?.length || 0 })
+}
+
+async function handlePartyAdd(busy, body, me, res) {
+  const partyName = String(body.party_name || '').trim().slice(0, 200)
+  if (!partyName) return send(res, 400, { error: 'Party name is required.' })
+  const { error } = await busy.from('red_alert_skip_parties')
+    .upsert({ party_name: partyName, added_by: me.name }, { onConflict: 'party_name', ignoreDuplicates: true })
+  if (error) {
+    console.error('red-alerts party-add failed:', error)
+    return send(res, 500, { error: /does not exist|Could not find/i.test(error.message || '') ? 'The party list needs the latest update in Supabase.' : 'Could not save. Try again.' })
+  }
+  // Open below-cost alerts for this party are deliberate too — clear them.
+  const { data: closed, error: closeErr } = await busy.from('red_alerts')
+    .update({ status: 'ok', reviewed_by: me.name, reviewed_at: new Date().toISOString(), review_note: 'Party billed below cost on purpose' })
+    .eq('alert_type', 'below_cost')
+    .in('status', ['new', 'seen'])
+    .ilike('details->>party', partyName.replace(/[%_\\]/g, m => `\\${m}`))
+    .select('id')
+  if (closeErr) console.error('red-alerts party-add close failed:', closeErr)
+  return send(res, 200, { ok: true, closed: closed?.length || 0 })
+}
+
+async function handlePartyRemove(busy, body, res) {
+  const partyName = String(body.party_name || '').trim()
+  if (!partyName) return send(res, 400, { error: 'Party name is required.' })
+  const { error } = await busy.from('red_alert_skip_parties').delete().eq('party_name', partyName)
+  if (error) return send(res, 500, { error: 'Could not save. Try again.' })
+  return send(res, 200, { ok: true })
 }
 
 async function handleSkipRemove(busy, body, res) {

@@ -165,7 +165,7 @@ export async function renderRedAlerts(container) {
   const state = {
     status: 'open', type: 'all', q: '', from: '', to: '', user: '', sort: 'newest', changedOnly: false,
     offset: 0, total: 0, pageSize: 200,
-    alerts: [], userNames: {}, skipItems: [], tiles: {}, statusCounts: {},
+    alerts: [], userNames: {}, skipItems: [], skipParties: [], tiles: {}, statusCounts: {},
     selected: new Set(), allMatching: false, expanded: null, busy: false,
     people: null, hqUsers: [], whatsappReady: false,
   }
@@ -178,7 +178,7 @@ export async function renderRedAlerts(container) {
           <span class="logo-small ra-title">${icon('alert-triangle', 18)} Red Alerts</span>
         </div>
         <div class="ra-header-actions">
-          <button class="btn-ghost btn-small" id="raSettingsBtn">Gift items & people</button>
+          <button class="btn-ghost btn-small" id="raSettingsBtn">Skip lists & people</button>
           <button class="btn-ghost btn-small" id="raRefreshBtn">Refresh</button>
         </div>
       </header>
@@ -217,7 +217,7 @@ export async function renderRedAlerts(container) {
       <aside class="ra-drawer" id="raDrawer" hidden aria-label="Gift items and people">
         <div class="ra-drawer-head">
           <div class="ra-drawer-tabs">
-            <button class="op-tab active" data-dtab="gift">Gift items</button>
+            <button class="op-tab active" data-dtab="gift">Skip lists</button>
             <button class="op-tab" data-dtab="people">People</button>
           </div>
           <button class="btn-ghost btn-small" id="raDrawerClose" aria-label="Close">${icon('x', 16)}</button>
@@ -229,6 +229,13 @@ export async function renderRedAlerts(container) {
             <button class="btn-primary btn-small" type="submit">Add</button>
           </form>
           <ul class="ra-gift-list" id="raGiftList"></ul>
+          <h4 class="ra-drawer-sub">Parties billed below cost on purpose</h4>
+          <p class="ra-drawer-hint">Sales to these parties are not checked for "below purchase cost". Every other check (₹0 lines, edits, backdating, deletions) still applies to them. The name must match the party name in Busy exactly.</p>
+          <form class="ra-gift-form" id="raPartyForm">
+            <input id="raPartyInput" type="text" placeholder="Exact party name, e.g. Cash (Retail)" autocomplete="off" />
+            <button class="btn-primary btn-small" type="submit">Add</button>
+          </form>
+          <ul class="ra-gift-list" id="raPartyList"></ul>
         </section>
         <section id="raPeoplePane" hidden>
           <p class="ra-drawer-hint">Link each Busy login to the person's HQ account, so "Ask for explanation" reaches them on the Task Board, and their WhatsApp number for the message.</p>
@@ -326,6 +333,7 @@ export async function renderRedAlerts(container) {
       const id = Number(action.dataset.id)
       const act = action.dataset.act
       if (act === 'gift') { await addGift(action.dataset.item); return }
+      if (act === 'party') { await addParty(action.dataset.party); return }
       if (act === 'ask') { openAsk([id]); return }
       const note = document.getElementById(`raNote${id}`)?.value
       await setStatus([id], act, note)
@@ -370,6 +378,22 @@ export async function renderRedAlerts(container) {
     btn.disabled = true
     try {
       await call({ action: 'skip-remove', item_name: btn.dataset.removeGift })
+      await load()
+    } catch (err) { flash(err.message); btn.disabled = false }
+  })
+  $('raPartyForm').addEventListener('submit', async e => {
+    e.preventDefault()
+    const name = $('raPartyInput').value.trim()
+    if (!name) return
+    await addParty(name)
+    $('raPartyInput').value = ''
+  })
+  $('raPartyList').addEventListener('click', async e => {
+    const btn = e.target.closest('[data-remove-party]')
+    if (!btn) return
+    btn.disabled = true
+    try {
+      await call({ action: 'party-remove', party_name: btn.dataset.removeParty })
       await load()
     } catch (err) { flash(err.message); btn.disabled = false }
   })
@@ -420,7 +444,7 @@ export async function renderRedAlerts(container) {
       if (!container.isConnected) return
       Object.assign(state, {
         alerts: data.alerts || [], total: data.total || 0, pageSize: data.pageSize || 200,
-        userNames: data.userNames || {}, skipItems: data.skipItems || [],
+        userNames: data.userNames || {}, skipItems: data.skipItems || [], skipParties: data.skipParties || [],
         tiles: data.tiles || {}, statusCounts: data.statusCounts || {},
       })
       const ids = new Set(state.alerts.map(a => a.id))
@@ -572,6 +596,7 @@ export async function renderRedAlerts(container) {
           <button class="btn-primary btn-small" data-act="ok" data-id="${a.id}">${a.status === 'ok' ? 'Save note' : `${icon('check', 14)} Clear`}</button>
           ${a.status !== 'new' ? `<button class="btn-ghost btn-small" data-act="new" data-id="${a.id}">Reopen</button>` : ''}
           ${a.alert_type.startsWith('zero') && a.subtitle ? `<button class="btn-ghost btn-small ra-gift-btn" data-act="gift" data-id="${a.id}" data-item="${esc(a.subtitle)}">Treat “${esc(a.subtitle)}” as a gift item</button>` : ''}
+          ${a.alert_type === 'below_cost' && d.party ? `<button class="btn-ghost btn-small ra-gift-btn" data-act="party" data-id="${a.id}" data-party="${esc(d.party)}">Stop checking below-cost for “${esc(d.party)}”</button>` : ''}
         </div>
       </div>`
   }
@@ -620,6 +645,13 @@ export async function renderRedAlerts(container) {
             <button class="btn-ghost btn-small" data-remove-gift="${esc(s.item_name)}" aria-label="Remove ${esc(s.item_name)}">${icon('x', 14)}</button>
           </li>`).join('')
       : '<li class="ra-gift-empty">No gift items yet.</li>'
+    $('raPartyList').innerHTML = state.skipParties.length
+      ? state.skipParties.map(s => `
+          <li>
+            <span>${esc(s.party_name)}</span>
+            <button class="btn-ghost btn-small" data-remove-party="${esc(s.party_name)}" aria-label="Remove ${esc(s.party_name)}">${icon('x', 14)}</button>
+          </li>`).join('')
+      : '<li class="ra-gift-empty">No parties yet.</li>'
   }
 
   async function loadPeople() {
@@ -752,6 +784,15 @@ export async function renderRedAlerts(container) {
     } finally {
       state.busy = false
     }
+  }
+
+  async function addParty(name) {
+    try {
+      const r = await call({ action: 'party-add', party_name: name })
+      flash(r.closed ? `“${name}” added. ${r.closed.toLocaleString('en-IN')} open below-cost alert${r.closed === 1 ? '' : 's'} for it cleared.` : `“${name}” will no longer be checked for below-cost.`)
+      await load()
+      refreshNavBadges()
+    } catch (err) { flash(err.message) }
   }
 
   async function addGift(name) {

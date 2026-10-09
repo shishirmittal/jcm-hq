@@ -2616,6 +2616,7 @@ body:not(.native-app) .stock-filter[aria-pressed='true']:hover { background: #c8
   border: 1px solid var(--line); border-radius: 8px; padding: 6px 6px 6px 10px; font-size: 13px; color: var(--ink);
 }
 .ra-gift-empty { color: var(--muted); justify-content: center !important; }
+.ra-drawer-sub { margin: 18px 0 4px; font-size: 14px; color: var(--ink); }
 .ra-person { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-bottom: 8px; }
 .ra-person-login { grid-column: 1 / -1; font-size: 12.5px; color: var(--muted); }
 .ra-person .ra-select { height: 34px; width: 100%; }
