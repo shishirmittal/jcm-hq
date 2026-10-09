@@ -5,6 +5,7 @@ import { openSidebar } from '../../sidebar.js'
 import { formatCreated } from '../lib/board-logic.js'
 import { shortDate } from '../lib/tablet-logic.js'
 import '../admin.css'
+import TvDisplay from './TvDisplay.jsx'
 
 const LIMITS = [
   ['new', 'New', 'from the order arriving until someone taps I’m picking this'],
@@ -109,6 +110,7 @@ function Panels({ session, onExpired }) {
     <>
       <RegisterElsewhere />
       <Devices devices={devices} loadError={devicesError} call={call} onChanged={refresh} />
+      <TvDisplay call={call} />
       <TabletStaff call={call} />
       <Limits call={call} />
       <CartonLabel call={call} />

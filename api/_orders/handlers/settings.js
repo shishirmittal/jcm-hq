@@ -31,7 +31,8 @@ async function handler(req, res) {
         .sort((a, b) => a.name.localeCompare(b.name))
       // Each person's ticks as they stand now (people saved before the ticks existed get their old rights).
       const access = Object.fromEntries(profiles.filter(p => tabletStaff.staff.includes(p.id)).map(p => [p.id, jobsOf(p, tabletStaff)]))
-      return send(res, 200, { thresholds, people, tabletStaff: { staff: tabletStaff.staff, access } })
+      const tv = await must(dbc.from('orders_config').select('value, updated_at').eq('key', 'tv_display').maybeSingle(), 'reading TV display settings')
+      return send(res, 200, { thresholds, people, tabletStaff: { staff: tabletStaff.staff, access }, tvDisplay: tv ? { value: tv.value, updatedAt: tv.updated_at } : null })
     }
 
     if (req.method === 'POST') {
@@ -47,6 +48,15 @@ async function handler(req, res) {
         }
         await must(dbc.from('orders_config').upsert({ key: 'threshold_minutes', value, updated_at: new Date().toISOString() }, { onConflict: 'key' }), 'saving time limits')
         return send(res, 200, { thresholds: value })
+      }
+      // JCM HQ: the v2 design's Admin → TV display tab (never built on the orders
+      // site). Same orders_config 'tv_display' value the board already reads on
+      // every 15-second refresh, so "Send to TV" shows on the TV within 15 s.
+      if (b.tvDisplay) {
+        const value = cleanTvDisplay(b.tvDisplay)
+        const updated_at = new Date().toISOString()
+        await must(dbc.from('orders_config').upsert({ key: 'tv_display', value, note: 'TV board look: cards per column, text size, scroll speed, late style, SO/invoice numbers', updated_at }, { onConflict: 'key' }), 'saving TV display settings')
+        return send(res, 200, { tvDisplay: { value, updatedAt: updated_at } })
       }
       if (b.closeOld) {
         const r = b.closeOld.confirm === true
@@ -71,6 +81,20 @@ async function handler(req, res) {
     send(res, 405, { error: 'Method not allowed' })
   } catch (err) {
     fail(res, err)
+  }
+}
+
+// The same limits as the board's own reading (src/lib/board-logic.js displaySettings):
+// 3–7 cards per column, text 80–140 %, slow / normal / fast, red timer or timer + edge.
+function cleanTvDisplay(v) {
+  const n = Math.round(Number(v.cardsPerColumn))
+  const t = Number(v.textScale)
+  return {
+    cardsPerColumn: Number.isFinite(n) ? Math.max(3, Math.min(7, n)) : 3,
+    textScale: Number.isFinite(t) && t >= 0.8 && t <= 1.4 ? Math.round(t * 100) / 100 : 1,
+    scrollSpeed: ['slow', 'normal', 'fast'].includes(v.scrollSpeed) ? v.scrollSpeed : 'normal',
+    lateStyle: v.lateStyle === 'edge' ? 'edge' : 'timer',
+    showRefs: v.showRefs !== false,
   }
 }
 

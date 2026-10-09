@@ -1,0 +1,72 @@
+/* TV board v2 — values from "TV board v2 design/TVBoardScreen.dc.html" (1920 × 1080).
+   Font stays Roboto Condensed (project rule: the TV box is Android; the design's
+   Bahnschrift is a Windows font). Card sizes come from the display settings
+   (board-logic.js layoutFor) as inline styles. */
+@keyframes tvloop { 0%, 10% { transform: translateY(0) } 100% { transform: translateY(calc(-1 * var(--cycle))) } }
+
+.tv-stage { position: fixed; inset: 0; background: #0C111B; overflow: hidden; }
+.tv { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; background: #F6F3EC; display: flex; flex-direction: column; overflow: hidden; color: #0C111B; font-variant-numeric: tabular-nums; }
+
+.tv-head { height: 99px; flex: none; box-sizing: border-box; background: #12213B; display: flex; align-items: center; padding: 0 32px; gap: 24px; border-bottom: 3px solid #D9AE55; }
+.tv-logo { width: 68px; height: 68px; flex: none; display: block; }
+.tv-clock { display: flex; align-items: baseline; gap: 18px; }
+.tv-time { font-size: 48px; font-weight: 700; color: #FFFFFF; }
+.tv-date { font-size: 26px; color: #D9AE55; font-weight: 500; }
+.tv-spacer { flex: 1; }
+.tv-counter { display: flex; align-items: baseline; gap: 10px; padding: 0 24px; border-left: 1px solid rgba(217, 174, 85, .45); }
+.tv-counter-n { font-size: 44px; font-weight: 700; color: #FFFFFF; }
+.tv-counter-l { font-size: 22px; color: #C9D0DC; font-weight: 500; white-space: nowrap; }
+.tv-sync { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; padding-left: 24px; border-left: 1px solid rgba(217, 174, 85, .45); }
+.tv-sync-label { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 600; letter-spacing: .1em; color: #C9D0DC; }
+.tv-sync-dot { width: 10px; height: 10px; border-radius: 50%; background: #3FB37F; }
+.tv-sync-text { font-size: 20px; font-weight: 600; color: #FFFFFF; white-space: nowrap; }
+.tv-sync-stale .tv-sync-dot { background: #D98E2B; }
+.tv-sync-stale .tv-sync-text { color: #F2C27A; }
+
+.tv-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 20px; padding: 20px 28px; }
+.tv-col { display: flex; flex-direction: column; gap: 12px; min-height: 0; min-width: 0; }
+.tv-col-head { height: 76px; flex: none; box-sizing: border-box; border-top: 6px solid; padding-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+.tv-col-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.tv-col-title { font-size: 24px; font-weight: 700; letter-spacing: .04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tv-col-count { font-size: 32px; font-weight: 700; line-height: 1; }
+.tv-col-loc { font-size: 20px; font-weight: 500; color: #5A606C; white-space: nowrap; }
+
+.tv-list { flex: 1; min-height: 0; position: relative; overflow: hidden; }
+.tv-list-inner { display: flex; flex-direction: column; }
+.tv-empty { height: 120px; box-sizing: border-box; border: 2px dashed #D6CFBE; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 500; color: #8A8F99; }
+
+.tv-marker { height: 48px; flex: none; display: flex; align-items: center; gap: 12px; }
+.tv-marker-line { flex: 1; height: 2px; background: #D9AE55; }
+.tv-marker-text { font-size: 18px; font-weight: 700; letter-spacing: .1em; color: #7A5A1C; white-space: nowrap; }
+
+/* One card shape; three densities. */
+.tv-card { flex: none; box-sizing: border-box; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; }
+.tv-card-large { padding: 14px 18px; gap: 6px; }
+.tv-card-medium { padding: 10px 16px; gap: 4px; justify-content: center; }
+.tv-card-compact { padding: 5px 14px; gap: 1px; justify-content: center; border-radius: 6px; }
+.tv-card-refs { display: flex; justify-content: space-between; gap: 10px; color: #6B707A; white-space: nowrap; }
+.tv-card-refs > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tv-card-name { font-weight: 700; line-height: 1.08; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.tv-card-compact .tv-card-name { line-height: 1.1; }
+.tv-card-fill { flex: 1; }
+.tv-card-row { display: flex; align-items: baseline; gap: 10px; white-space: nowrap; min-width: 0; }
+.tv-card-spread { justify-content: space-between; }
+.tv-card-medium .tv-card-row, .tv-card-compact .tv-card-row { gap: 12px; }
+.tv-card-lines { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tv-card-tag { font-weight: 700; letter-spacing: .05em; flex: none; }
+.tv-card-timer { font-weight: 700; margin-left: auto; }
+.tv-card-foot { padding-top: 8px; border-top: 1px solid #ECE6D8; }
+.tv-card-created { color: #5A606C; }
+.tv-card-meta { color: #6B707A; justify-content: space-between; }
+
+.tv-message { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; text-align: center; }
+.tv-rule { width: 120px; height: 4px; background: #D9AE55; }
+.tv-allclear { font-size: 180px; font-weight: 700; color: #12213B; line-height: 1; }
+.tv-message-big { font-size: 64px; font-weight: 700; color: #12213B; line-height: 1.1; }
+.tv-allclear-sub { font-size: 44px; color: #2C3240; font-weight: 500; }
+.tv-allclear-count { font-size: 36px; color: #2E7D5B; font-weight: 600; }
+.tv-message-small { font-size: 36px; color: #2C3240; font-weight: 500; line-height: 1.4; }
+
+/* Not in the design: shown only when the board has not been able to refresh
+   for over a minute, so stale orders are never mistaken for live ones. */
+.tv-stale { position: absolute; left: 0; right: 0; bottom: 0; height: 56px; display: flex; align-items: center; justify-content: center; background: #C2452D; color: #FFFFFF; font-size: 28px; font-weight: 700; }
