@@ -246,14 +246,27 @@ async function bills(busy, body) {
 async function ledger(busy, body) {
   const code = String(Number(body.party_code))
   const page = Math.max(0, Number(body.page) || 0)
-  const r = await busy.from('party_ledger').select('*', { count: 'exact' }).eq('party_code', code)
-    .order('vch_date', { ascending: false }).order('vch_code', { ascending: false })
-    .range(page * LEDGER_PAGE, page * LEDGER_PAGE + LEDGER_PAGE - 1)
+  // A customer has a few hundred entries a year at most: read them all, work the
+  // running balance back from today's outstanding, then hand out one page.
+  const [r, dues, runAt] = await Promise.all([
+    busy.from('party_ledger').select('*').eq('party_code', code)
+      .order('vch_date', { ascending: false }).order('vch_code', { ascending: false }).order('sr_no', { ascending: false })
+      .range(0, 4999),
+    busy.from('party_dues').select('outstanding_balance, synced_at').eq('party_code', code).limit(1),
+    duesRunAt(busy),
+  ])
   if (missing(r)) return { ready: false }
-  const rows = check(r, 'party_ledger')
+  const all = check(r, 'party_ledger')
+  const d = dues.error ? null : dues.data?.[0]
+  let bal = d && fresh(d, runAt) ? Number(d.outstanding_balance) || 0 : 0
+  const rows = all.map(x => {
+    const row = { date: x.vch_date, type: x.vch_type_name || '', no: x.vch_no || '', debit: Number(x.debit) || 0, credit: Number(x.credit) || 0, balance: Math.round(bal * 100) / 100 }
+    bal -= row.debit - row.credit
+    return row
+  })
+  const asOf = all.reduce((m, x) => (x.synced_at > m ? x.synced_at : m), '') || null
   return {
-    ready: true, total: r.count ?? rows.length, page, pageSize: LEDGER_PAGE,
-    rows: rows.map(x => ({ date: x.vch_date, type: x.vch_type_name || '', no: x.vch_no || '', debit: Number(x.debit) || 0, credit: Number(x.credit) || 0, narration: x.narration || '', balance: x.balance })),
-    asOf: rows[0]?.synced_at || null,
+    ready: true, total: rows.length, page, pageSize: LEDGER_PAGE, asOf,
+    rows: rows.slice(page * LEDGER_PAGE, page * LEDGER_PAGE + LEDGER_PAGE),
   }
 }
