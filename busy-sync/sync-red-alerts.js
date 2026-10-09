@@ -7,7 +7,7 @@
 //        every row of Busy's DeletedInfo, with who, when, which computer and the voucher amount.
 //   2. ₹0 billing on sales invoices (VchType 9, product lines, amount Value3 = 0):
 //        zero_rate  quantity sold but nothing charged, or ₹1 or less a piece
-//      Lines typed at a rate of ₹0.01 are add-on items billed that way on purpose and are skipped.
+//      Lines typed at a rate of ₹1 or less (₹0.01, ₹1) are add-on items billed that way on purpose and are skipped.
 //        zero_qty   a line with quantity 0
 //      Items on the gift list (red_alert_skip_items) are skipped.
 //   3. Below purchase cost (below_cost): a sales line whose price per piece before GST
@@ -48,7 +48,7 @@ const DRAFT_VCH_TYPES = [12, 13, 26]; // sales order, purchase order, quotation:
 // payments and journals are routinely typed in later from statements. Edits to other bills still show
 // as plain 'modified'.
 const SALES_SIDE_VCH_TYPES = [9, 3, 18, 11]; // sales invoice, sales return, credit note, sales challan
-const ADDON_RATE = 0.01;                // rate typed as ₹0.01 = add-on item, billed this way on purpose
+const ADDON_RATE = 1;                   // rate typed as ₹0.01 or ₹1 = add-on item, billed this way on purpose
 const NEAR_ZERO_RUPEES = 1;             // a sales line at ₹1 or less per piece counts as ₹0 rate
 const AS_HISTORY = process.argv.includes('--as-history');
 
@@ -220,7 +220,7 @@ async function readSalesLines(pool, skipNames, skipCostParties, band) {
       bill_date: z.BillDate, rate: z.Rate, qty_raw: z.Qty,
     };
 
-    // ₹0.01 is how add-on items are billed on purpose (typed rate D2 = 0.01): never flagged.
+    // ₹0.01 / ₹1 is how add-on items are billed on purpose (typed rate D2 up to ₹1): never flagged.
     const typedRate = Number(z.Rate);
     if (typedRate > 0 && typedRate <= ADDON_RATE) continue;
 

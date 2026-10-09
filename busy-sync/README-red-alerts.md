@@ -6,7 +6,7 @@ Busy and adds any new alerts to the JCM-Busysql Supabase project:
 | alert_type | What | From |
 |---|---|---|
 | deleted_voucher / deleted_item / deleted_account / deleted_other | anything deleted, with who, when, computer, voucher amount | `DeletedInfo` |
-| zero_rate | sales line with a quantity but ₹0 amount, or ₹1 or less per piece (key stays `below|…` for those). Lines typed at ₹0.01 are add-on items billed that way on purpose and are skipped. | `Tran2` VchType 9, RecType 2, Value3 = 0 |
+| zero_rate | sales line with a quantity but ₹0 amount, or ₹1 or less per piece (key stays `below|…` for those). Lines typed at a rate of ₹1 or less (₹0.01, ₹1) are add-on items billed that way on purpose and are skipped. | `Tran2` VchType 9, RecType 2, Value3 = 0 |
 | zero_qty | sales line with quantity 0 | same |
 | below_cost | sales line priced (before GST, abs(Value3) / abs(qty)) below the item's average purchase cost this FY (SUM Value3 / SUM qty over purchase bills, VchType 2) | `Tran2` |
 | modified | every bill edit, with amount and quantity before → after, and whether it was already printed | `CheckList` Type 2 Action 2, `Tran12` print log |
