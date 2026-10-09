@@ -76,6 +76,10 @@ export const NAV_CONFIG = [
     // could never satisfy.
     { id: 'price-update', label: 'Price Update', icon: 'tag', hash: '#price-update', adminOnly: true, grantable: false },
     { id: 'items-management', label: 'Items Management', icon: 'layers', hash: '#items-management', adminOnly: true },
+    // Purchase bills typed into Busy (what reached the warehouse), fed by
+    // busy-sync/sync-purchases.js. Grantable; api/purchases.js checks the same id.
+    // Badge = bills entered today.
+    { id: 'purchases', label: 'Purchase Summary', icon: 'package', hash: '#purchases', adminOnly: true, badge: 'purchasesToday' },
   ] },
   { section: 'Insights', items: [
     { id: 'control', label: 'Control Centre', icon: 'chart', hash: '#dashboard', adminOnly: true },
