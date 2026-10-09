@@ -122,6 +122,7 @@ export function describe(a) {
   switch (a.alert_type) {
     case 'zero_rate':
     case 'zero_billing':
+      if (d.near_zero) return `${esc(a.subtitle || 'Item')} · Qty ${esc(num(a.qty))} at ${formatMoney(d.sale_unit)}/pc (cost ${formatMoney(d.avg_cost)})${party}`
       return `${esc(a.subtitle || 'Item')} · Qty ${esc(num(a.qty))} at ₹0${party}`
     case 'zero_qty':
       return `${esc(a.subtitle || 'Item')} · Qty 0${d.rate ? ` (rate ${formatMoney(d.rate)})` : ''}${party}`

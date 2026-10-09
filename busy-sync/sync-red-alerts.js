@@ -6,7 +6,8 @@
 //   1. Deletions (deleted_item / deleted_account / deleted_voucher / deleted_other)
 //        every row of Busy's DeletedInfo, with who, when, which computer and the voucher amount.
 //   2. ₹0 billing on sales invoices (VchType 9, product lines, amount Value3 = 0):
-//        zero_rate  quantity sold but nothing charged
+//        zero_rate  quantity sold but nothing charged, or ₹1 or less a piece
+//      Lines typed at a rate of ₹0.01 are add-on items billed that way on purpose and are skipped.
 //        zero_qty   a line with quantity 0
 //      Items on the gift list (red_alert_skip_items) are skipped.
 //   3. Below purchase cost (below_cost): a sales line whose price per piece before GST
@@ -47,6 +48,8 @@ const DRAFT_VCH_TYPES = [12, 13, 26]; // sales order, purchase order, quotation:
 // payments and journals are routinely typed in later from statements. Edits to other bills still show
 // as plain 'modified'.
 const SALES_SIDE_VCH_TYPES = [9, 3, 18, 11]; // sales invoice, sales return, credit note, sales challan
+const ADDON_RATE = 0.01;                // rate typed as ₹0.01 = add-on item, billed this way on purpose
+const NEAR_ZERO_RUPEES = 1;             // a sales line at ₹1 or less per piece counts as ₹0 rate
 const AS_HISTORY = process.argv.includes('--as-history');
 
 const LOG_FILE = path.join(__dirname, 'red-alerts.log');
@@ -217,6 +220,10 @@ async function readSalesLines(pool, skipNames, skipCostParties, band) {
       bill_date: z.BillDate, rate: z.Rate, qty_raw: z.Qty,
     };
 
+    // ₹0.01 is how add-on items are billed on purpose (typed rate D2 = 0.01): never flagged.
+    const typedRate = Number(z.Rate);
+    if (typedRate > 0 && typedRate <= ADDON_RATE) continue;
+
     if (z.Kind === 'zero') {
       if (skip.has(String(z.ItemName || '').trim().toLowerCase())) continue;
       const qty0 = Math.abs(Number(z.Qty || 0)) < 0.0001;
@@ -234,6 +241,21 @@ async function readSalesLines(pool, skipNames, skipCostParties, band) {
       const qty = Math.abs(Number(z.Qty));
       const saleUnit = Math.abs(Number(z.Amount)) / qty;
       const cost = Number(z.AvgCost);
+      // Billed at ₹1 or less a piece (e.g. ₹0.01 scheme free goods) is a free line, not a price:
+      // report it as ₹0 rate so the gift list applies. The key keeps its 'below|' origin so a line
+      // loaded before this rule is not added twice.
+      if (saleUnit <= NEAR_ZERO_RUPEES) {
+        if (skip.has(String(z.ItemName || '').trim().toLowerCase())) continue;
+        zero.push({
+          ...base,
+          alert_key: `below|${DB}|${z.VchCode}|${z.SrNo}`,
+          alert_type: 'zero_rate',
+          amount: round2(Math.abs(z.Amount)),
+          qty,
+          details: { ...common, sale_unit: round2(saleUnit), avg_cost: round2(cost), near_zero: true },
+        });
+        continue;
+      }
       // Deliberate ~1/10 billing (red_alert_settings below_cost_skip_from/to, default 80-97% below):
       // skipped for every party. Lines further below than that are close to ₹0 and stay flagged.
       const pctBelow = ((cost - saleUnit) / cost) * 100;
