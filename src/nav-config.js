@@ -35,6 +35,9 @@ export const NAV_CONFIG = [
   { section: 'Main', items: [
     { id: 'dashboard', label: 'Dashboard', icon: 'grid', hash: '' },
     { id: 'tasks', label: 'Task Board', icon: 'clipboard', hash: '#tasks', badge: 'openTasks' },
+    // Questions from Red Alerts about entries this person made in Busy.
+    // open: everyone signed in can see it; the API only returns their own.
+    { id: 'explain', label: 'My Explanations', icon: 'send', hash: '#explain', open: true, badge: 'myExplain' },
   ] },
   { section: 'CRM', items: [
     { id: 'leads', label: 'Project Leads', icon: 'briefcase', hash: '#leads', badge: 'openLeads' },
@@ -65,7 +68,7 @@ export const NAV_CONFIG = [
     { id: 'control', label: 'Control Centre', icon: 'chart', hash: '#dashboard', adminOnly: true },
     // ₹0 sales lines and deletions in Busy, fed by busy-sync/sync-red-alerts.js.
     // Grantable like Payments: api/red-alerts.js lets in admins and anyone with
-    // 'red-alerts' in allowed_tabs. Badge = alerts still New.
+    // 'red-alerts' in allowed_tabs. Badge = alerts still New + answers waiting.
     { id: 'red-alerts', label: 'Red Alerts', icon: 'alert-triangle', hash: '#red-alerts', adminOnly: true, badge: 'redAlerts' },
   ] },
   { section: 'Admin', items: [

@@ -1,5 +1,5 @@
 import { supabase } from './supabase.js'
-import { loadRedAlertsBadge } from './red-alerts.js'
+import { loadRedAlertsBadge, loadMyExplainBadge } from './red-alerts.js'
 import { esc } from './utils.js'
 import { icon } from './icons.js'
 import { visibleNav } from './permissions.js'
@@ -30,7 +30,7 @@ export function avatarColor(seed) {
 async function loadNavBadges() {
   const { data: { session } } = await supabase.auth.getSession()
   const myId = session?.user?.id
-  const [{ count: openLeads }, { count: pendingQuotes }, { count: openTasks }, redAlerts] = await Promise.all([
+  const [{ count: openLeads }, { count: pendingQuotes }, { count: openTasks }, redAlerts, myExplain] = await Promise.all([
     supabase.from('projects').select('id', { count: 'exact', head: true }).eq('status', 'New Lead'),
     supabase.from('projects').select('id', { count: 'exact', head: true }).eq('status', 'Quotation Given'),
     myId
@@ -39,8 +39,9 @@ async function loadNavBadges() {
     // Red Alerts lives behind /api/red-alerts (its tables are closed to the
     // browser); loadRedAlertsBadge asks only when this person can open the page.
     loadRedAlertsBadge(),
+    loadMyExplainBadge(),
   ])
-  return { openLeads: openLeads || 0, pendingQuotes: pendingQuotes || 0, openTasks: openTasks || 0, redAlerts: redAlerts || 0 }
+  return { openLeads: openLeads || 0, pendingQuotes: pendingQuotes || 0, openTasks: openTasks || 0, redAlerts: redAlerts || 0, myExplain: myExplain || 0 }
 }
 
 // The single markup source for BOTH the desktop rail and the mobile drawer —
