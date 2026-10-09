@@ -2617,6 +2617,8 @@ body:not(.native-app) .stock-filter[aria-pressed='true']:hover { background: #c8
 }
 .ra-gift-empty { color: var(--muted); justify-content: center !important; }
 .ra-drawer-sub { margin: 18px 0 4px; font-size: 14px; color: var(--ink); }
+.ra-band-form { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; color: var(--body); margin-bottom: 4px; }
+.ra-band-form input { width: 64px; height: 34px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); padding: 0 8px; font-size: 13px; }
 .ra-person { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-bottom: 8px; }
 .ra-person-login { grid-column: 1 / -1; font-size: 12.5px; color: var(--muted); }
 .ra-person .ra-select { height: 34px; width: 100%; }

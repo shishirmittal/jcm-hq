@@ -12,7 +12,9 @@
 //   3. Below purchase cost (below_cost): a sales line whose price per piece before GST
 //        (|Value3| / |qty|) is lower than the item's average purchase cost this financial
 //        year (total Value3 / total qty over purchase bills, VchType 2). Both sides exclude GST.
-//        Parties on red_alert_skip_parties (billed below cost on purpose) are skipped for this check only.
+//        Skipped: lines in the deliberate-billing band (red_alert_settings below_cost_skip_from/to,
+//        default 80-97% below cost, i.e. billed at about 1/10 of cost on purpose) for every party,
+//        and parties on red_alert_skip_parties for this check only.
 //   4. Bill edits (modified / old_bill_edited): every "modified" entry in Busy's audit log
 //        (CheckList Type 2, Action 2) with who, when, which computer, the amount and quantity
 //        before and after, and whether the bill had already been printed (Tran12).
@@ -161,7 +163,7 @@ async function readDeletions(pool) {
 }
 
 // ---------- 2 + 3. SALES LINES: ₹0 BILLING AND BELOW PURCHASE COST ----------
-async function readSalesLines(pool, skipNames, skipCostParties) {
+async function readSalesLines(pool, skipNames, skipCostParties, band) {
   const r = await pool.request().query(`
     WITH ${CREATOR_CTE},
     cost AS (
@@ -232,6 +234,10 @@ async function readSalesLines(pool, skipNames, skipCostParties) {
       const qty = Math.abs(Number(z.Qty));
       const saleUnit = Math.abs(Number(z.Amount)) / qty;
       const cost = Number(z.AvgCost);
+      // Deliberate ~1/10 billing (red_alert_settings below_cost_skip_from/to, default 80-97% below):
+      // skipped for every party. Lines further below than that are close to ₹0 and stay flagged.
+      const pctBelow = ((cost - saleUnit) / cost) * 100;
+      if (band && pctBelow >= band.from && pctBelow < band.to) continue;
       below.push({
         ...base,
         alert_key: `below|${DB}|${z.VchCode}|${z.SrNo}`,
@@ -355,13 +361,22 @@ async function main() {
       .from('red_alert_skip_parties').select('party_name');
     if (partyErr) log(`note: red_alert_skip_parties not readable (${partyErr.message}) - no parties skipped`);
 
+    // The deliberate-billing band, set on the Red Alerts page (Skip lists). Defaults if not set yet.
+    const band = { from: 80, to: 97 };
+    const { data: settingRows } = await supabase.from('red_alert_settings').select('key, value');
+    for (const r of settingRows || []) {
+      if (r.key === 'below_cost_skip_from' && Number.isFinite(Number(r.value))) band.from = Number(r.value);
+      if (r.key === 'below_cost_skip_to' && Number.isFinite(Number(r.value))) band.to = Number(r.value);
+    }
+    const useBand = band.to > band.from ? band : null;
+
     const { count: before, error: cntErr } = await supabase
       .from('red_alerts').select('id', { count: 'exact', head: true });
     if (cntErr) throw cntErr;
 
     const deletions = await readDeletions(pool);
     const { zero, below } = await readSalesLines(pool, (skipRows || []).map((s) => s.item_name),
-      (partyRows || []).map((p) => p.party_name));
+      (partyRows || []).map((p) => p.party_name), useBand);
     const audit = await readAudit(pool);
     let rows = [...deletions, ...zero, ...below, ...audit];
 

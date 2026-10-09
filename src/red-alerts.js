@@ -165,7 +165,7 @@ export async function renderRedAlerts(container) {
   const state = {
     status: 'open', type: 'all', q: '', from: '', to: '', user: '', sort: 'newest', changedOnly: false,
     offset: 0, total: 0, pageSize: 200,
-    alerts: [], userNames: {}, skipItems: [], skipParties: [], tiles: {}, statusCounts: {},
+    alerts: [], userNames: {}, skipItems: [], skipParties: [], band: { from: 80, to: 97 }, tiles: {}, statusCounts: {},
     selected: new Set(), allMatching: false, expanded: null, busy: false,
     people: null, hqUsers: [], whatsappReady: false,
   }
@@ -229,6 +229,16 @@ export async function renderRedAlerts(container) {
             <button class="btn-primary btn-small" type="submit">Add</button>
           </form>
           <ul class="ra-gift-list" id="raGiftList"></ul>
+          <h4 class="ra-drawer-sub">Deliberate billing below cost</h4>
+          <p class="ra-drawer-hint">Sales billed at about one-tenth of cost on purpose are not flagged, for any party. Lines further below than this (close to ₹0) and normal under-cost sales are still flagged.</p>
+          <form class="ra-band-form" id="raBandForm">
+            <span>Skip lines between</span>
+            <input name="from" type="number" min="0" max="100" step="1" inputmode="numeric" />
+            <span>% and</span>
+            <input name="to" type="number" min="0" max="100" step="1" inputmode="numeric" />
+            <span>% below cost</span>
+            <button class="btn-primary btn-small" type="submit">Save</button>
+          </form>
           <h4 class="ra-drawer-sub">Parties billed below cost on purpose</h4>
           <p class="ra-drawer-hint">Sales to these parties are not checked for "below purchase cost". Every other check (₹0 lines, edits, backdating, deletions) still applies to them. The name must match the party name in Busy exactly.</p>
           <form class="ra-gift-form" id="raPartyForm">
@@ -381,6 +391,19 @@ export async function renderRedAlerts(container) {
       await load()
     } catch (err) { flash(err.message); btn.disabled = false }
   })
+  $('raBandForm').addEventListener('submit', async e => {
+    e.preventDefault()
+    const form = e.target
+    const btn = form.querySelector('button')
+    btn.disabled = true
+    try {
+      const r = await call({ action: 'band-save', from: Number(form.elements.from.value), to: Number(form.elements.to.value) })
+      flash(r.closed ? `Saved. ${r.closed.toLocaleString('en-IN')} open below-cost alerts in that band cleared.` : 'Saved.')
+      await load()
+      refreshNavBadges()
+    } catch (err) { flash(err.message) }
+    btn.disabled = false
+  })
   $('raPartyForm').addEventListener('submit', async e => {
     e.preventDefault()
     const name = $('raPartyInput').value.trim()
@@ -444,7 +467,7 @@ export async function renderRedAlerts(container) {
       if (!container.isConnected) return
       Object.assign(state, {
         alerts: data.alerts || [], total: data.total || 0, pageSize: data.pageSize || 200,
-        userNames: data.userNames || {}, skipItems: data.skipItems || [], skipParties: data.skipParties || [],
+        userNames: data.userNames || {}, skipItems: data.skipItems || [], skipParties: data.skipParties || [], band: data.band || state.band,
         tiles: data.tiles || {}, statusCounts: data.statusCounts || {},
       })
       const ids = new Set(state.alerts.map(a => a.id))
@@ -645,6 +668,11 @@ export async function renderRedAlerts(container) {
             <button class="btn-ghost btn-small" data-remove-gift="${esc(s.item_name)}" aria-label="Remove ${esc(s.item_name)}">${icon('x', 14)}</button>
           </li>`).join('')
       : '<li class="ra-gift-empty">No gift items yet.</li>'
+    const bandForm = $('raBandForm')
+    if (document.activeElement?.form !== bandForm) {
+      bandForm.elements.from.value = state.band.from
+      bandForm.elements.to.value = state.band.to
+    }
     $('raPartyList').innerHTML = state.skipParties.length
       ? state.skipParties.map(s => `
           <li>

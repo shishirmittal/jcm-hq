@@ -33,6 +33,7 @@ import { createClient } from '@supabase/supabase-js'
 //   ask     ids, question, hq_user_id?       ask the person who did it (or someone chosen)
 //   skip-add / skip-remove  item_name        gift items
 //   party-add / party-remove party_name      parties skipped by the below-cost check
+//   band-save  from, to                      below-cost % band skipped as deliberate billing (red_alert_settings)
 //   people  /  people-save  busy_user, display_name, hq_user_id, whatsapp
 // Staff actions:
 //   my-count, my-list, reply { id, reply }
@@ -134,6 +135,7 @@ export default async function handler(req, res) {
     if (action === 'skip-remove') return await handleSkipRemove(busy, body, res)
     if (action === 'party-add') return await handlePartyAdd(busy, body, me, res)
     if (action === 'party-remove') return await handlePartyRemove(busy, body, res)
+    if (action === 'band-save') return await handleBandSave(busy, body, me, res)
     if (action === 'people') return await handlePeople(busy, hq, res)
     if (action === 'people-save') return await handlePeopleSave(busy, body, res)
     return send(res, 400, { error: 'Unknown request.' })
@@ -209,11 +211,12 @@ async function handleList(busy, body, res) {
     { ...f, changedOnly: false }, { skipGroup: true })
   const statusCount = s => busy.from('red_alerts').select('id', { count: 'exact', head: true }).eq('status', s)
 
-  const [list, names, skips, skipParties, ...counts] = await Promise.all([
+  const [list, names, skips, skipParties, settings, ...counts] = await Promise.all([
     query,
     busy.from('busy_user_names').select('busy_user, display_name'),
     busy.from('red_alert_skip_items').select('item_name, added_by, added_at').order('item_name'),
     busy.from('red_alert_skip_parties').select('party_name, added_by, added_at').order('party_name'),
+    busy.from('red_alert_settings').select('key, value'),
     ...TILE_GROUPS.map(tileCount),
     ...['new', 'asked', 'answered'].map(statusCount),
   ])
@@ -242,6 +245,7 @@ async function handleList(busy, body, res) {
     skipItems: skips.data || [],
     // Missing table (not created yet) just means an empty list.
     skipParties: skipParties.error ? [] : (skipParties.data || []),
+    band: readBand(settings.error ? [] : settings.data),
     tiles,
     statusCounts: { new: cNew.count || 0, asked: cAsked.count || 0, answered: cAnswered.count || 0 },
   })
@@ -501,6 +505,56 @@ async function handleSkipAdd(busy, body, me, res) {
   if (closeErr) console.error('red-alerts skip-add close failed:', closeErr)
 
   return send(res, 200, { ok: true, closed: closed?.length || 0 })
+}
+
+const BAND_DEFAULT = { from: 80, to: 97 }
+function readBand(rows) {
+  const band = { ...BAND_DEFAULT }
+  for (const r of rows || []) {
+    if (r.key === 'below_cost_skip_from' && Number.isFinite(Number(r.value))) band.from = Number(r.value)
+    if (r.key === 'below_cost_skip_to' && Number.isFinite(Number(r.value))) band.to = Number(r.value)
+  }
+  return band
+}
+
+// The deliberate-billing band: below-cost lines between `from`% and `to`% below cost are skipped
+// by the sync for every party. Saving it also clears open alerts already inside the band.
+async function handleBandSave(busy, body, me, res) {
+  const from = Number(body.from)
+  const to = Number(body.to)
+  if (!Number.isFinite(from) || !Number.isFinite(to) || from < 0 || to > 100 || (to !== from && to < from)) {
+    return send(res, 400, { error: 'Enter two percentages, the first smaller than the second (or both 0 to switch it off).' })
+  }
+  const { error } = await busy.from('red_alert_settings').upsert([
+    { key: 'below_cost_skip_from', value: String(from) },
+    { key: 'below_cost_skip_to', value: String(to) },
+  ], { onConflict: 'key' })
+  if (error) {
+    console.error('red-alerts band-save failed:', error)
+    return send(res, 500, { error: /does not exist|Could not find/i.test(error.message || '') ? 'The settings table needs the latest update in Supabase.' : 'Could not save. Try again.' })
+  }
+  let closed = 0
+  if (to > from) {
+    // details->>below_pct is text; compare as numbers page by page.
+    const ids = []
+    for (let off = 0; off < 50000; off += 1000) {
+      const { data, error: rErr } = await busy.from('red_alerts').select('id, details')
+        .eq('alert_type', 'below_cost').in('status', ['new', 'seen']).order('id').range(off, off + 999)
+      if (rErr || !data?.length) break
+      for (const a of data) {
+        const pct = Number(a.details?.below_pct)
+        if (pct >= from && pct < to) ids.push(a.id)
+      }
+      if (data.length < 1000) break
+    }
+    for (let i = 0; i < ids.length; i += 500) {
+      const { data } = await busy.from('red_alerts')
+        .update({ status: 'ok', reviewed_by: me.name, reviewed_at: new Date().toISOString(), review_note: `Deliberate billing (${from}-${to}% below cost)` })
+        .in('id', ids.slice(i, i + 500)).select('id')
+      closed += data?.length || 0
+    }
+  }
+  return send(res, 200, { ok: true, closed })
 }
 
 async function handlePartyAdd(busy, body, me, res) {
