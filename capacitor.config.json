@@ -1,0 +1,9 @@
+{
+  "appId": "com.jcmretails.tools",
+  "appName": "JCM Tools",
+  "webDir": "dist",
+  "server": {
+    "url": "https://jcm-crm.vercel.app",
+    "errorPath": "offline.html"
+  }
+}

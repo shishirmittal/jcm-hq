@@ -1,0 +1,22 @@
+# This repo is developed on Windows, where git's autocrlf stores CRLF in the
+# blob for anything it decides is text. The Android build then runs on a Linux
+# CI runner, where a shell script with CRLF line endings does not run at all —
+# /bin/sh reports "bad interpreter: ...^M". These scripts are therefore pinned
+# to LF regardless of the platform they are checked out on.
+android/gradlew text eol=lf
+*.sh text eol=lf
+
+# The Windows counterpart genuinely needs CRLF.
+*.bat text eol=crlf
+android/gradlew.bat text eol=crlf
+
+# Never apply line-ending conversion to these: it corrupts them silently.
+*.jar binary
+*.png binary
+*.jpg binary
+*.webp binary
+*.ico binary
+*.keystore binary
+*.jks binary
+*.apk binary
+*.aab binary

@@ -1,0 +1,77 @@
+name: Android APK
+
+# Every push to main produces a downloadable APK, so nobody needs Android
+# Studio installed to get a build onto a phone. Also runnable by hand from the
+# Actions tab when you want a fresh APK without pushing anything.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build debug APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # 22, not 20: the Capacitor 8 CLI refuses to run below NodeJS 22.
+          node-version: '22'
+          cache: npm
+
+      # Android Gradle Plugin 8.13 with compileSdk 36 needs JDK 21; 17 fails
+      # at configuration time, not at the end of a long build.
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # Sets ANDROID_HOME and accepts the SDK licences. packages: '' is
+      # deliberate — the action's default list includes the long-obsolete
+      # 'tools' package, which is no longer in the SDK repository and fails
+      # the step outright. With the licences accepted, the Android Gradle
+      # Plugin fetches the platform and build-tools it needs by itself.
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: ''
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build the web app
+        run: npm run build
+
+      # Copies dist/ into the Android project and regenerates the pieces that
+      # are deliberately not committed — the web assets themselves and
+      # capacitor-cordova-android-plugins, which settings.gradle requires.
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      # The repo is developed on Windows, which does not carry the executable
+      # bit through git.
+      - name: Make gradlew executable
+        run: chmod +x android/gradlew
+
+      # Debug, so it is signed with Gradle's own debug keystore and installs
+      # by sideloading without a release key having to live in this repo.
+      - name: Assemble debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Name the APK after the commit
+        run: |
+          mkdir -p out
+          cp android/app/build/outputs/apk/debug/app-debug.apk \
+             "out/jcm-tools-${GITHUB_SHA::7}-debug.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jcm-tools-apk
+          path: out/*.apk
+          # Long enough to be useful, short of GitHub's 90-day default so old
+          # builds do not pile up against the storage quota.
+          retention-days: 30
+          if-no-files-found: error

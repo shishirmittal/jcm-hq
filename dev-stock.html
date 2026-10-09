@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stock — local preview</title>
+</head><body>
+<div id="app"></div>
+<script type="module">
+  import './src/style.css'
+  import { renderStock } from './src/stock.js'
+  document.body.classList.add('native-app')
+  await renderStock(document.getElementById('app'))
+  window.__ready = true
+</script>
+</body></html>
