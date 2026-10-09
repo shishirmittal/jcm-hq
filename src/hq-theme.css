@@ -1,0 +1,143 @@
+/* ==========================================================================
+   JCM HQ look (approved by Shishir, 2026-10-10 — "Chosen mix" mockup):
+   A's navy sidebar with icon tiles · B's fonts (Inter) · C's solid, rounded
+   cards and banded tables · C (night navy + gold) as dark mode.
+   Loaded after style.css, so these values win. Colours come from the CSS
+   variables below; pages built later pick the look up by using the same
+   variables (--surface, --line, --ink, --blue …) and the .hq-* helpers.
+   Print styles (quotation letterhead, .sheet-*) keep their own colours.
+   ========================================================================== */
+:root {
+  --blue: #12213B; --blue-dk: #0A1528; --blue-bg: #EEF1F6; --on-blue: #FFFFFF;
+  --ink: #12213B; --body: #374151; --muted: #5C6474; --faint: #8A8F99;
+  --line: #E9E7E1; --line-soft: #F1EFEA; --bg: #F7F7F5; --surface: #FFFFFF;
+  --text: #111827; --shadow: rgba(18, 33, 59, 0.08);
+  --hq-gold: #D9AE55; --hq-gold-hi: #F0C873;
+  --hq-side: #12213B; --hq-side-line: rgba(255, 255, 255, 0.08);
+  --hq-head: #F1EFEA; --hq-radius: 16px; --hq-radius-sm: 12px;
+  --hq-sync-bg: #E6F2EC; --hq-sync-fg: #1E5A40; --hq-sync-dot: #2E7D5B;
+  --hq-late-bg: #FFF3DC; --hq-late-fg: #8A5A06; --hq-late-dot: #C77B12;
+}
+body.dark-mode {
+  --blue: #D9AE55; --blue-dk: #F0C873; --blue-bg: #2E3540; --on-blue: #0E1A2E;
+  --ink: #FFFFFF; --body: #C9D0DD; --muted: #8C96AA; --faint: #6F7F9C;
+  --line: #26344F; --line-soft: #1F2C44; --bg: #0E1A2E; --surface: #16243C;
+  --text: #E6E9F0; --shadow: rgba(0, 0, 0, 0.4);
+  --hq-side: #0A1324; --hq-side-line: #1C2A44;
+  --hq-head: #13213A;
+  --hq-sync-bg: #113328; --hq-sync-fg: #9FE3C2; --hq-sync-dot: #5ED19A;
+  --hq-late-bg: #3A2E12; --hq-late-fg: #F0C873; --hq-late-dot: #F0C873;
+}
+
+body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+
+/* Text on an accent-coloured fill: white on navy by day, navy on gold by night. */
+:is(.btn-primary, .nav-badge, .dash-btn-primary, .dash-qa-item.dash-qa-primary, .qtn-page-btn.active,
+    .qf-toggle-pair button.active, .qf-sort-buttons button.active, .tb-assign, .pf-chip.active) { color: var(--on-blue); }
+.btn-primary { font-weight: 600; border-radius: 12px; }
+.btn-primary:hover { background: var(--blue-dk); }
+.btn-ghost { border-radius: 12px; }
+
+/* ---- Sidebar: navy rail, gold group names, icon tiles, groups that fold ---- */
+.pinned-sidebar, .sidebar-panel { background: var(--hq-side); border-right-color: var(--hq-side-line); color: #C9D0DC; }
+.pinned-sidebar-top, .sidebar-panel-top { border-bottom-color: var(--hq-side-line); }
+.pinned-logo, .sidebar-logo { background: #000; }
+.pinned-sidebar-name { color: #FFFFFF; font-weight: 800; letter-spacing: -0.02em; font-size: 16px; }
+.pinned-sidebar-sub { color: #8C96AA; }
+.pinned-nav, .sidebar-menu { gap: 1px; }
+.pinned-nav::-webkit-scrollbar, .sidebar-menu::-webkit-scrollbar { width: 6px; }
+.pinned-nav::-webkit-scrollbar-thumb, .sidebar-menu::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); border-radius: 3px; }
+
+.nav-section {
+  display: flex; align-items: center; gap: 6px; width: 100%; background: none; border: none; border-radius: 6px;
+  padding: 10px 10px 4px; color: var(--hq-gold); font-size: 10px; font-weight: 700; letter-spacing: 0.12em;
+  text-transform: uppercase; text-align: left; cursor: pointer; font-family: inherit;
+}
+.nav-section:hover { color: var(--hq-gold-hi); }
+.nav-section:focus-visible { outline: 2px solid var(--hq-gold); outline-offset: 1px; }
+.nav-section-label { flex: 1; }
+.nav-section-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--hq-gold); }
+.nav-section-dot[hidden] { display: none; }
+.nav-section-chevron { display: flex; opacity: 0.7; transition: transform 0.18s ease; }
+.nav-group.is-closed .nav-section-chevron { transform: rotate(-90deg); }
+.nav-group-items { display: flex; flex-direction: column; gap: 1px; }
+.nav-group.is-closed .nav-group-items { display: none; }
+.nav-group:not(.is-closed) .nav-section-dot { display: none; }
+
+.nav-row { height: 36px; gap: 10px; padding: 0 8px 0 4px; border-radius: 10px; color: #C9D0DC; font-size: 13.5px; }
+.nav-row:hover { background: rgba(255, 255, 255, 0.06); color: #FFFFFF; }
+.nav-row-icon {
+  width: 27px; height: 27px; border-radius: 8px; display: grid; place-items: center;
+  background: rgba(217, 174, 85, 0.12); color: var(--hq-gold); transition: background 0.15s ease, color 0.15s ease;
+}
+.nav-row-icon svg { display: block; }
+.nav-row:hover .nav-row-icon { color: var(--hq-gold-hi); }
+.nav-row[data-hash="#red-alerts"] .nav-row-icon { background: rgba(242, 139, 130, 0.14); color: #F28B82; }
+.nav-row.active { background: var(--hq-gold); color: #12213B; font-weight: 700; }
+.nav-row.active .nav-row-icon { background: rgba(18, 33, 59, 0.14); color: #12213B; }
+body.dark-mode .nav-row.active { background: #1C2E4E; color: #FFFFFF; }
+body.dark-mode .nav-row.active .nav-row-icon { background: var(--hq-gold); color: #0E1A2E; }
+.nav-row:focus-visible { outline-color: var(--hq-gold); }
+.nav-badge { background: var(--hq-gold); color: #12213B; font-weight: 700; }
+.nav-row.active .nav-badge { background: #12213B; color: var(--hq-gold); }
+.nav-row[data-hash="#red-alerts"] .nav-badge { background: #E0574B; color: #FFFFFF; }
+
+.pinned-account { border-top-color: var(--hq-side-line); }
+.pinned-account-name { color: #FFFFFF; }
+.pinned-account-chip:hover { background: rgba(255, 255, 255, 0.06); }
+.pinned-account-chevron { color: #8C96AA; }
+.pinned-account-menu { background: var(--surface); border-color: var(--line); }
+.pinned-sidebar .theme-toggle, .sidebar-panel .theme-toggle { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.16); }
+.pinned-sidebar .theme-toggle.on, .sidebar-panel .theme-toggle.on { background: rgba(217, 174, 85, 0.2); border-color: var(--hq-gold); }
+.pinned-sidebar .theme-toggle-icon, .sidebar-panel .theme-toggle-icon { color: #C9D0DC; }
+.pinned-sidebar .theme-toggle.on .theme-toggle-thumb, .sidebar-panel .theme-toggle.on .theme-toggle-thumb { background: var(--hq-gold); }
+.sidebar-theme-row { color: #C9D0DC; }
+.sidebar-panel .nav-row.btn-ghost:hover { background: rgba(255, 255, 255, 0.06); }
+.sidebar-signout { color: #F28B82; }
+.sidebar-signout:hover { background: rgba(242, 139, 130, 0.12); }
+.sidebar-close { color: #C9D0DC; }
+
+/* Folded rail (64 px): icons only, every group shown, no group names. */
+.pinned-sidebar.collapsed .nav-section { display: none; }
+.pinned-sidebar.collapsed .nav-group.is-closed .nav-group-items { display: flex; }
+.pinned-sidebar.collapsed .nav-row { padding: 0; justify-content: center; }
+.pinned-sidebar.collapsed .nav-row.active { background: rgba(217, 174, 85, 0.2); }
+.pinned-sidebar.collapsed .nav-row.active .nav-row-icon { background: var(--hq-gold); color: #12213B; }
+
+/* ---- Page header bar ---- */
+.app-header { height: 64px; background: var(--surface); border-bottom-color: var(--line); }
+.logo-small { color: var(--ink); font-weight: 800; letter-spacing: -0.02em; }
+/* The pinned rail already navigates on a computer; the page's ☰ is for phones. */
+@media (min-width: 800px) {
+  .pinned-sidebar ~ #app .btn-hamburger { display: none; }
+}
+
+/* ---- Cards: solid, rounded, clean (look C) ---- */
+:is(.card, .stat-card, .dash-card, .dash-kpi, .dash-prio, .tb-kpi, .tb-stack, .op-brand-card, .qtn-table-wrap, .modal) {
+  border-radius: var(--hq-radius);
+}
+.stat-label { text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; font-weight: 600; }
+.stat-value { font-weight: 800; letter-spacing: -0.02em; }
+
+/* ---- Tables: header band, uppercase labels, quiet row lines ---- */
+:is(.qtn-table, .op-table, .pu-table) th {
+  background: var(--hq-head); color: var(--muted); font-size: 11px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase; border-bottom: none;
+}
+.im-items-table thead th { background: var(--hq-head); color: var(--muted); border-bottom-color: var(--line); }
+
+/* ---- Inputs and selects ---- */
+input, select, textarea { font-family: inherit; }
+
+/* ---- Shared helpers for every page ---- */
+/* Sync time chip: "Busy sync · 2 min ago (3:35 am)". Add .is-late when the
+   data is older than the page's limit (amber), as on the TV board. */
+.hq-sync {
+  display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border-radius: 999px;
+  background: var(--hq-sync-bg); color: var(--hq-sync-fg); font-size: 12px; font-weight: 600; white-space: nowrap;
+}
+.hq-sync::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--hq-sync-dot); flex-shrink: 0; }
+.hq-sync.is-late { background: var(--hq-late-bg); color: var(--hq-late-fg); }
+.hq-sync.is-late::before { background: var(--hq-late-dot); }
+.hq-sync:empty { display: none; }
+body.dark-mode .app-header { background: var(--bg); }

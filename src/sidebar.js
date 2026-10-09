@@ -53,18 +53,63 @@ async function loadNavBadges() {
 // cannot see and any section left empty by that — so a user's DOM never
 // contains a tab they were not granted, rather than hiding it with CSS.
 function renderNavHtml() {
+  const closed = readClosedGroups()
   return visibleNav().map(section => {
+    const isClosed = closed.has(section.section)
     return `
-      <div class="nav-section">${esc(section.section)}</div>
-      ${section.items.map(item => `
-          <button type="button" class="nav-row" data-hash="${esc(item.hash)}" title="${esc(item.label)}">
-            <span class="nav-row-icon">${icon(item.icon, 18)}</span>
-            <span class="nav-row-label">${esc(item.label)}</span>
-            ${item.badge ? `<span class="nav-badge" data-badge="${esc(item.badge)}" hidden>0</span>` : ''}
-          </button>
-        `).join('')}
+      <div class="nav-group${isClosed ? ' is-closed' : ''}" data-group="${esc(section.section)}">
+        <button type="button" class="nav-section" data-group-toggle="${esc(section.section)}" aria-expanded="${!isClosed}" title="${isClosed ? 'Show' : 'Hide'} ${esc(section.section)}">
+          <span class="nav-section-label">${esc(section.section)}</span>
+          <span class="nav-section-dot" hidden></span>
+          <span class="nav-section-chevron">${icon('chevron-down', 12)}</span>
+        </button>
+        <div class="nav-group-items">
+          ${section.items.map(item => `
+            <button type="button" class="nav-row" data-hash="${esc(item.hash)}" title="${esc(item.label)}">
+              <span class="nav-row-icon">${icon(item.icon, 16)}</span>
+              <span class="nav-row-label">${esc(item.label)}</span>
+              ${item.badge ? `<span class="nav-badge" data-badge="${esc(item.badge)}" hidden>0</span>` : ''}
+            </button>
+          `).join('')}
+        </div>
+      </div>
     `
   }).join('')
+}
+
+// Sidebar groups fold open and shut (JCM HQ). Which ones are shut is
+// remembered per browser; a shut group still shows a gold dot when one of
+// its pages has a count, and the group holding the open page always opens.
+const CLOSED_KEY = 'jcmHq.navClosed'
+function readClosedGroups() {
+  try { return new Set(JSON.parse(localStorage.getItem(CLOSED_KEY) || '[]')) } catch { return new Set() }
+}
+function writeClosedGroups(set) {
+  try { localStorage.setItem(CLOSED_KEY, JSON.stringify([...set])) } catch { /* storage blocked */ }
+}
+function wireNavGroups(root) {
+  root.querySelectorAll('[data-group-toggle]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const name = btn.dataset.groupToggle
+      const group = btn.closest('.nav-group')
+      const closed = readClosedGroups()
+      const nowClosed = !group.classList.contains('is-closed')
+      group.classList.toggle('is-closed', nowClosed)
+      btn.setAttribute('aria-expanded', String(!nowClosed))
+      btn.title = `${nowClosed ? 'Show' : 'Hide'} ${name}`
+      if (nowClosed) closed.add(name); else closed.delete(name)
+      writeClosedGroups(closed)
+    })
+  })
+}
+// The open page's group is never left shut, or the highlight would be hidden.
+function openActiveGroup(root) {
+  const active = root.querySelector('.nav-row.active')
+  const group = active?.closest('.nav-group.is-closed')
+  if (group) {
+    group.classList.remove('is-closed')
+    group.querySelector('[data-group-toggle]')?.setAttribute('aria-expanded', 'true')
+  }
 }
 
 // Counts are painted into the placeholder spans above rather than
@@ -76,6 +121,10 @@ function paintNavBadges(root, badges) {
     const count = badges[el.dataset.badge] || 0
     el.hidden = count === 0
     el.textContent = count > 99 ? '99+' : String(count)
+  })
+  root.querySelectorAll('.nav-group').forEach(g => {
+    const dot = g.querySelector('.nav-section-dot')
+    if (dot) dot.hidden = !g.querySelector('.nav-badge:not([hidden])')
   })
 }
 
@@ -124,6 +173,7 @@ function setActiveNav(container) {
     const active = navHash !== '' ? (hash === navHash || hash.startsWith(`${navHash}/`)) : hash === ''
     btn.classList.toggle('active', active)
   })
+  openActiveGroup(container)
 }
 
 // ---- Desktop pinned rail (≥800px — see the media query in style.css) ----
@@ -184,6 +234,7 @@ export function mountPinnedSidebar({ profile }) {
   document.body.insertBefore(el, app)
   pinnedEl = el
 
+  wireNavGroups(el)
   setActiveNav(el)
   window.addEventListener('hashchange', () => setActiveNav(el))
 
@@ -259,6 +310,7 @@ export function openSidebar() {
     setTimeout(() => overlay.remove(), 250)
   }
 
+  wireNavGroups(overlay)
   setActiveNav(overlay)
   wireThemeToggle('sidebar')
   overlay.addEventListener('click', e => { if (e.target === overlay) close() })

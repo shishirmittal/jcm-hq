@@ -1,4 +1,5 @@
 import './style.css'
+import './hq-theme.css'
 import { initTheme } from './theme.js'
 import { supabase, getCurrentProfile } from './supabase.js'
 import { renderLogin } from './login.js'

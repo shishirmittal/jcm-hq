@@ -37,37 +37,37 @@ export const NAV_CONFIG = [
     { id: 'tasks', label: 'Task Board', icon: 'clipboard', hash: '#tasks', badge: 'openTasks' },
     // Questions from Red Alerts about entries this person made in Busy.
     // open: everyone signed in can see it; the API only returns their own.
-    { id: 'explain', label: 'My Explanations', icon: 'send', hash: '#explain', open: true, badge: 'myExplain' },
+    { id: 'explain', label: 'My Explanations', icon: 'question', hash: '#explain', open: true, badge: 'myExplain' },
   ] },
   { section: 'CRM', items: [
-    { id: 'leads', label: 'Project Leads', icon: 'briefcase', hash: '#leads', badge: 'openLeads' },
-    { id: 'architects', label: 'Architects', icon: 'building', hash: '#architects' },
+    { id: 'leads', label: 'Project Leads', icon: 'flag', hash: '#leads', badge: 'openLeads' },
+    { id: 'architects', label: 'Architects', icon: 'compass', hash: '#architects' },
     { id: 'electricians', label: 'Electricians', icon: 'bolt', hash: '#electricians' },
   ] },
   { section: 'Sales', items: [
     { id: 'quotations', label: 'Quotations', icon: 'file', hash: '#quotations', badge: 'pendingQuotes' },
-    { id: 'payments', label: 'Payments', icon: 'card', hash: '#payments', adminOnly: true },
+    { id: 'payments', label: 'Payments', icon: 'rupee', hash: '#payments', adminOnly: true },
   ] },
   // Payment Follow-up: call/WhatsApp parties with dues by account group, save
   // outcomes + next follow-up date. api/collections.js lets in admins and anyone
   // with 'payment-followup' in allowed_tabs. Badge = follow-ups due today/overdue.
   { section: 'Collections', items: [
-    { id: 'payment-followup', label: 'Payment Follow-up', icon: 'chase', hash: '#payment-followup', adminOnly: true, badge: 'paymentFollowup' },
+    { id: 'payment-followup', label: 'Payment Follow-up', icon: 'phone', hash: '#payment-followup', adminOnly: true, badge: 'paymentFollowup' },
   ] },
   // JCM Orders admin screens (from orders.jcmretails.com /owner and /logs).
   // adminOnly as on the orders site, but grantable: tick one for a person in
   // Manage Users and api/orders.js lets them in too.
   { section: 'Warehouse', items: [
-    { id: 'material', label: 'Pending Material', icon: 'box', hash: '#material' },
-    { id: 'order-log', label: 'Order Log', icon: 'history', hash: '#order-log', adminOnly: true },
+    { id: 'material', label: 'Pending Material', icon: 'package', hash: '#material' },
+    { id: 'order-log', label: 'Order Log', icon: 'clock', hash: '#order-log', adminOnly: true },
   ] },
   { section: 'Purchase & Stock', items: [
     { id: 'orders', label: 'Order Planning', icon: 'truck', hash: '#order-planning' },
-    { id: 'stock', label: 'Stock', icon: 'box', hash: '#stock', open: true },
+    { id: 'stock', label: 'Stock', icon: 'warehouse', hash: '#stock', open: true },
     // grantable: false — the gate that actually matters is the "Admins can
     // update catalog" RLS policy on catalog_items, which a ticked box here
     // could never satisfy.
-    { id: 'price-update', label: 'Price Update', icon: 'pencil', hash: '#price-update', adminOnly: true, grantable: false },
+    { id: 'price-update', label: 'Price Update', icon: 'tag', hash: '#price-update', adminOnly: true, grantable: false },
     { id: 'items-management', label: 'Items Management', icon: 'layers', hash: '#items-management', adminOnly: true },
   ] },
   { section: 'Insights', items: [
@@ -79,6 +79,6 @@ export const NAV_CONFIG = [
   ] },
   { section: 'Admin', items: [
     { id: 'users', label: 'Manage Users', icon: 'users', hash: '#admin', adminOnly: true, grantable: false },
-    { id: 'warehouse', label: 'Warehouse & Devices', icon: 'truck', hash: '#warehouse', adminOnly: true },
+    { id: 'warehouse', label: 'Warehouse & Devices', icon: 'monitor', hash: '#warehouse', adminOnly: true },
   ] },
 ]
