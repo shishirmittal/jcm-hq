@@ -61,15 +61,33 @@ const SQL_CONFIG = {
   requestTimeout: 300000,
 };
 
+// Customer codes (and names, for the --check printout) from Supabase.
 async function customerCodes(supabase) {
-  const codes = new Set();
+  const codes = new Map();
   for (let from = 0; from < 200000; from += 1000) {
-    const { data, error } = await supabase.from('customers').select('party_code').range(from, from + 999);
+    const { data, error } = await supabase.from('customers').select('*').range(from, from + 999);
     if (error) throw new Error(`reading customers: ${error.message}`);
-    for (const r of data) if (r.party_code != null) codes.add(Number(r.party_code));
+    for (const r of data) {
+      if (r.party_code == null) continue;
+      codes.set(Number(r.party_code), r.party_name || r.name || r.customer_name || r.print_name || '');
+    }
     if (data.length < 1000) break;
   }
   return codes;
+}
+
+// --check printout for one customer: totals and the last entries.
+function showParty(out, codes, code, why) {
+  const mine = out.filter(x => x.party_code === String(code))
+    .sort((a, b) => a.vch_date.localeCompare(b.vch_date) || a.vch_code - b.vch_code || a.sr_no - b.sr_no);
+  if (!mine.length) { log(`customer ${code}: no entries this year`); return; }
+  const dr = mine.reduce((s, x) => s + x.debit, 0);
+  const cr = mine.reduce((s, x) => s + x.credit, 0);
+  log('');
+  log(`=== ${why}: ${codes.get(Number(code)) || '(no name)'} — Busy code ${code} ===`);
+  log(`${mine.length} entries this year · total Dr ${Math.round(dr)} · total Cr ${Math.round(cr)} · Dr minus Cr ${Math.round(dr - cr)}`);
+  log('last 12:');
+  for (const x of mine.slice(-12)) log(`  ${x.vch_date}  ${x.vch_type_name.padEnd(12)} ${String(x.vch_no || '').padEnd(18)} Dr ${String(x.debit).padStart(10)}  Cr ${String(x.credit).padStart(10)}`);
 }
 
 async function main() {
@@ -120,15 +138,24 @@ async function main() {
   }
 
   if (CHECK) {
-    const counts = {};
-    for (const x of out) counts[x.party_code] = (counts[x.party_code] || 0) + 1;
-    const busiest = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0];
-    if (busiest) {
-      const mine = out.filter(x => x.party_code === busiest).sort((a, b) => a.vch_date.localeCompare(b.vch_date));
-      const net = mine.reduce((s, x) => s + x.debit - x.credit, 0);
-      log(`sample — customer code ${busiest}, ${mine.length} entries, this year's debits minus credits ${Math.round(net)}; last 10:`);
-      for (const x of mine.slice(-10)) log(`  ${x.vch_date}  ${x.vch_type_name.padEnd(12)} ${String(x.vch_no || '').padEnd(14)} Dr ${String(x.debit).padStart(10)}  Cr ${String(x.credit).padStart(10)}`);
+    const counts = {}, receipts = {};
+    for (const x of out) {
+      counts[x.party_code] = (counts[x.party_code] || 0) + 1;
+      if (x.vch_type === 14) receipts[x.party_code] = (receipts[x.party_code] || 0) + 1;
     }
+    const busiest = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0];
+    // A normal credit customer: most receipts, not the busiest (usually the cash account).
+    const credit = Object.entries(receipts).filter(([c]) => c !== busiest).sort((a, b) => b[1] - a[1])[0]?.[0];
+    const asked = process.argv[process.argv.indexOf('--party') + 1];
+    if (process.argv.includes('--party') && asked) {
+      const want = String(asked).toLowerCase();
+      const code = /^\d+$/.test(want) ? want : [...codes].find(([, n]) => String(n).toLowerCase().includes(want))?.[0];
+      if (code == null) log(`no customer matches "${asked}"`); else showParty(out, codes, code, 'customer you asked for');
+    } else {
+      if (busiest) showParty(out, codes, busiest, 'most entries (probably the cash account)');
+      if (credit) showParty(out, codes, credit, 'most receipts (a normal credit customer)');
+    }
+    log('');
     log('check done — nothing was written');
     return;
   }
