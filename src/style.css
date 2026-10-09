@@ -2465,3 +2465,25 @@ body.native-app .app-main > * { animation: appScreenIn 0.18s ease-out both; }
 @keyframes hq-pop { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes hq-shake { 0%, 100% { transform: translateX(0); } 20%, 60% { transform: translateX(-8px); } 40%, 80% { transform: translateX(8px); } }
 @media (prefers-reduced-motion: reduce) { .hq-person, .hq-pin-head, .hq-shake { animation: none; } }
+
+/* ---- Stock on the website (JCM HQ) ----
+   The Stock screen was designed for the Android app, where body.native-app
+   paints every header navy. On the website the header stayed white, so the
+   white search text and buttons were invisible and the page looked unbuilt.
+   Give it the same navy header here, and use the width a desktop has. */
+body:not(.native-app) .stock-header { background: var(--app-navy, #12213b); border-bottom: none; color: #fff; padding-top: 12px; }
+body:not(.native-app) .stock-header .logo-small { color: #fff; font-size: 18px; }
+body:not(.native-app) .stock-header .btn-hamburger { color: #fff; }
+body:not(.native-app) .stock-refresh:hover,
+body:not(.native-app) .stock-filter:hover { background: rgba(255, 255, 255, 0.12); }
+body:not(.native-app) .stock-filter[aria-pressed='true']:hover { background: #c89c45; }
+.stock-search-wrap:focus-within { background: rgba(255, 255, 255, 0.2); }
+@media (min-width: 800px) {
+  body:not(.native-app) .stock-header .btn-hamburger { display: none; }
+  body:not(.native-app) .stock-header { padding-left: 1.25rem; padding-right: 1.25rem; }
+  body:not(.native-app) .stock-search-wrap { max-width: 720px; }
+  body:not(.native-app) .stock-results { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 10px; }
+  body:not(.native-app) .stock-results > .stock-empty { grid-column: 1 / -1; }
+  body:not(.native-app) .stock-card { transition: border-color 0.12s ease, box-shadow 0.12s ease; }
+  body:not(.native-app) .stock-card:not(.stock-skeleton):hover { border-color: var(--faint); box-shadow: 0 2px 10px var(--shadow); }
+}
