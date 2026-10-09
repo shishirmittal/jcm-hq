@@ -14,6 +14,7 @@ import { apiUrl } from './native.js'
 import { esc, formatMoney } from './utils.js'
 import { icon } from './icons.js'
 import './payment-followup.css'
+import { renderPaymentReminders } from './payment-reminders.js'
 
 const TAB_ID = 'payment-followup'
 
@@ -89,27 +90,27 @@ export async function loadPaymentFollowupBadge() {
 // ---------------------------------------------------------------------------
 // Small formatters
 // ---------------------------------------------------------------------------
-function rupees(n) {
+export function rupees(n) {
   return '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN')
 }
-function shortRupees(n) {
+export function shortRupees(n) {
   const v = Number(n) || 0
   if (Math.abs(v) >= 1e7) return `₹${(v / 1e7).toFixed(2)} Cr`
   if (Math.abs(v) >= 1e5) return `₹${(v / 1e5).toFixed(2)} L`
   return rupees(v)
 }
-function fmtDate(s) {
+export function fmtDate(s) {
   if (!s) return ''
   const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(s) ? `${s}T00:00:00+05:30` : s)
   if (Number.isNaN(d.getTime())) return ''
   return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
 }
-function fmtDateTime(s) {
+export function fmtDateTime(s) {
   const d = new Date(s)
   if (Number.isNaN(d.getTime())) return ''
   return `${fmtDate(s)} · ${d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })}`
 }
-function daysBetween(fromISO, toISO) {
+export function daysBetween(fromISO, toISO) {
   return Math.round((Date.parse(`${toISO}T00:00:00Z`) - Date.parse(`${fromISO}T00:00:00Z`)) / 86400000)
 }
 function addDaysISO(iso, n) {
@@ -119,7 +120,7 @@ function addDaysISO(iso, n) {
 }
 const todayIST = () => new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10)
 
-function store(key, value) {
+export function store(key, value) {
   try {
     if (value === undefined) return localStorage.getItem(key)
     localStorage.setItem(key, value)
@@ -130,12 +131,22 @@ function store(key, value) {
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
-export function renderPaymentFollowup(container) {
+// The two tabs at the top of both views.
+export function pfTabsHtml(active) {
+  return `
+    <nav class="pf-tabs" aria-label="Payment Follow-up">
+      <a href="#payment-followup" class="pf-tab ${active === 'calls' ? 'active' : ''}">Follow-up calls</a>
+      <a href="#payment-followup/reminders" class="pf-tab ${active === 'reminders' ? 'active' : ''}">WhatsApp reminders</a>
+    </nav>`
+}
+
+export function renderPaymentFollowup(container, sub) {
   if (!canSee(TAB_ID)) {
     container.innerHTML = '<div class="empty-state">You do not have access to this page.</div>'
     setTimeout(() => { window.location.hash = '' }, 1500)
     return
   }
+  if (sub === 'reminders') return renderPaymentReminders(container)
 
   const state = {
     meta: null,
@@ -159,6 +170,7 @@ export function renderPaymentFollowup(container) {
         <button class="btn-ghost btn-small" id="pfRefresh">Refresh</button>
       </header>
       <main class="app-main">
+        ${pfTabsHtml('calls')}
         <div class="pf-tiles" id="pfTiles"></div>
         <div class="pf-toolbar">
           <select id="pfGroup" class="pf-select" aria-label="Account group"><option>Loading groups…</option></select>

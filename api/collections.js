@@ -23,6 +23,11 @@ import { createClient } from '@supabase/supabase-js'
 //   list    { view, group, q }     view = 'group' | 'all' | 'due'
 //   history { party_code }         every follow-up for one party
 //   save    { party_code, channel, outcome, remarks?, promised_amount?, promised_date?, next_followup? }
+//   send-reminders { party_codes[], template }   WhatsApp through Whatshub360, at most 25 per call.
+//           The server re-checks every party: the DND group, "check balance"
+//           parties, nothing due, no number and anyone reminded in the last
+//           20 hours are skipped whatever the page sent. Each attempt is kept
+//           in collection_followups (channel 'reminder', outcome sent / failed / no_number).
 
 const SUPABASE_URL = 'https://cmtnzmfuasniicsdxyle.supabase.co'      // HQ / CRM project (profiles)
 const SUPABASE_BUSY_URL = 'https://jlkjjqnmhsgefpluemyz.supabase.co' // Busy-data project (dues)
@@ -91,6 +96,7 @@ export default async function handler(req, res) {
     if (action === 'list') return await handleList(busy, body, res)
     if (action === 'history') return await handleHistory(busy, body, res)
     if (action === 'save') return await handleSave(busy, body, me, res)
+    if (action === 'send-reminders') return await handleSendReminders(busy, body, me, res)
     return send(res, 400, { error: 'Unknown request.' })
   } catch (err) {
     console.error('collections handler error:', err)
@@ -222,13 +228,16 @@ async function handleList(busy, body, res) {
   const codes = [...new Set(parties.map(p => String(p.party_code)))]
   const intCodes = codes.filter(c => /^\d+$/.test(c)).map(Number)
 
-  const [ageing, partyDues, customers, latest] = await Promise.all([
+  const [ageing, partyDues, customers, latest, reminders] = await Promise.all([
     inChunks(codes, 400, part => busy.rpc('collections_ageing', { p_codes: part }).then(r => check(r, 'ageing'))),
     inChunks(codes, 200, part => busy.from('party_dues').select('party_code, phone_primary, phone_all, needs_review').in('party_code', part).then(r => check(r, 'party_dues'))),
     inChunks(intCodes, 200, part => busy.from('customers').select('party_code, mobile, whatsapp_no').in('party_code', part).then(r => check(r, 'customers'))),
     latestRows
       ? Promise.resolve(latestRows)
       : inChunks(codes, 200, part => busy.from('collection_latest').select('*').in('party_code', part).then(r => check(r, 'latest'))),
+    inChunks(codes, 200, part => busy.from('collection_followups').select('party_code, created_at')
+      .eq('channel', 'reminder').eq('outcome', 'sent').in('party_code', part)
+      .order('created_at', { ascending: false }).limit(5000).then(r => check(r, 'reminders'))),
   ])
 
   const byCode = (rows, key = 'party_code') => {
@@ -240,6 +249,8 @@ async function handleList(busy, body, res) {
   const pdMap = byCode(partyDues)
   const custMap = byCode(customers)
   const latestMap = byCode(latest)
+  const lastReminder = new Map()
+  for (const r of reminders) if (!lastReminder.has(String(r.party_code))) lastReminder.set(String(r.party_code), r.created_at)
 
   const out = parties.map(p => {
     const code = String(p.party_code)
@@ -268,6 +279,7 @@ async function handleList(busy, body, res) {
         older: Number(ag.older) || 0,
       },
       latest: latestMap.get(code) || null,
+      last_reminder: lastReminder.get(code) || null,
     }
   })
 
@@ -330,4 +342,114 @@ async function handleSave(busy, body, me, res) {
   }
   const saved = check(await busy.from('collection_followups').insert(row).select('*'), 'save')
   return send(res, 200, { ok: true, followup: saved[0] || null })
+}
+
+// ---------------------------------------------------------------------------
+// WhatsApp reminders (Whatshub360)
+// ---------------------------------------------------------------------------
+const REMINDER_GAP_HOURS = 20
+const MAX_PER_CALL = 25
+
+async function sendWhatsApp(mobile, message) {
+  const template = process.env.WHATSHUB_SEND_URL
+  if (!template) return 'not_set_up'
+  const digits = cleanPhone(mobile)
+  if (!digits) return 'no_number'
+  // Same Vercel settings as Red Alerts: the send link is kept as a template,
+  //   https://…?vid={vid}&recMobileNo=91{mobile}&msg={msg}
+  const url = template
+    .replace('{vid}', encodeURIComponent(process.env.WHATSHUB_VID || ''))
+    .replace('{mobile}', digits)
+    .replace('{msg}', encodeURIComponent(message))
+  try {
+    const r = await fetch(url, { method: 'GET', signal: AbortSignal.timeout(10000) })
+    const text = (await r.text()).slice(0, 300)
+    if (!r.ok || /error|fail|invalid/i.test(text)) {
+      console.error('Whatshub360 reminder failed:', r.status, text)
+      return 'failed'
+    }
+    return 'sent'
+  } catch (err) {
+    console.error('Whatshub360 reminder error:', err)
+    return 'failed'
+  }
+}
+
+const rupeesText = n => '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN')
+
+function fillTemplate(template, party) {
+  return template
+    .replace(/\{name\}/gi, party.party_name || '')
+    .replace(/\{amount\}/gi, rupeesText(party.balance))
+    .trim()
+}
+
+async function handleSendReminders(busy, body, me, res) {
+  if (!process.env.WHATSHUB_SEND_URL) {
+    return send(res, 400, { error: 'WhatsApp sending is not set up yet (WHATSHUB_SEND_URL in Vercel).' })
+  }
+  const codes = Array.isArray(body.party_codes)
+    ? [...new Set(body.party_codes.map(c => String(c).slice(0, 40)).filter(Boolean))]
+    : []
+  if (!codes.length) return send(res, 400, { error: 'Tick at least one party.' })
+  if (codes.length > MAX_PER_CALL) return send(res, 400, { error: `At most ${MAX_PER_CALL} at a time.` })
+  const template = String(body.template || '').trim().slice(0, 1000)
+  if (template.length < 10) return send(res, 400, { error: 'Write the message first.' })
+
+  const intCodes = codes.filter(c => /^\d+$/.test(c)).map(Number)
+  const since = new Date(Date.now() - REMINDER_GAP_HOURS * 3600 * 1000).toISOString()
+  const [seg, pd, cu, recent] = await Promise.all([
+    busy.from('dues_segmented').select('party_code, party_name, outstanding_balance, group_name, group_path, due_type').in('party_code', codes),
+    busy.from('party_dues').select('party_code, phone_primary, phone_all, needs_review').in('party_code', codes),
+    intCodes.length ? busy.from('customers').select('party_code, mobile, whatsapp_no').in('party_code', intCodes) : Promise.resolve({ data: [] }),
+    busy.from('collection_followups').select('party_code').eq('channel', 'reminder').eq('outcome', 'sent')
+      .in('party_code', codes).gte('created_at', since),
+  ])
+  const segMap = new Map(check(seg, 'dues').map(r => [String(r.party_code), r]))
+  const pdMap = new Map(check(pd, 'party_dues').map(r => [String(r.party_code), r]))
+  const cuMap = new Map(check(cu, 'customers').map(r => [String(r.party_code), r]))
+  const recentSet = new Set(check(recent, 'recent').map(r => String(r.party_code)))
+
+  const results = []
+  const toSend = []
+  for (const code of codes) {
+    const s = segMap.get(code)
+    const p = pdMap.get(code) || {}
+    const c = cuMap.get(code) || {}
+    const party = s && { party_code: code, party_name: s.party_name, group_name: s.group_name, balance: Number(s.outstanding_balance) || 0 }
+    let skip = null
+    if (!s || s.due_type !== 'Receivable') skip = 'not_found'
+    else if (isDnd(s)) skip = 'dnd'
+    else if (p.needs_review === true) skip = 'needs_review'
+    else if (party.balance <= 0) skip = 'nothing_due'
+    else if (recentSet.has(code)) skip = 'recent'
+    if (skip) { results.push({ party_code: code, status: skip }); continue }
+    const mobile = cleanPhone(c.whatsapp_no) || phonesFrom(c.mobile, s.phone_primary, p.phone_primary, p.phone_all)[0] || null
+    toSend.push({ party, mobile })
+  }
+
+  // Three at a time keeps a batch of 25 well inside the function time limit.
+  const queue = [...toSend]
+  const logRows = []
+  async function worker() {
+    while (queue.length) {
+      const { party, mobile } = queue.shift()
+      const message = fillTemplate(template, party)
+      const status = mobile ? await sendWhatsApp(mobile, message) : 'no_number'
+      results.push({ party_code: party.party_code, status, mobile })
+      logRows.push({
+        party_code: party.party_code, party_name: party.party_name, group_name: party.group_name,
+        channel: 'reminder', outcome: status, mobile, message, balance_at_time: party.balance,
+        created_by: me.id, created_by_name: me.name,
+      })
+    }
+  }
+  await Promise.all([worker(), worker(), worker()])
+
+  if (logRows.length) {
+    const ins = await busy.from('collection_followups').insert(logRows)
+    if (ins.error) console.error('collections reminder log failed:', ins.error)
+  }
+  const sentAt = new Date().toISOString()
+  return send(res, 200, { results, sentAt })
 }

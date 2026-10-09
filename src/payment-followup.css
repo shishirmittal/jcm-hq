@@ -129,3 +129,63 @@ body.pf-modal-open { overflow: hidden; }
   .pf-actions { justify-content: flex-start; }
   .pf-row2 { grid-template-columns: 1fr; }
 }
+
+/* Tabs: Follow-up calls | WhatsApp reminders */
+.pf-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 1rem; overflow-x: auto; }
+.pf-tab { padding: 8px 14px; font-size: 13.5px; font-weight: 600; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+.pf-tab:hover { color: var(--text); }
+.pf-tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+
+.pf-note { background: var(--vio-bg); color: var(--vio-dk); border-radius: 10px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px; }
+.pf-note strong { color: inherit; }
+.pf-warn { margin-top: 6px; color: var(--amb-dk); background: var(--amb-bg); border-radius: 8px; padding: 6px 10px; }
+
+/* WhatsApp reminders */
+.pfr-layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
+.pfr-right {
+  position: sticky; top: 72px; display: flex; flex-direction: column; gap: 8px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px;
+}
+.pfr-filters { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 12.5px; color: var(--muted); font-weight: 600; margin-bottom: 10px; }
+.pfr-filters label { display: inline-flex; align-items: center; gap: 6px; }
+.pfr-filters input, .pfr-filters select { height: 32px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); padding: 0 8px; font-size: 13px; font-family: inherit; }
+.pfr-filters input { width: 100px; }
+.pfr-bulkbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; font-size: 13px; padding: 8px 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 8px; }
+.pfr-bulkbar:empty { display: none; }
+.pfr-bulk-actions { display: inline-flex; gap: 6px; }
+.pfr-list { display: flex; flex-direction: column; gap: 6px; }
+.pfr-row {
+  display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: 10px; padding: 9px 12px; cursor: pointer;
+}
+.pfr-row input { width: 18px; height: 18px; accent-color: #25D366; flex-shrink: 0; cursor: pointer; }
+.pfr-row.is-picked { border-color: #25D366; background: color-mix(in srgb, #25D366 7%, var(--surface)); }
+.pfr-row.is-blocked { opacity: .62; cursor: default; }
+.pfr-row.is-blocked input { cursor: not-allowed; }
+.pfr-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.pfr-name { font-weight: 700; color: var(--ink); overflow-wrap: anywhere; }
+.pfr-row-side { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; }
+.pfr-amount { font-weight: 800; color: var(--red-dk); font-variant-numeric: tabular-nums; }
+.pfr-help { font-size: 12px; color: var(--muted); }
+.pfr-preview-label { font-size: 12px; font-weight: 600; color: var(--muted); }
+.pfr-preview {
+  white-space: pre-wrap; font-size: 13px; line-height: 1.5; color: #111b21; background: #d9fdd3;
+  border-radius: 8px 8px 8px 2px; padding: 9px 11px; max-height: 260px; overflow-y: auto;
+}
+.pfr-send { height: 42px; border-radius: 10px; border: none; font-size: 14px; cursor: pointer; }
+.pfr-send:disabled { opacity: .5; cursor: not-allowed; }
+.pfr-confirm { background: var(--amb-bg); color: var(--amb-dk); border-radius: 10px; padding: 10px 12px; font-size: 13px; }
+.pfr-confirm p { margin: 0 0 8px; }
+.pfr-progress { position: relative; height: 26px; border-radius: 8px; background: var(--line-soft); overflow: hidden; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
+.pfr-progress-bar { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: color-mix(in srgb, #25D366 40%, transparent); transition: width .3s; }
+.pfr-progress span { position: relative; }
+.pfr-summary { font-size: 13px; color: var(--body); }
+.pfr-summary:empty { display: none; }
+
+@media (max-width: 900px) {
+  .pfr-layout { grid-template-columns: 1fr; }
+  .pfr-right { position: static; }
+}
+.pfr-bulkbar { position: sticky; top: 56px; z-index: 4; }
+.pfr-jump { display: none; margin-left: auto; border: none; border-radius: 8px; background: #25D366; color: #fff; font-weight: 600; font-size: 12.5px; padding: 6px 10px; cursor: pointer; font-family: inherit; }
+@media (max-width: 900px) { .pfr-jump { display: inline-block; } }
