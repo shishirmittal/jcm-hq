@@ -71,3 +71,18 @@ body.dark-mode .jo-hq .jo-hqhead { background: var(--bg); }
 .jo-hq .jo-tv-frame { position: relative; width: 100%; overflow: hidden; border-radius: 8px; background: #0C111B; box-shadow: 0 0 0 6px #0C111B; }
 .jo-hq .jo-tv-frame .tv { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 @media (max-width: 600px) { .jo-hq .jo-tv-4 { grid-template-columns: repeat(2, 1fr); } }
+
+/* ---- Orders tab (the staff tablet inside HQ): always the phone layout, in the
+   page's flow instead of a fixed full-screen stage. Keeps the tablet's condensed
+   font and big touch targets; colours follow Day / Night. ---- */
+.tb-hq.tb-stage { position: relative; inset: auto; min-height: 100vh; background: var(--bg); overflow: visible; user-select: auto; -webkit-user-select: auto; }
+.tb-hq .tb.tb-phone { position: relative; inset: auto; width: auto; height: auto; min-height: 100vh; max-width: 760px; margin: 0 auto; overflow: visible; background: var(--bg); font-family: 'Roboto Condensed', Arial, sans-serif; }
+@media (min-width: 800px) { .tb-hq .tb.tb-phone { border-left: 1px solid var(--line); border-right: 1px solid var(--line); } }
+.tb-hq .tb-head { background: var(--hq-side); }
+/* The READY card's navy number and edge would vanish on the night background. */
+body.dark-mode .tb-hq .tb-card[data-card="ready"] { border-top-color: #8FB7F5 !important; }
+body.dark-mode .tb-hq .tb-card[data-card="ready"] .tb-card-count { color: #8FB7F5 !important; }
+
+/* Orders tab: confirm sheets sit above the phone tab bar */
+body.has-tabbar .tb-hq .tb-sheet { padding-bottom: calc(var(--app-nav-h, 64px) + 28px); }
+@media (min-width: 800px) { body.has-tabbar:not(.native-app) .tb-hq .tb-sheet { padding-bottom: 36px; } }

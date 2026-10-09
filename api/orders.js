@@ -5,6 +5,7 @@ import settings from './_orders/handlers/settings.js'
 import hindi from './_orders/handlers/hindi.js'
 import email from './_orders/handlers/email.js'
 import board from './_orders/handlers/board.js'
+import floor from './_orders/handlers/floor.js'
 
 // One Vercel function for every JCM Orders admin screen inside JCM HQ — the
 // Hobby plan allows 12 functions in a project, so the orders handlers share
@@ -21,6 +22,7 @@ import board from './_orders/handlers/board.js'
 //   /api/orders?h=settings  time limits, tablet staff, TV display, close old orders
 //   /api/orders?h=hindi     carton label language and Hindi names
 //   /api/orders?h=board     the TV board's data, for the TV display preview
+//   /api/orders?h=floor     the Orders tab: pick / check / ready / dispatch (was /api/tablet)
 const ROUTES = {
   owner: [owner, 'material'],
   email: [email, 'material'],
@@ -29,6 +31,7 @@ const ROUTES = {
   settings: [settings, 'warehouse'],
   hindi: [hindi, 'warehouse'],
   board: [board, 'warehouse'],
+  floor: [floor, 'floor-orders'],
 }
 
 export default async function handler(req, res) {

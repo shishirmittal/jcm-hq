@@ -3,7 +3,7 @@
 import { formatElapsed, shortSo, shortInv } from './board-logic.js'
 
 const TZ = 'Asia/Kolkata'
-export const STAGE_COLOR = { new: '#D98E2B', picking: '#2E7D5B', invoiced: '#2F5FA3', checked: '#2F5FA3', in_bay: '#12213B' }
+export const STAGE_COLOR = { new: '#D98E2B', picking: '#2E7D5B', invoiced: '#2F5FA3', checked: '#2F5FA3', in_bay: 'var(--ink)' } // JCM HQ: follows Day / Night
 const STEP_KEYS = ['new', 'picking', 'invoiced', 'checked', 'in_bay']
 const STEP_LABELS = ['New', 'Picking', 'Invoiced', 'Checked', 'Ready']
 
@@ -69,7 +69,7 @@ export function badge(o) {
 export function steps(stage) {
   const i = STEP_KEYS.indexOf(stage)
   return STEP_LABELS.map((l, j) => j < i
-    ? { label: `✓ ${l}`, bd: '#12213B', bg: 'transparent', fg: '#12213B' }
+    ? { label: `✓ ${l}`, bd: 'var(--ink)', bg: 'transparent', fg: 'var(--ink)' }
     : j === i ? { label: l, bd: STAGE_COLOR[stage], bg: STAGE_COLOR[stage], fg: i === 0 ? '#0C111B' : '#FFFFFF' }
       : { label: l, bd: '#C9C4B8', bg: 'transparent', fg: '#7A7F89' })
 }

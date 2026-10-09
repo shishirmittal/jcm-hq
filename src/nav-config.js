@@ -58,6 +58,10 @@ export const NAV_CONFIG = [
   // adminOnly as on the orders site, but grantable: tick one for a person in
   // Manage Users and api/orders.js lets them in too.
   { section: 'Warehouse', items: [
+    // The staff tablet's work (pick, check, boxes + labels, dispatch with LR
+    // photo) for people signed in to HQ — a phone tab. Jobs come from Warehouse
+    // & Devices → Tablet staff; api/orders.js?h=floor enforces them.
+    { id: 'floor-orders', label: 'Orders', icon: 'pick', hash: '#floor-orders' },
     { id: 'material', label: 'Pending Material', icon: 'package', hash: '#material' },
     { id: 'order-log', label: 'Order Log', icon: 'clock', hash: '#order-log', adminOnly: true },
   ] },

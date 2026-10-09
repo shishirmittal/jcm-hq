@@ -35,7 +35,7 @@ let hasSession = false
 let ccModule = null
 // The JCM Orders screens (React) load the same way, only when first opened.
 let ordersModule = null
-const ORDERS_HASHES = { '#material': 'material', '#order-log': 'order-log', '#warehouse': 'warehouse' }
+const ORDERS_HASHES = { '#material': 'material', '#order-log': 'order-log', '#warehouse': 'warehouse', '#floor-orders': 'floor-orders' }
 
 async function init() {
   const { data: { session } } = await supabase.auth.getSession()

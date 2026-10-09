@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import Admin, { setHqName } from './pages/Admin.jsx'
 import Owner from './pages/Owner.jsx'
 import Logs from './pages/Logs.jsx'
+import Floor from './pages/Floor.jsx'
 import './hq-orders.css'
 
 // The JCM Orders admin screens (from shishirmittal/jcm-orders) as React
@@ -31,7 +32,7 @@ class SafetyNet extends Component {
   }
 }
 
-const PAGES = { warehouse: Admin, material: Owner, 'order-log': Logs }
+const PAGES = { warehouse: Admin, material: Owner, 'order-log': Logs, 'floor-orders': Floor }
 
 let root = null
 

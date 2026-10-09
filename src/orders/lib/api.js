@@ -15,6 +15,7 @@ function mapPath(path) {
   const m = base.match(/^\/api\/admin\/([a-z-]+)$/)
   if (m) h = m[1]
   else if (base === '/api/cron/daily-email') h = 'email'
+  else if (base === '/api/tablet') h = 'floor'
   if (!h) return path
   return `/api/orders?h=${h}${query ? `&${query}` : ''}`
 }
