@@ -10,8 +10,8 @@ Busy and adds any new alerts to the JCM-Busysql Supabase project:
 | zero_qty | sales line with quantity 0 | same |
 | below_cost | sales line priced (before GST, abs(Value3) / abs(qty)) below the item's average purchase cost this FY (SUM Value3 / SUM qty over purchase bills, VchType 2) | `Tran2` |
 | modified | every bill edit, with amount and quantity before → after, and whether it was already printed | `CheckList` Type 2 Action 2, `Tran12` print log |
-| old_bill_edited | an edit made 2+ days after the bill's own date | same |
-| backdated | a bill typed in 2+ days after the date it carries | `CheckList` Action 1 time vs `Tran1.Date` |
+| old_bill_edited | an edit to a sales-side bill (sales, sales return, credit note, sales challan) made 2+ days after its own date | same |
+| backdated | a sales-side bill typed in 2+ days after the date it carries | `CheckList` Action 1 time vs `Tran1.Date` |
 
 Gift items (`red_alert_skip_items`) are skipped by the ₹0 checks. Quotations,
 sales orders and purchase orders are not checked for edits or backdating.

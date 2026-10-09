@@ -15,9 +15,9 @@
 //   4. Bill edits (modified / old_bill_edited): every "modified" entry in Busy's audit log
 //        (CheckList Type 2, Action 2) with who, when, which computer, the amount and quantity
 //        before and after, and whether the bill had already been printed (Tran12).
-//        An edit made BACKDATE_DAYS or more after the bill's own date is old_bill_edited.
-//   5. Backdated entry (backdated): a bill typed in BACKDATE_DAYS or more after the date it carries
-//        (CheckList Action 1 time vs Tran1.Date).
+//        An edit to a sales-side bill made BACKDATE_DAYS or more after its own date is old_bill_edited.
+//   5. Backdated entry (backdated): a sales-side bill (sales, sales return, credit note, sales challan)
+//        typed in BACKDATE_DAYS or more after the date it carries (CheckList Action 1 time vs Tran1.Date).
 //   Quotations, sales orders and purchase orders are drafts by nature, so edits and backdating on
 //   them are not flagged.
 //
@@ -40,6 +40,10 @@ const path = require('path');
 
 const BACKDATE_DAYS = 2;              // "typed in / edited this many days after the bill date" counts as backdated
 const DRAFT_VCH_TYPES = [12, 13, 26]; // sales order, purchase order, quotation: not checked for edits/backdating
+// Backdating only matters on the sales side: purchase bills carry the supplier's date and receipts,
+// payments and journals are routinely typed in later from statements. Edits to other bills still show
+// as plain 'modified'.
+const SALES_SIDE_VCH_TYPES = [9, 3, 18, 11]; // sales invoice, sales return, credit note, sales challan
 const AS_HISTORY = process.argv.includes('--as-history');
 
 const LOG_FILE = path.join(__dirname, 'red-alerts.log');
@@ -277,6 +281,7 @@ async function readAudit(pool) {
       AND (
         l.Action = 2
         OR (l.Action = 1 AND l.NthOfAction = 1 AND t1.Date IS NOT NULL
+            AND t1.VchType IN (${SALES_SIDE_VCH_TYPES.join(',')})
             AND DATEDIFF(day, t1.Date, l.ActionTime) >= ${BACKDATE_DAYS})
       )`);
 
@@ -306,7 +311,7 @@ async function readAudit(pool) {
 
     const amountChanged = a.PrevAmount != null && Math.abs(Number(a.Amount) - Number(a.PrevAmount)) >= 0.01;
     const qtyChanged = a.PrevQty != null && Math.abs(Number(a.Qty) - Number(a.PrevQty)) >= 0.0001;
-    const old = a.DaysAfterBill != null && a.DaysAfterBill >= BACKDATE_DAYS;
+    const old = a.DaysAfterBill != null && a.DaysAfterBill >= BACKDATE_DAYS && SALES_SIDE_VCH_TYPES.includes(a.VchType);
     out.push({
       alert_key: `mod|${DB}|${a.Code}|${a.ActionAt}${a.Occurrence > 1 ? `|${a.Occurrence}` : ''}`,
       alert_type: old ? 'old_bill_edited' : 'modified',
