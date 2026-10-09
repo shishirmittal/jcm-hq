@@ -48,6 +48,12 @@ export const NAV_CONFIG = [
     { id: 'quotations', label: 'Quotations', icon: 'file', hash: '#quotations', badge: 'pendingQuotes' },
     { id: 'payments', label: 'Payments', icon: 'card', hash: '#payments', adminOnly: true },
   ] },
+  // Payment Follow-up: call/WhatsApp parties with dues by account group, save
+  // outcomes + next follow-up date. api/collections.js lets in admins and anyone
+  // with 'payment-followup' in allowed_tabs. Badge = follow-ups due today/overdue.
+  { section: 'Collections', items: [
+    { id: 'payment-followup', label: 'Payment Follow-up', icon: 'chase', hash: '#payment-followup', adminOnly: true, badge: 'paymentFollowup' },
+  ] },
   // JCM Orders admin screens (from orders.jcmretails.com /owner and /logs).
   // adminOnly as on the orders site, but grantable: tick one for a person in
   // Manage Users and api/orders.js lets them in too.

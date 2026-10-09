@@ -15,6 +15,7 @@ import { renderItemsManagement } from './items-management.js'
 import { renderPriceUpdate } from './price-update.js'
 import { renderRedAlerts } from './red-alerts.js'
 import { renderExplain } from './explain.js'
+import { renderPaymentFollowup } from './payment-followup.js'
 import { renderTaskBoard, unmountTaskBoard } from './task-board.js'
 import { mountPinnedSidebar, unmountPinnedSidebar } from './sidebar.js'
 import { renderStock, unmountStock } from './stock.js'
@@ -213,6 +214,8 @@ function route() {
     renderItemsManagement(app)
   } else if (hash === '#red-alerts') {
     renderRedAlerts(app)
+  } else if (hash === '#payment-followup' || hash.startsWith('#payment-followup/')) {
+    renderPaymentFollowup(app, hash.split('/')[1] || null)
   } else if (hash === '#explain') {
     renderExplain(app)
   } else if (hash === '#price-update') {
