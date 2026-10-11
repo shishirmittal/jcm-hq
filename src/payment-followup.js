@@ -559,9 +559,11 @@ export function renderPaymentFollowup(container, sub) {
       const r = await call({ action: 'daily-now', which })
       if (which === 'morning') {
         const ppl = r.morning?.people || []
-        out.textContent = ppl.length
-          ? ppl.map(p => `${p.person}: ${p.due} due · task ${p.task} · WhatsApp ${p.whatsapp}`).join('   |   ') + (r.morning.unassigned ? `   |   ${r.morning.unassigned} with nobody assigned` : '')
-          : 'Nobody has follow-ups due today.'
+        const un = r.morning?.unassigned || 0
+        out.textContent = [
+          ...ppl.map(p => `${p.person}: ${p.due} due · task ${p.task} · WhatsApp ${p.whatsapp}`),
+          un ? `${un} due parties are in groups with nobody assigned — set them in Assign groups (or choose who gets unassigned groups)` : null,
+        ].filter(Boolean).join('   |   ') || 'Nobody has follow-ups due today.'
       } else {
         out.textContent = `${r.evening?.done ?? 0} done, ${r.evening?.left ?? 0} left · ` + (r.evening?.sent || []).map(x => `${x.to}: ${x.whatsapp}`).join(', ')
       }
