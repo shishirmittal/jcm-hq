@@ -544,9 +544,14 @@ async function handleOwners(busy, hq, me, res) {
   }
   // Groups given to someone earlier but with nothing due right now stay listed.
   for (const [name] of owners.byGroup) if (!map.has(name)) map.set(name, { group_name: name, segment: '', parties: 0, total: 0 })
-  const groups = [...map.values()].map(g => ({ ...g, hq_user_id: owners.byGroup.get(g.group_name) || null }))
+  // Dealer / Retail type per group (column added by collections-group-kind.sql).
+  const kr = await busy.from('collection_group_owners').select('group_name, kind')
+  const kindReady = !kr.error
+  const kinds = new Map((kr.data || []).map(r => [r.group_name, r.kind === 'retail' ? 'retail' : 'dealer']))
+  for (const name of kinds.keys()) if (!map.has(name)) map.set(name, { group_name: name, segment: '', parties: 0, total: 0 })
+  const groups = [...map.values()].map(g => ({ ...g, hq_user_id: owners.byGroup.get(g.group_name) || null, kind: kinds.get(g.group_name) || 'dealer' }))
     .sort((a, b) => b.total - a.total)
-  return send(res, 200, { groups, defaultOwner: owners.defaultOwner, people: people.map(p => ({ id: p.id, name: p.name })) })
+  return send(res, 200, { groups, kindReady, defaultOwner: owners.defaultOwner, people: people.map(p => ({ id: p.id, name: p.name })) })
 }
 
 async function handleOwnersSave(busy, me, body, res) {
@@ -555,7 +560,11 @@ async function handleOwnersSave(busy, me, body, res) {
   const list = Array.isArray(body.owners) ? body.owners.slice(0, 500) : []
   const rows = list
     .filter(o => o && typeof o.group_name === 'string')
-    .map(o => ({ group_name: o.group_name.slice(0, 200), hq_user_id: uuid(o.hq_user_id), updated_by: me.name, updated_at: new Date().toISOString() }))
+    .map(o => {
+      const r = { group_name: o.group_name.slice(0, 200), hq_user_id: uuid(o.hq_user_id), updated_by: me.name, updated_at: new Date().toISOString() }
+      if (o.kind === 'dealer' || o.kind === 'retail') r.kind = o.kind
+      return r
+    })
   if (rows.length) check(await busy.from('collection_group_owners').upsert(rows, { onConflict: 'group_name' }), 'owners save')
   if ('default_owner' in body) {
     check(await busy.from('collection_settings').upsert({ id: 1, default_owner: uuid(body.default_owner), updated_at: new Date().toISOString() }, { onConflict: 'id' }), 'settings save')

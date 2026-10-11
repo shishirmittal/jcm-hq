@@ -594,8 +594,14 @@ export function renderPaymentFollowup(container, sub) {
             <div class="pf-owner-row">
               <div><div class="pf-owner-name">${esc(g.group_name || '(No group)')}${g.dnd ? ' <span class="pf-tag pf-tag-dnd">DND</span>' : ''}</div>
                 <div class="pf-muted">${g.parties} parties · ${esc(shortRupees(g.total))}${g.segment ? ` · ${esc(g.segment)}` : ''}</div></div>
-              <select class="pf-select" data-owner="${i}">${opts(g.hq_user_id)}</select>
+              <div class="pf-owner-pick">
+                <select class="pf-select" data-owner="${i}">${opts(g.hq_user_id)}</select>
+                ${ownersData.kindReady ? `<select class="pf-select" data-kind="${i}" title="Dealer = reminders show total outstanding and overdue. Retail = one amount due.">
+                  <option value="dealer" ${g.kind === 'dealer' ? 'selected' : ''}>Dealer</option>
+                  <option value="retail" ${g.kind === 'retail' ? 'selected' : ''}>Retail</option></select>` : ''}
+              </div>
             </div>`).join('')}
+          ${ownersData.kindReady ? '' : '<div class="pf-muted">To set Dealer / Retail, run supabase/collections-group-kind.sql in Supabase first.</div>'}
         </div>`
     } catch (err) {
       $('pfOwnersBody').innerHTML = `<div class="empty-state">${esc(err.message)}</div>`
@@ -607,8 +613,9 @@ export function renderPaymentFollowup(container, sub) {
   }
   async function saveOwners() {
     if (!ownersData) return
-    const owners = ownersData.groups.map((g, i) => ({ group_name: g.group_name, hq_user_id: $('pfOwnersBody').querySelector(`[data-owner="${i}"]`).value || null }))
-      .filter((o, i) => o.hq_user_id !== (ownersData.groups[i].hq_user_id || null))
+    const kindOf = i => $('pfOwnersBody').querySelector(`[data-kind="${i}"]`)?.value
+    const owners = ownersData.groups.map((g, i) => ({ group_name: g.group_name, hq_user_id: $('pfOwnersBody').querySelector(`[data-owner="${i}"]`).value || null, kind: kindOf(i), _i: i }))
+      .filter(o => o.hq_user_id !== (ownersData.groups[o._i].hq_user_id || null) || (o.kind && o.kind !== ownersData.groups[o._i].kind))
     $('pfOwnersSave').disabled = true
     try {
       await call({ action: 'owners-save', owners, default_owner: $('pfOwnerDefault').value || null })
