@@ -35,6 +35,11 @@ function readStaffFields(body) {
     out.whatsapp = digits || null
   }
   if (typeof body?.busy_login === 'string') out.busy_login = body.busy_login.trim().slice(0, 40) || null
+  // reports_to: the people this person reports to (profile ids). Used to send
+  // their work — e.g. purchase bills they type into Busy — to those people.
+  if (Array.isArray(body?.reports_to)) {
+    out.reports_to = [...new Set(body.reports_to.filter(v => typeof v === 'string' && /^[0-9a-f-]{36}$/i.test(v)))].slice(0, 10)
+  }
   return { fields: out, error: errors[0] || null }
 }
 
@@ -48,7 +53,7 @@ async function busyLoginTaken(supabaseAdmin, login, exceptId) {
 
 // The new columns may not exist until the Supabase update has been run.
 function columnHint(err) {
-  return /employee_id|whatsapp|busy_login/.test(err?.message || '') ? 'Run the latest Supabase update for Manage Users first (new staff columns).' : null
+  return /employee_id|whatsapp|busy_login|reports_to/.test(err?.message || '') ? 'Run the latest Supabase update for Manage Users first (new staff columns).' : null
 }
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -158,6 +163,7 @@ async function handleList(supabaseAdmin, res) {
     employee_id: p.employee_id ?? null,
     whatsapp: p.whatsapp ?? null,
     busy_login: p.busy_login ?? null,
+    reports_to: Array.isArray(p.reports_to) ? p.reports_to : [],
     pin: pinByUser[p.id] ?? null,
   }))
   res.status(200).json({ users })
@@ -237,6 +243,7 @@ async function handleUpdate(supabaseAdmin, body, res) {
 
   if (!id) { res.status(400).json({ error: 'Missing user id' }); return }
   const staff = readStaffFields(body)
+  if (staff.fields.reports_to) staff.fields.reports_to = staff.fields.reports_to.filter(v => v !== id)
   if (staff.error) { res.status(400).json({ error: staff.error }); return }
   if (await busyLoginTaken(supabaseAdmin, staff.fields.busy_login, id)) { res.status(400).json({ error: 'That Busy login is already linked to someone else' }); return }
   if (!name) { res.status(400).json({ error: 'Name is required' }); return }

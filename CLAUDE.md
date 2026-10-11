@@ -32,6 +32,7 @@ Each module may be built in its own Claude chat that pushes straight to `main` (
 ## People live in Manage Users only (Shishir, 2026-10-10)
 - Every person's details are kept on `profiles` and edited in Manage Users (#admin): name, email, PIN, page access, plus `employee_id`, `whatsapp` (10-digit mobile) and `busy_login` (their Busy user name). Modules must read people from there — never build a second people/user list in a module.
 - Red Alerts maps Busy's log (user names) to people through `profiles.busy_login`; staff WhatsApp messages use `profiles.whatsapp`.
+- `profiles.reports_to` (uuid[], Manage Users → "Reports to") is the reporting line. Purchase Summary sends each new bill to the "Every bill" list plus the people its maker (matched by `busy_login`) reports to.
 
 ## Vercel env vars (set by Shishir)
 - `SUPABASE_SERVICE_ROLE_KEY` (CRM project), `SUPABASE_BUSY_SERVICE_ROLE_KEY` (Busy project). `ANTHROPIC_API_KEY` not set yet (only Ask AI needs it).

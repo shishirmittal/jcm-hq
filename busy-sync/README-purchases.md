@@ -5,7 +5,8 @@ Every run it copies this financial year's purchase bills (Busy voucher type 2) i
 JCM-Busysql Supabase project, then calls `POST https://hq.jcmretails.com/api/purchases`
 `{ action: 'notify' }` with the Busy service key, and HQ sends:
 
-- one WhatsApp per new purchase bill (to people ticked "Every bill"), and
+- one WhatsApp per new purchase bill (to people ticked "Every bill", plus the people whoever
+  typed it in reports to — Manage Users → Reports to, matched by their Busy login), and
 - the evening summary once a day, after the time set on the page (people ticked "Evening summary").
 
 Bills typed in more than 2 days before they reach HQ are never sent one by one (so a first

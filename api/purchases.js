@@ -10,7 +10,8 @@ import { createClient } from '@supabase/supabase-js'
 // through here with the Busy project's service key after the HQ session is checked.
 //
 // WhatsApp (Whatshub360, same WHATSHUB_SEND_URL / WHATSHUB_VID as Red Alerts):
-//   instant — one message per new bill, to people ticked "Every bill"
+//   instant — one message per new bill, to people ticked "Every bill", plus the
+//             people the bill's maker reports to (Manage Users → Reports to)
 //   daily   — the evening summary, once a day after purchase_settings.summary_time (IST)
 // Both are sent from action 'notify', which the sync script calls after each run with
 // the Busy service key (checked below by reading a closed table with it).
@@ -371,6 +372,28 @@ async function recipients(busy, hq, kind) {
   return profiles.filter(p => p.active !== false).map(p => ({ id: p.id, name: p.name || p.email || '', mobile: p.whatsapp || '' }))
 }
 
+// Each bill also goes to the people its maker reports to (Manage Users →
+// "Reports to"), matched through the Busy login that entered it. Added to the
+// "Every bill" list, never instead of it; each person gets it once.
+async function managersByLogin(hq) {
+  const { data, error } = await hq.from('profiles').select('*').eq('active', true)
+  if (error) { console.error('purchases: reports_to read failed:', error); return new Map() }
+  const byId = new Map((data || []).map(p => [p.id, p]))
+  const out = new Map()
+  for (const p of data || []) {
+    if (!p.busy_login || !Array.isArray(p.reports_to) || !p.reports_to.length) continue
+    const bosses = p.reports_to.map(id => byId.get(id)).filter(Boolean)
+      .map(b => ({ id: b.id, name: b.name || b.email || '', mobile: b.whatsapp || '' }))
+    if (bosses.length) out.set(String(p.busy_login).trim().toLowerCase(), bosses)
+  }
+  return out
+}
+function forBill(base, managers, v) {
+  const extra = managers.get(String(v.entered_by || '').trim().toLowerCase()) || []
+  const seen = new Set(base.map(p => p.id))
+  return [...base, ...extra.filter(p => !seen.has(p.id) && seen.add(p.id))]
+}
+
 async function sendToAll(busy, people, message, logBase) {
   const results = await Promise.all(people.map(async p => {
     const status = await sendWhatsApp(p.mobile, message)
@@ -411,13 +434,13 @@ async function runNotify(busy, hq) {
     }
     const due = pending.filter(v => !tooOld.includes(v)).slice(0, MAX_INSTANT_PER_CALL)
     if (due.length) {
-      const [people, names, lines] = await Promise.all([recipients(busy, hq, 'instant'), loginNames(busy, hq), linesFor(busy, due.map(v => v.vch_key))])
+      const [people, names, lines, managers] = await Promise.all([recipients(busy, hq, 'instant'), loginNames(busy, hq), linesFor(busy, due.map(v => v.vch_key)), managersByLogin(hq)])
       for (const v of due) {
         // Claim it first, so two runs at once can never send the same bill twice.
         const claimed = check(await busy.from('purchase_vouchers').update({ notify_state: 'sending' })
           .eq('vch_key', v.vch_key).eq('notify_state', 'pending').select('vch_key'), 'claim')
         if (!claimed.length) continue
-        const results = await sendToAll(busy, people, billMessage(v, lines[v.vch_key] || [], names), { kind: 'instant', vch_key: v.vch_key })
+        const results = await sendToAll(busy, forBill(people, managers, v), billMessage(v, lines[v.vch_key] || [], names), { kind: 'instant', vch_key: v.vch_key })
         check(await busy.from('purchase_vouchers').update({ notify_state: overall(results), notified_at: new Date().toISOString() })
           .eq('vch_key', v.vch_key), 'mark sent')
         out.instant++
@@ -451,8 +474,9 @@ async function handleSendBill(busy, hq, body, res) {
   const key = String(body.vch_key || '')
   const v = check(await busy.from('purchase_vouchers').select('*').eq('vch_key', key).maybeSingle(), 'bill')
   if (!v) return send(res, 404, { error: 'Bill not found.' })
-  const [people, names, lines] = await Promise.all([recipients(busy, hq, 'instant'), loginNames(busy, hq), linesFor(busy, [key])])
-  if (!people.length) return send(res, 400, { error: 'Nobody is ticked for "Every bill" yet. Add people under WhatsApp settings.' })
+  const [base, names, lines, managers] = await Promise.all([recipients(busy, hq, 'instant'), loginNames(busy, hq), linesFor(busy, [key]), managersByLogin(hq)])
+  const people = forBill(base, managers, v)
+  if (!people.length) return send(res, 400, { error: 'Nobody gets this bill: tick someone for "Every bill", or set "Reports to" for whoever entered it in Manage Users.' })
   const results = await sendToAll(busy, people, billMessage(v, lines[key] || [], names), { kind: 'instant', vch_key: key })
   check(await busy.from('purchase_vouchers').update({ notify_state: overall(results), notified_at: new Date().toISOString() }).eq('vch_key', key), 'mark sent')
   return send(res, 200, { ok: true, results: results.map(r => ({ name: r.name, status: r.status })) })

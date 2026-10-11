@@ -71,7 +71,7 @@ async function callAdminUsersApi(payload) {
 
 // Shared create/edit form -- same fields, same validation, same API call
 // shape either way, just a different action and an id on the payload.
-function showUserForm({ existing, onSaved }) {
+function showUserForm({ existing, onSaved, users = [] }) {
   const isEdit = !!existing
   // An admin's row is not the source of truth for what they can see -- they
   // see everything regardless -- so the block is replaced by a note rather
@@ -109,6 +109,17 @@ function showUserForm({ existing, onSaved }) {
           <label>Busy login</label>
           <input type="text" id="uf_busy" value="${esc(existing?.busy_login || '')}" placeholder="The user name they log into Busy with, e.g. Rm" maxlength="40" />
           <p class="form-check-hint">Links their entries in Busy to them — Red Alerts uses it to say who did what and to ask them about it.</p>
+        </div>
+        <div class="form-group">
+          <label>Reports to</label>
+          <div class="uf-reports" id="uf_reports">
+            ${users.filter(u => u.active && u.id !== existing?.id).map(u => `
+              <label class="form-check uf-report">
+                <input type="checkbox" value="${esc(u.id)}"${(existing?.reports_to || []).includes(u.id) ? ' checked' : ''} />
+                <span>${esc(u.name || u.email)}</span>
+              </label>`).join('') || '<p class="form-check-hint">No other users yet.</p>'}
+          </div>
+          <p class="form-check-hint">Their work goes to these people too — for example every purchase bill they type into Busy.</p>
         </div>
         <div class="form-group">
           <label>PIN (4 digits) *</label>
@@ -181,7 +192,8 @@ function showUserForm({ existing, onSaved }) {
     btn.textContent = 'Saving...'
     const hideFromRoster = document.getElementById('uf_hide').checked
 
-    const staff = { employee_id: employeeId, whatsapp, busy_login: busyLogin }
+    const reportsTo = [...overlay.querySelectorAll('#uf_reports input[type="checkbox"]:checked')].map(cb => cb.value)
+    const staff = { employee_id: employeeId, whatsapp, busy_login: busyLogin, reports_to: reportsTo }
     const payload = isEdit
       ? { action: 'update', id: existing.id, name, email, pin, hide_from_roster: hideFromRoster, ...staff, ...(allowedTabs ? { allowed_tabs: allowedTabs } : {}) }
       : { action: 'create', name, email, pin, hide_from_roster: hideFromRoster, ...staff, allowed_tabs: allowedTabs || [] }
@@ -223,9 +235,10 @@ export async function renderAdmin(container, onBack) {
 
   document.getElementById('backBtn').addEventListener('click', onBack)
   document.getElementById('addUserBtn').addEventListener('click', () => {
-    showUserForm({ onSaved: info => loadUsers(info) })
+    showUserForm({ onSaved: info => loadUsers(info), users: lastUsers })
   })
 
+  let lastUsers = []
   await loadUsers()
 
   // info: { emailChanged, tabsSavedFor } from the form, undefined on a plain
@@ -245,6 +258,8 @@ export async function renderAdmin(container, onBack) {
     }
 
     const users = result.data.users || []
+    lastUsers = users
+    const nameById = Object.fromEntries(users.map(u => [u.id, u.name || u.email]))
     wrap.innerHTML = `
       ${tabsSavedFor ? `<p class="admin-note">Tab access saved. Changes apply next time ${esc(tabsSavedFor)} reloads the app.</p>` : ''}
       ${justChangedEmail ? '<p class="admin-note">Email updated — the change took effect immediately, no confirmation step required on this account.</p>' : ''}
@@ -259,6 +274,7 @@ export async function renderAdmin(container, onBack) {
                 </div>
                 <div class="user-meta">${esc(u.email)}${u.employee_id ? ` · Emp ID ${esc(u.employee_id)}` : ''}</div>
                 <div class="user-meta">WhatsApp: ${u.whatsapp ? `+91 ${esc(u.whatsapp)}` : '<em>Not set</em>'} · Busy login: ${u.busy_login ? esc(u.busy_login) : '<em>Not set</em>'}</div>
+                ${u.reports_to?.length ? `<div class="user-meta">Reports to: ${u.reports_to.map(id => esc(nameById[id] || 'someone removed')).join(', ')}</div>` : ''}
                 <div class="user-meta">PIN: ${u.pin ? esc(u.pin) : '<em>Not set</em>'}</div>
               </div>
               <div class="user-card-controls">
@@ -276,7 +292,7 @@ export async function renderAdmin(container, onBack) {
     wrap.querySelectorAll('.edit-user-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const u = users.find(x => x.id === btn.dataset.id)
-        if (u) showUserForm({ existing: u, onSaved: info => loadUsers(info) })
+        if (u) showUserForm({ existing: u, onSaved: info => loadUsers(info), users })
       })
     })
 
