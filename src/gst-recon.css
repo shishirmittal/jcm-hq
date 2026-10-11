@@ -1,0 +1,80 @@
+/* ---------- GSTR-2A Reconciliation (#gst-recon, src/gst-recon.js) ---------- */
+.gst-title { display: inline-flex; align-items: center; gap: 8px; }
+.gst-header-actions { display: flex; gap: 8px; }
+.gst-header-actions button { display: inline-flex; align-items: center; gap: 6px; }
+.gst-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 12px; }
+.gst-month { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); font-weight: 600; }
+.gst-select { height: 36px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); padding: 0 10px; font-size: 13px; }
+.gst-sync { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); flex: 1; }
+.gst-check { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--body); cursor: pointer; }
+.gst-check input { width: 16px; height: 16px; accent-color: var(--blue); }
+.gst-warn { font-size: 12.5px; background: var(--amb-bg); color: var(--amb-dk); padding: 8px 10px; border-radius: 8px; margin: 0 0 10px; }
+.gst-hint { font-size: 12.5px; color: var(--muted); margin: 0 0 10px; }
+
+.gst-tiles { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
+.gst-tile { text-align: left; background: var(--surface); border: 1px solid var(--line); border-top: 3px solid var(--line); border-radius: 10px; padding: 8px 10px; cursor: pointer; font: inherit; color: inherit; }
+.gst-tile.tone-red { border-top-color: var(--red); }
+.gst-tile.tone-amber { border-top-color: var(--amb); }
+.gst-tile.tone-quiet { border-top-color: var(--faint); }
+.gst-tile.tone-ok { border-top-color: var(--grn); cursor: default; }
+.gst-tile:hover { background: var(--bg); }
+.gst-tile.active { background: var(--navy); border-color: var(--navy); color: #fff; }
+.gst-tile.active .gst-tile-value, .gst-tile.active .gst-tile-label, .gst-tile.active .gst-tile-sub { color: #fff; }
+.gst-tile-value { font-size: 22px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; line-height: 1.15; }
+.gst-tile-label { font-size: 11.5px; color: var(--muted); font-weight: 700; margin-top: 2px; }
+.gst-tile-sub { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.gst-list { display: flex; flex-direction: column; gap: 8px; }
+.gst-party { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--line); border-radius: 10px; overflow: hidden; }
+.gst-party.tone-red { border-left-color: var(--red); }
+.gst-party.tone-amber { border-left-color: var(--amb); }
+.gst-party.tone-quiet { border-left-color: var(--faint); }
+.gst-party-head { display: flex; gap: 12px; padding: 10px 12px; align-items: center; }
+.gst-party-main { flex: 1; min-width: 0; }
+.gst-party-name { font-weight: 700; font-size: 14.5px; color: var(--ink); overflow-wrap: anywhere; }
+.gst-party-sub { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.gst-party-side { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.gst-party-total { font-weight: 700; font-size: 13.5px; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.gst-remind { display: inline-flex; align-items: center; gap: 6px; }
+
+.gst-table-wrap { border-top: 1px solid var(--line-soft); padding: 2px 12px 8px; overflow-x: auto; }
+.gst-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.gst-table th { text-align: left; font-size: 11.5px; color: var(--muted); font-weight: 600; padding: 6px; border-bottom: 1px solid var(--line-soft); white-space: nowrap; }
+.gst-table td { padding: 6px; border-bottom: 1px solid var(--line-soft); color: var(--body); vertical-align: top; }
+.gst-table tr:last-child td { border-bottom: none; }
+.gst-table small { font-weight: 500; color: var(--faint); }
+.gst-table .gst-r { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.gst-table tr.is-marked td { opacity: .55; }
+.gst-bad { color: var(--red-dk); }
+.gst-link { background: none; border: none; color: var(--blue); font-size: 12.5px; font-weight: 600; cursor: pointer; padding: 0; }
+.gst-link:disabled { opacity: .5; cursor: default; }
+.gst-flag { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 6px; background: var(--amb-bg); color: var(--amb-dk); white-space: nowrap; }
+.gst-flag-ok { background: var(--grn-bg); color: var(--grn-dk); }
+.gst-flag-bad { background: var(--red-bg); color: var(--red-dk); }
+.gst-flag-quiet { background: var(--line-soft); color: var(--muted); }
+.gst-logbar { margin: 14px 2px 6px; }
+.gst-logtable { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+
+.gst-drawer-backdrop { position: fixed; inset: 0; background: rgba(15, 23, 42, .35); z-index: 40; }
+.gst-drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; width: min(480px, 100vw); z-index: 41;
+  background: var(--surface); border-left: 1px solid var(--line); box-shadow: -8px 0 24px var(--shadow);
+  padding: 16px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto;
+}
+.gst-drawer[hidden], .gst-drawer-backdrop[hidden] { display: none; }
+.gst-drawer-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.gst-pick { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--body); margin-bottom: 8px; }
+.gst-pick label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.gst-pick input { width: 16px; height: 16px; accent-color: var(--blue); }
+.gst-textarea { width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); padding: 8px 10px; font: inherit; font-size: 13px; resize: vertical; }
+.gst-drawer-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.gst-drawer-actions button { display: inline-flex; align-items: center; gap: 6px; }
+
+@media (max-width: 900px) { .gst-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 640px) {
+  .gst-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gst-header-actions .btn-ghost:last-child { display: none; }
+  .gst-table { font-size: 12.5px; }
+  .gst-party-head { flex-direction: column; align-items: flex-start; }
+  .gst-party-side { justify-content: flex-start; }
+}

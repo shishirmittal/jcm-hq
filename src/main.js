@@ -21,6 +21,7 @@ import { renderCustomers } from './customers.js'
 import { renderSyncStatus, unmountSyncStatus } from './sync-status.js'
 import { renderWhatsappTest } from './whatsapp-test.js'
 import { renderPurchases } from './purchases.js'
+import { renderGstRecon } from './gst-recon.js'
 import { renderTaskBoard, unmountTaskBoard } from './task-board.js'
 import { mountPinnedSidebar, unmountPinnedSidebar } from './sidebar.js'
 import { renderStock, unmountStock } from './stock.js'
@@ -226,6 +227,8 @@ function route() {
     renderPaymentFollowup(app, hash.split('/')[1] || null)
   } else if (hash === '#purchases') {
     renderPurchases(app)
+  } else if (hash === '#gst-recon') {
+    renderGstRecon(app)
   } else if (hash === '#sync-status') {
     renderSyncStatus(app)
   } else if (hash === '#whatsapp-test') {

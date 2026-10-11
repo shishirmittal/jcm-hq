@@ -57,6 +57,12 @@ export const NAV_CONFIG = [
   { section: 'Collections', items: [
     { id: 'payment-followup', label: 'Payment Follow-up', icon: 'phone', hash: '#payment-followup', adminOnly: true, badge: 'paymentFollowup' },
   ] },
+  // GSTR-2A reconciliation: Busy purchases vs the 2A data Busy downloaded, party-wise,
+  // only the red flags, one month at a time. api/gst.js lets in admins and anyone with
+  // 'gst-recon' in allowed_tabs (admins only for now — Ruchir and Shishir, 12 Oct 2026).
+  { section: 'GST', items: [
+    { id: 'gst-recon', label: 'GSTR-2A Reconciliation', icon: 'file', hash: '#gst-recon', adminOnly: true },
+  ] },
   // JCM Orders admin screens (from orders.jcmretails.com /owner and /logs).
   // adminOnly as on the orders site, but grantable: tick one for a person in
   // Manage Users and api/orders.js lets them in too.

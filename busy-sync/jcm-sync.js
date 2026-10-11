@@ -44,6 +44,8 @@ const JOBS = [
   // Payment Follow-up: 10:00 WhatsApp + Task Board task per person, 19:00 summary to admins.
   // HQ decides what is due; this only asks every 15 minutes (see followup-notify.js).
   { id: 'followup-notify', name: 'Payment follow-up WhatsApps + tasks', args: ['followup-notify.js'], every: 15, timeout: 5 },
+  // GSTR-2A reconciliation: 2A data Busy downloaded + purchase GST summaries + party contacts.
+  { id: 'gst', name: 'GSTR-2A reconciliation data', args: ['sync-gst.js'], every: 30, timeout: 15 },
   { id: 'nightly', name: 'Nightly full sync (items, sales, invoices, customers)', args: ['sync.js'], dailyAt: '22:54', timeout: 120, logFile: 'task-scheduler.log' },
 ];
 
