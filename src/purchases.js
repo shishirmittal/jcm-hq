@@ -334,7 +334,7 @@ export async function renderPurchases(container) {
     const { users, settings, whatsappReady } = state.people
     const ticked = users.filter(u => u.instant || u.daily)
     $('purDrawerBody').innerHTML = `
-      ${whatsappReady ? '' : '<p class="pur-warn">WhatsApp sending is not switched on yet (Whatshub360 link in Vercel). Choices are saved and start working once it is.</p>'}
+      ${whatsappReady ? '' : '<p class="pur-warn">WhatsApp (Meta) is not set up yet in Vercel. Choices are saved and start working once it is.</p>'}
       <label class="pur-switch"><input type="checkbox" id="purInstantOn" ${settings.instant_on !== false ? 'checked' : ''}/> <span><strong>Every new purchase bill</strong><br><small>A WhatsApp within about 15 minutes of the bill being saved in Busy.</small></span></label>
       <label class="pur-switch"><input type="checkbox" id="purDailyOn" ${settings.daily_on !== false ? 'checked' : ''}/> <span><strong>Evening summary</strong><br><small>One message listing all bills entered that day. Not sent on days with no bills.</small></span></label>
       <label class="pur-time"><span>Send the summary at</span><input type="time" id="purSummaryTime" value="${esc(settings.summary_time || '19:30')}" /><button class="btn-ghost btn-small" id="purTimeSave">Save time</button></label>

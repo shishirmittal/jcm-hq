@@ -46,6 +46,8 @@ const JOBS = [
   { id: 'followup-notify', name: 'Payment follow-up WhatsApps + tasks', args: ['followup-notify.js'], every: 15, timeout: 5 },
   // GSTR-2A reconciliation: 2A data Busy downloaded + purchase GST summaries + party contacts.
   { id: 'gst', name: 'GSTR-2A reconciliation data', args: ['sync-gst.js'], every: 30, timeout: 15 },
+  // Customer / supplier WhatsApps for new Busy vouchers (invoices at 20:30, the rest at once) — see sync-transactions.js.
+  { id: 'transactions', name: 'Transaction WhatsApps (invoice, receipt, notes, order…)', args: ['sync-transactions.js'], every: 5, timeout: 4 },
   { id: 'nightly', name: 'Nightly full sync (items, sales, invoices, customers)', args: ['sync.js'], dailyAt: '22:54', timeout: 120, logFile: 'task-scheduler.log' },
 ];
 

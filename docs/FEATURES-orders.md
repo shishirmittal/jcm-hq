@@ -566,7 +566,7 @@ The design's "TV display" tab is **not built**.
   - ready → `boxes`, event `in_bay {boxes, labels:'print'|'skipped'}`; PRINT also queues a label job
   - dispatch → `dispatcher_id`, event `dispatched {lr_photo}`, then WhatsApp
 - **Jobs are enforced on the server** (`api/_lib/staff.js` `can` / `stagesFor`). An order outside your stages gets 403.
-- **WhatsApp** (`api/_lib/whatsapp.js`): AiSensy v2, 8 template values, 8 s timeout. It never blocks a dispatch. Every outcome is recorded as event `whatsapp_sent`.
+- **WhatsApp** (`api/_orders/lib/whatsapp.js`): Meta Cloud API (api/_wa-cloud.js), templates order_dispatched / order_dispatched_photo, 8 body values + Invoices button. It never blocks a dispatch. Every outcome is recorded as event `whatsapp_sent`.
 - **Label queue** (`api/_lib/labeljobs.js`): inserts `label_print_jobs`, with Hindi from `party_hindi` and Google transliteration (4 s timeout). It falls back when the phase 8 / 10 columns are missing. `slow` = queued for more than 30 s.
 - **`selectTolerant`** (`api/_lib/columns.js`): if a newer column is missing, the read retries with the older column list, so the live board survives an SQL script that has not been run yet.
 
@@ -608,7 +608,7 @@ Never create a table named `sync_log`. That name belongs to the other project, `
 - `ORDERS_SUPABASE_URL`, `ORDERS_SUPABASE_SERVICE_KEY`: required. If missing, the API answers 503 "The server is not set up yet."
 - `CRON_SECRET`: lets the daily cron call send. Without it, scheduled runs are refused.
 - `RESEND_API_KEY`, `ORDERS_REPORT_EMAIL` (comma/space list), `ORDERS_EMAIL_FROM` (default `JCM Orders <onboarding@resend.dev>`): the daily email.
-- `AISENSY_API_KEY`, `AISENSY_DISPATCH_CAMPAIGN` (plain template), `AISENSY_DISPATCH_PHOTO_CAMPAIGN` (image template), `ORDERS_WHATSAPP_LIVE=true`: WhatsApp actually sends only with key + campaign + live.
+- WhatsApp sends through the HQ Meta env vars (WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID); the 'dispatch' kind can be switched off on HQ → Admin → WhatsApp.
 - `VERCEL`: set by the platform; turns on the `[time]` log lines.
 
 **Cron** (`vercel.json`): `/api/cron/daily-email` at `0 12 * * *` (17:30 IST; on Hobby it may fire within the hour).

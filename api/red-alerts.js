@@ -1,5 +1,6 @@
 import { applyCors } from './_cors.js'
 import { createClient } from '@supabase/supabase-js'
+import { waConfigured, sendLogged, BANNER, toWaNumber, flat } from './_wa-cloud.js'
 
 // Red Alerts — ₹0 billing, below-cost sales, bill edits, backdated entries and
 // deletions in Busy, for admins; plus "My Explanations" for the staff asked
@@ -19,8 +20,8 @@ import { createClient } from '@supabase/supabase-js'
 // key, after the caller's HQ session has been checked here.
 //
 // "Ask for explanation" files a Task Board task (team_tasks, CRM project) for
-// the person who made the entry, and sends them a WhatsApp through Whatshub360
-// when WHATSHUB_SEND_URL is set. They answer on #explain; answering marks the
+// the person who made the entry, and sends them the Meta template staff_red_alert
+// (buttons: Answer in HQ, Reply to <admin> on WhatsApp). They answer on #explain; answering marks the
 // task done and puts the alert in Answered for the admin.
 //
 // Access
@@ -106,7 +107,7 @@ export default async function handler(req, res) {
 
   const { data: profile, error: profErr } = await hq
     .from('profiles')
-    .select('id, name, email, role, is_admin, active, allowed_tabs')
+    .select('id, name, email, role, is_admin, active, allowed_tabs, whatsapp')
     .eq('id', userData.user.id)
     .maybeSingle()
   if (profErr) {
@@ -117,7 +118,7 @@ export default async function handler(req, res) {
   const isAdmin = profile.is_admin === true || profile.role === 'admin'
   const granted = Array.isArray(profile.allowed_tabs) && profile.allowed_tabs.includes(TAB_ID)
   const canReview = isAdmin || granted
-  const me = { id: profile.id, name: profile.name || profile.email || 'Someone' }
+  const me = { id: profile.id, name: profile.name || profile.email || 'Someone', whatsapp: profile.whatsapp || null }
 
   const body = req.body || {}
   const action = String(body.action || '')
@@ -325,32 +326,6 @@ function alertLine(a) {
   return `• ${what}: ${bits.filter(Boolean).join(' · ')} (${shortDate(a.happened_at)})`
 }
 
-async function sendWhatsApp(mobile, message) {
-  const template = process.env.WHATSHUB_SEND_URL
-  if (!template) return 'not_set_up'
-  const digits = String(mobile || '').replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '')
-  if (!/^[6-9]\d{9}$/.test(digits)) return 'no_number'
-  // The URL is kept in Vercel as a template, e.g.
-  //   https://…/send?vid={vid}&recMobileNo=91{mobile}&msg={msg}
-  // so the provider's exact parameter names never have to live in code.
-  const url = template
-    .replace('{vid}', encodeURIComponent(process.env.WHATSHUB_VID || ''))
-    .replace('{mobile}', digits)
-    .replace('{msg}', encodeURIComponent(message))
-  try {
-    const r = await fetch(url, { method: 'GET', signal: AbortSignal.timeout(10000) })
-    const text = (await r.text()).slice(0, 300)
-    if (!r.ok || /error|fail|invalid/i.test(text)) {
-      console.error('Whatshub360 send failed:', r.status, text)
-      return 'failed'
-    }
-    return 'sent'
-  } catch (err) {
-    console.error('Whatshub360 send error:', err)
-    return 'failed'
-  }
-}
-
 async function handleAsk(busy, hq, me, body, res) {
   const ids = Array.isArray(body.ids) ? body.ids.map(Number).filter(n => Number.isInteger(n) && n > 0).slice(0, 300) : []
   const question = String(body.question || '').trim().slice(0, 500)
@@ -414,9 +389,14 @@ async function handleAsk(busy, hq, me, body, res) {
     const { error: hErr } = await hq.from('team_task_history').insert({ task_id: task.id, actor: me.id, action: 'filed', to_user: hqUserId })
     if (hErr) console.error('red-alerts task history failed:', hErr)
 
-    const waText = `JCM HQ: ${me.name} has asked you to explain ${list.length === 1 ? '1 entry' : `${list.length} entries`} in Busy` +
-      `${question ? ` — "${question}"` : ''}. Please reply in HQ → My Explanations: ${HQ_URL}/#explain`
-    const waStatus = await sendWhatsApp(phoneByHqId.get(hqUserId), waText)
+    // staff_red_alert: {{1}} first name, {{2}} asked by, {{3}} how many, {{4}} what (flat), {{5}} question.
+    // Buttons: "Answer in HQ" (fixed link) and "Reply to admin" = https://wa.me/{{1}} → the admin's own number.
+    const adminWa = toWaNumber(me.whatsapp) || '919109105999'
+    const what = flat(list.slice(0, 4).map(a => alertLine(a).replace(/^• /, '')).join('; ') + (list.length > 4 ? ` and ${list.length - 4} more` : ''), 600)
+    const waStatus = (await sendLogged(busy, { kind: 'staff_red_alert', to: phoneByHqId.get(hqUserId), template: 'staff_red_alert',
+      params: [name.split(' ')[0], me.name, String(list.length), what, question || 'Please explain these entries'],
+      opts: { headerImageUrl: BANNER('staff-red-alert'), buttonUrlParams: { 1: `${adminWa}?text=${encodeURIComponent(`Hi ${me.name}, about the Busy entries you asked me to explain:`)}` } },
+      ref: String(list[0]?.id || ''), refName: name, by: me.name })).status
 
     const { error: uErr } = await busy.from('red_alerts').update({
       status: 'asked',
@@ -616,6 +596,6 @@ async function handlePeople(busy, hq, res) {
     hqUsers: staff.filter(p => !p.hide_from_roster).map(p => ({ id: p.id, name: p.name || p.email }))
       .sort((a, b) => String(a.name).localeCompare(String(b.name))),
     linkedLogins: [...staffByLogin(staff).keys()],
-    whatsappReady: !!process.env.WHATSHUB_SEND_URL,
+    whatsappReady: waConfigured(),
   })
 }

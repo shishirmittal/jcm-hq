@@ -20,6 +20,7 @@ import { renderPaymentFollowup } from './payment-followup.js'
 import { renderCustomers } from './customers.js'
 import { renderSyncStatus, unmountSyncStatus } from './sync-status.js'
 import { renderWhatsappTest } from './whatsapp-test.js'
+import './whatsapp.css'
 import { renderPurchases } from './purchases.js'
 import { renderGstRecon } from './gst-recon.js'
 import { renderTaskBoard, unmountTaskBoard } from './task-board.js'
@@ -28,6 +29,7 @@ import { renderStock, unmountStock } from './stock.js'
 import { getCurrentProfile as loadProfileForOrders } from './supabase.js'
 import { IS_NATIVE } from './native.js'
 import { mountNativeShell, unmountNativeShell, syncNativeShell, phoneHome } from './native-shell.js'
+import { mountBackButton } from './back-button.js'
 import { setPermissions, clearPermissions, routeDecision, hasAnyTab, fallbackHash, isAdminProfile } from './permissions.js'
 
 const app = document.getElementById('app')
@@ -107,6 +109,7 @@ async function enterApp() {
   }
   if (IS_NATIVE) {
     mountNativeShell()
+    mountBackButton()
     // The app opens on the Task Board. '' is the Dashboard, which the
     // three-tab shell has no tab for — landing there would show a page with
     // no tab lit and no way back to one except the drawer.

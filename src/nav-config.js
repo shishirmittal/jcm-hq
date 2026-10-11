@@ -100,6 +100,6 @@ export const NAV_CONFIG = [
     // JCM Sync on JCM-Server: every Busy → Supabase job, last run, failures, Run now.
     { id: 'sync-status', label: 'Sync status', icon: 'history', hash: '#sync-status', adminOnly: true },
     // Direct Meta WhatsApp Cloud API: sends one test template message (api/whatsapp.js).
-    { id: 'whatsapp-test', label: 'WhatsApp (Meta) test', icon: 'monitor', hash: '#whatsapp-test', adminOnly: true },
+    { id: 'whatsapp-test', label: 'WhatsApp', icon: 'monitor', hash: '#whatsapp-test', adminOnly: true },
   ] },
 ]

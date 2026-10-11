@@ -1,5 +1,6 @@
 import { applyCors } from './_cors.js'
 import { createClient } from '@supabase/supabase-js'
+import { waConfigured, sendLogged, waSwitches, BANNER, inr, niceDate as waDate } from './_wa-cloud.js'
 
 // Purchase Summary — every purchase bill the accounts team types into Busy, so
 // admins know what material has reached the warehouse: party, bill no. and date,
@@ -9,7 +10,7 @@ import { createClient } from '@supabase/supabase-js'
 // 15 minutes by busy-sync/sync-purchases.js on JCM-Server. RLS-closed; everything goes
 // through here with the Busy project's service key after the HQ session is checked.
 //
-// WhatsApp (Whatshub360, same WHATSHUB_SEND_URL / WHATSHUB_VID as Red Alerts):
+// WhatsApp (Meta templates staff_purchase_bill / staff_purchase_summary, api/_wa-cloud.js):
 //   instant — one message per new bill, to people ticked "Every bill", plus the
 //             people the bill's maker reports to (Manage Users → Reports to)
 //   daily   — the evening summary, once a day after purchase_settings.summary_time (IST)
@@ -39,7 +40,6 @@ const TAB_ID = 'purchases'
 const MAX_BILLS = 300
 const MAX_INSTANT_PER_CALL = 8   // the rest wait for the next run (15 min)
 const STALE_HOURS = 48           // bills typed in longer ago than this are never sent one by one
-const MAX_MESSAGE = 1500         // characters; the send link carries the whole message
 
 const opts = { auth: { autoRefreshToken: false, persistSession: false } }
 
@@ -253,7 +253,7 @@ async function handlePeople(busy, hq, res) {
   return send(res, 200, {
     users,
     settings: settings.data || { instant_on: true, daily_on: true, summary_time: '19:30' },
-    whatsappReady: !!process.env.WHATSHUB_SEND_URL,
+    whatsappReady: waConfigured(),
   })
 }
 
@@ -297,72 +297,28 @@ function cleanPhone(raw) {
   return /^[6-9]\d{9}$/.test(d) ? d : null
 }
 
-async function sendWhatsApp(mobile, message) {
-  const template = process.env.WHATSHUB_SEND_URL
-  if (!template) return 'not_set_up'
-  const digits = cleanPhone(mobile)
-  if (!digits) return 'no_number'
-  // Same Vercel settings as Red Alerts: the send link is kept as a template,
-  //   https://…?vid={vid}&recMobileNo=91{mobile}&msg={msg}
-  const url = template
-    .replace('{vid}', encodeURIComponent(process.env.WHATSHUB_VID || ''))
-    .replace('{mobile}', digits)
-    .replace('{msg}', encodeURIComponent(message))
-  try {
-    const r = await fetch(url, { method: 'GET', signal: AbortSignal.timeout(10000) })
-    const text = (await r.text()).slice(0, 300)
-    if (!r.ok || /error|fail|invalid/i.test(text)) {
-      console.error('Whatshub360 purchase message failed:', r.status, text)
-      return 'failed'
-    }
-    return 'sent'
-  } catch (err) {
-    console.error('Whatshub360 purchase message error:', err)
-    return 'failed'
-  }
-}
-
-// Fit a list of lines into the message, saying how many were left out.
-function fitLines(head, list, tail, moreText) {
-  const out = []
-  let used = head.length + tail.length + 40
-  for (let i = 0; i < list.length; i++) {
-    if (used + list[i].length + 1 > MAX_MESSAGE) {
-      out.push(moreText(list.length - i))
-      break
-    }
-    out.push(list[i])
-    used += list[i].length + 1
-  }
-  return [head, ...out, tail].join('\n')
-}
-
+// Meta templates (staff): a value can't hold a line break, so lists are flattened.
+//   staff_purchase_bill     {{1}} party, {{2}} bill no, {{3}} bill date, {{4}} items (count + first few),
+//                           {{5}} bill total, {{6}} entered by + time.   Button → Purchase Summary page.
+//   staff_purchase_summary  {{1}} date, {{2}} bills, {{3}} item lines, {{4}} total, {{5}} parties (flat).
 export function billMessage(v, lines, names) {
   const who = whoName(v.entered_by, names)
-  const head = [
-    '📦 *Material received — purchase entered*',
-    `*${v.party_name || 'Party'}*`,
-    `Bill ${v.vch_no || '—'} · dated ${niceDate(v.bill_date)}`,
-    `Entered in Busy: ${niceDate(v.entered_at)}, ${niceTime(v.entered_at)}${who ? ` by ${who}` : ''}`,
-    '',
-    `*Items (${lines.length}):*`,
-  ].join('\n')
-  const items = lines.map((l, i) => `${i + 1}. ${l.item_name || 'Item'} — ${qtyText(l.qty)} × ${rupees(l.rate)} = ${rupees(l.amount)}`)
-  const tail = ['', `*Bill total: ${rupees(v.bill_total)}*`, `Details: ${PAGE_URL}`].join('\n')
-  return fitLines(head, items, tail, n => `…and ${n} more item${n === 1 ? '' : 's'}`)
+  const first = lines.slice(0, 4).map(l => `${l.item_name || 'Item'} ${qtyText(l.qty)} × ${rupees(l.rate)}`).join('; ')
+  const items = `${lines.length}: ${first}${lines.length > 4 ? ` and ${lines.length - 4} more` : ''}`
+  return {
+    kind: 'staff_purchase', template: 'staff_purchase_bill', headerImageUrl: BANNER('staff-purchase'),
+    params: [v.party_name || 'Party', v.vch_no || '—', waDate(v.bill_date), items, inr(v.bill_total), `${who || 'someone'} at ${niceTime(v.entered_at)}, ${niceDate(v.entered_at)}`],
+  }
 }
 
 export function summaryMessage(day, bills) {
   const total = bills.reduce((s, b) => s + Number(b.bill_total || 0), 0)
   const items = bills.reduce((s, b) => s + (b.item_count || 0), 0)
-  const head = [
-    `📋 *Purchases entered today — ${niceDate(day)}*`,
-    `${bills.length} bill${bills.length === 1 ? '' : 's'} · ${items} item line${items === 1 ? '' : 's'} · ${rupees(total)}`,
-    '',
-  ].join('\n')
-  const list = bills.map((b, i) => `${i + 1}. ${b.party_name || 'Party'} — ${b.item_count} item${b.item_count === 1 ? '' : 's'} — ${rupees(b.bill_total)} (${niceTime(b.entered_at)})`)
-  const tail = ['', `Full list: ${PAGE_URL}`].join('\n')
-  return fitLines(head, list, tail, n => `…and ${n} more bill${n === 1 ? '' : 's'}`)
+  const list = bills.slice(0, 8).map(b => `${b.party_name || 'Party'} ${rupees(b.bill_total)}`).join('; ') + (bills.length > 8 ? ` and ${bills.length - 8} more` : '')
+  return {
+    kind: 'staff_purchase_summary', template: 'staff_purchase_summary', headerImageUrl: BANNER('staff-purchase'),
+    params: [waDate(day), String(bills.length), String(items), inr(total), list || 'none'],
+  }
 }
 
 async function recipients(busy, hq, kind) {
@@ -394,9 +350,12 @@ function forBill(base, managers, v) {
   return [...base, ...extra.filter(p => !seen.has(p.id) && seen.add(p.id))]
 }
 
-async function sendToAll(busy, people, message, logBase) {
+async function sendToAll(busy, people, msg, logBase) {
+  const switches = await waSwitches(busy)
   const results = await Promise.all(people.map(async p => {
-    const status = await sendWhatsApp(p.mobile, message)
+    const r = await sendLogged(busy, { kind: msg.kind, to: p.mobile, template: msg.template, params: msg.params,
+      opts: { headerImageUrl: msg.headerImageUrl }, ref: logBase.vch_key || logBase.summary_date || null, refName: p.name, by: 'HQ', switches })
+    const status = r.status === 'off' ? 'not_set_up' : r.status
     return { ...logBase, hq_user_id: p.id, name: p.name, mobile: cleanPhone(p.mobile), status }
   }))
   if (results.length) {
@@ -483,7 +442,8 @@ async function handleSendBill(busy, hq, body, res) {
 }
 
 async function handleTest(busy, me, res) {
-  const msg = `✅ Test from JCM HQ Purchase Summary.\nYou will get purchase bill messages on this number.\n${PAGE_URL}`
+  const msg = { kind: 'staff_purchase', template: 'staff_purchase_bill', headerImageUrl: BANNER('staff-purchase'),
+    params: ['Test Supplier', 'TEST/1', waDate(todayIST()), '1: Sample item 1 × ₹100', '100', `${me.name} (test)`] }
   const results = await sendToAll(busy, [{ id: me.id, name: me.name, mobile: me.whatsapp }], msg, { kind: 'test' })
   return send(res, 200, { status: results[0]?.status || 'failed' })
 }

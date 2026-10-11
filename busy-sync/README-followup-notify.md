@@ -7,7 +7,7 @@ from `.env` (`SUPABASE_SERVICE_KEY`). HQ decides what to send:
 - **After 10:00** (collection_settings.morning_at), once a day: for every person who has follow-ups due
   (their account groups, set in Payment Follow-up → Today's follow-ups → Assign groups):
   one Task Board task (card "Payment Follow Up", ticks itself done when their list is empty) and one
-  WhatsApp (Whatshub360, number = Manage Users → WhatsApp) with the count, total and top 10 parties.
+  WhatsApp (Meta template `staff_followup_morning`, number = Manage Users → WhatsApp) with the count, total and the biggest three; a button opens Today's follow-ups in HQ.
 - **After 19:00** (evening_at), once a day: a summary WhatsApp to every admin — per person done / left,
   promises made, no answers, promises due today.
 - If the PC was off at 10:00, the morning run happens at the next run that day (before 19:00).

@@ -59,6 +59,4 @@ whatsapp_status / reply / replied_at; busy_user_names.hq_user_id / whatsapp.
 
 ## WhatsApp (Ask for explanation)
 
-Optional. In Vercel (project jcm-hq) set `WHATSHUB_SEND_URL` = the Whatshub360 send link with
-`{vid}`, `{mobile}` (10 digits; write `91{mobile}` if the country code is needed) and `{msg}` in place
-of the values, and `WHATSHUB_VID` = the key. Until then questions go to the Task Board only.
+The WhatsApp goes through JCM's own Meta API (template `staff_red_alert`, api/_wa-cloud.js) to the person's number from Manage Users; it has an "Answer in HQ" button and a "Reply to <admin>" button that opens the admin's own WhatsApp chat. It can be switched off on HQ → Admin → WhatsApp. The Task Board task is always made.

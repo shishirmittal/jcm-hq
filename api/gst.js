@@ -1,6 +1,6 @@
 import { applyCors } from './_cors.js'
 import { createClient } from '@supabase/supabase-js'
-import { waConfigured, sendTemplate, toWaNumber } from './_wa-cloud.js'
+import { waConfigured, sendLogged, toWaNumber } from './_wa-cloud.js'
 import { bannerPng, buildMismatchPdf, BUCKET_LABEL } from './_gst-report.js'
 
 // GSTR-2A Reconciliation — Busy purchases vs the 2A data Busy downloaded through its GSP,
@@ -442,16 +442,11 @@ function fitList(items) {
 }
 
 // Returns { status, detail } — status: sent | failed | no_number | not_set_up.
-async function sendWhatsApp(mobile, templateName, params, opts = {}) {
+async function sendWhatsApp(busy, kind, mobile, templateName, params, opts = {}, ref = {}) {
   if (!waConfigured()) return { status: 'not_set_up', detail: 'WHATSAPP_TOKEN / WHATSAPP_PHONE_NUMBER_ID missing in Vercel' }
-  if (!toWaNumber(mobile)) return { status: 'no_number', detail: '' }
-  try {
-    const out = await sendTemplate(mobile, templateName, TPL_LANG, params, opts)
-    return { status: 'sent', detail: out?.messages?.[0]?.id ? `id ${out.messages[0].id}` : '' }
-  } catch (err) {
-    console.error('GST WhatsApp failed:', err.message)
-    return { status: 'failed', detail: String(err.message || '').slice(0, 300) }
-  }
+  const r = await sendLogged(busy, { kind, to: mobile, template: templateName, lang: TPL_LANG, params, opts, ...ref })
+  if (r.status === 'off') return { status: 'not_set_up', detail: r.error }
+  return { status: r.status, detail: r.status === 'sent' ? (r.id ? `id ${r.id}` : '') : r.error || '' }
 }
 
 async function remindParty(busy, { from, to, gstin, keys, who }) {
@@ -469,7 +464,7 @@ async function remindParty(busy, { from, to, gstin, keys, who }) {
   // The period named in the message = the month(s) the ticked bills fall in, not the page's range.
   const months = [...new Set(bills.map(b => String(b.vch_date || '').slice(0, 7)).filter(isMonth))].sort()
   const mFrom = months[0] || from, mTo = months[months.length - 1] || to
-  const r = await sendWhatsApp(number, TPL_SUPPLIER, [name, periodName(mFrom, mTo), list], { headerImageUrl: `${HQ_URL}/api/gst?banner=${mFrom}${mTo !== mFrom ? `&to=${mTo}` : ''}` })
+  const r = await sendWhatsApp(busy, 'gst_supplier', number, TPL_SUPPLIER, [name, periodName(mFrom, mTo), list], { headerImageUrl: `${HQ_URL}/api/gst?banner=${mFrom}${mTo !== mFrom ? `&to=${mTo}` : ''}` })
   check(await busy.from('gst_log').insert({ month, kind: 'party_reminder', channel: 'whatsapp', gstin, recipient: number ? String(number) : null, status: r.status, detail: `${bills.length} bill(s): ${bills.map(b => b.vch_no).join(', ')}${r.detail ? ` — ${r.detail}` : ''}`.slice(0, 500), by_name: who }), 'log')
   return { status: r.status, detail: r.detail, number: number || null, name, count: bills.length }
 }
@@ -495,7 +490,7 @@ async function sendStaff(busy, hq, { from, to, kinds, ids, who }) {
 
   const results = []
   for (const p of people) {
-    const r = await sendWhatsApp(p.whatsapp, TPL_STAFF, [who, periodName(from, to), niceDate(deadline.toISOString())], { headerDocumentUrl: url, headerDocumentName: filename })
+    const r = await sendWhatsApp(busy, 'staff_gst', p.whatsapp, TPL_STAFF, [who, periodName(from, to), niceDate(deadline.toISOString())], { headerDocumentUrl: url, headerDocumentName: filename }, { refName: p.name || p.email, by: who })
     results.push({ name: p.name || p.email, status: r.status, detail: r.detail })
     check(await busy.from('gst_log').insert({ month, kind: 'staff_summary', channel: 'whatsapp', recipient: p.whatsapp ? String(p.whatsapp) : null, status: r.status,
       detail: `${p.name || p.email}: ${kinds.map(k => BUCKET_LABEL[k]).join(', ')} (${rows.length} items)${r.detail ? ` — ${r.detail}` : ''}`.slice(0, 500), by_name: who }), 'log')

@@ -39,6 +39,10 @@ export async function sendTemplate(toPhone, templateName, languageCode, bodyPara
   ;(opts.buttonPayloads || []).forEach((payload, index) => {
     components.push({ type: 'button', sub_type: 'quick_reply', index: String(index), parameters: [{ type: 'payload', payload: String(payload) }] })
   })
+  // URL buttons with a dynamic ending (template made with https://wa.me/{{1}} etc): { index: suffix }.
+  for (const [index, suffix] of Object.entries(opts.buttonUrlParams || {})) {
+    components.push({ type: 'button', sub_type: 'url', index: String(index), parameters: [{ type: 'text', text: String(suffix) }] })
+  }
   if (components.length) template.components = components
 
   let res, data

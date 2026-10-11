@@ -43,5 +43,4 @@ be a little higher than the bill total; the page shows both.
 
 ## WhatsApp
 
-Uses the same Whatshub360 settings as Red Alerts and Payment Follow-up (`WHATSHUB_SEND_URL`,
-`WHATSHUB_VID` in Vercel). Numbers come from Manage Users (profiles.whatsapp).
+Sent through JCM's own Meta API (templates `staff_purchase_bill` / `staff_purchase_summary`, api/_wa-cloud.js); switch on/off on HQ → Admin → WhatsApp. Numbers come from Manage Users (profiles.whatsapp).
