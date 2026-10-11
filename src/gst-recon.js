@@ -1,6 +1,6 @@
 // GSTR-2A Reconciliation — Busy purchases vs the 2A data Busy downloaded through its GSP,
 // party-wise, one month at a time, showing ONLY the red flags:
-//   Missing in Busy · Not in 2A · Amount mismatch · Doc no. mismatch · Sequence · ₹0 value
+//   Missing in Busy · Not in 2A · Amount mismatch · Doc no. mismatch · Odd numbering · ₹0 value
 // Data: gst_2a_rows / gst_purchase_rows / gst_parties (JCM-Busysql project), filled every
 // 30 minutes by busy-sync/sync-gst.js on JCM-Server; the matching is done by /api/gst.
 // Actions: Download Excel (all tabs), WhatsApp reminder to a supplier that has not filed,
@@ -59,7 +59,7 @@ const BUCKETS = [
   { id: 'not_in_2a', label: 'Not in 2A', short: 'Not in 2A', tone: 'red', hint: 'Booked in Busy but the supplier has not filed it in GSTR-1 — send a WhatsApp reminder.' },
   { id: 'amount', label: 'Amount mismatch', short: 'Amount', tone: 'amber', hint: 'Same invoice both sides, but taxable or tax differs by more than ₹1.' },
   { id: 'docno', label: 'Doc no. mismatch', short: 'Doc no.', tone: 'amber', hint: 'Same invoice both sides (amounts match), invoice number written differently. Low priority.' },
-  { id: 'sequence', label: 'Sequence', short: 'Sequence', tone: 'quiet', hint: 'Odd invoice numbers from a supplier as booked in Busy: duplicates, a later bill with a smaller number, or gaps (suppliers bill other customers too, so gaps are normal).' },
+  { id: 'sequence', label: 'Odd numbering', short: 'Odd numbering', tone: 'quiet', hint: 'A supplier\'s invoice number booked twice, or a later bill with a smaller number than an earlier one (same series only) — check the date or number typed in Busy.' },
   { id: 'zero', label: '₹0 value', short: '₹0', tone: 'quiet', hint: 'Purchase vouchers of ₹0 in Busy — FOC, replacement or scheme documents.' },
 ]
 
@@ -253,7 +253,7 @@ export async function renderGstRecon(container) {
       body = list.map(r => `<tr${r.mark ? ' class="is-marked"' : ''}>${td(esc(r.p_no))}${td(esc(r.b_no))}${td(esc(fmtDate(r.p_date || r.b_date)))}${td(money(r.p_taxable), 1)}${td(money(r.p_tax), 1)}${td(`<small>${esc(r.note || '')}</small>`)}${markCell(r)}</tr>`).join('')
     } else if (tab === 'sequence') {
       head = th('Bill (Busy)') + th('Date') + th('Total', 1) + th('Issue') + th('')
-      body = list.map(r => `<tr${r.mark ? ' class="is-marked"' : ''}>${td(esc(r.b_no))}${td(esc(fmtDate(r.b_date)))}${td(money(r.b_total), 1)}${td(`<span class="gst-flag gst-flag-${r.kind === 'gap' ? 'quiet' : 'bad'}">${esc(r.kind)}</span> <small>${esc(r.note || '')}</small>`)}${markCell(r)}</tr>`).join('')
+      body = list.map(r => `<tr${r.mark ? ' class="is-marked"' : ''}>${td(esc(r.b_no))}${td(esc(fmtDate(r.b_date)))}${td(money(r.b_total), 1)}${td(`<span class="gst-flag gst-flag-bad">${esc(r.kind)}</span> <small>${esc(r.note || '')}</small>`)}${markCell(r)}</tr>`).join('')
     } else {
       head = th('Bill (Busy)') + th('Date') + th('Series') + th('Entered by') + th('')
       body = list.map(r => `<tr${r.mark ? ' class="is-marked"' : ''}>${td(esc(r.b_no))}${td(esc(fmtDate(r.b_date)))}${td(esc((r.note || '').replace(/^Series /, '')))}${td(esc(r.entered_by || ''))}${markCell(r)}</tr>`).join('')

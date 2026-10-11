@@ -11,8 +11,8 @@ import { createClient } from '@supabase/supabase-js'
 //   amount        same invoice both sides, taxable or tax differs by more than ₹1
 //   docno         same invoice both sides (amounts match), invoice number written differently
 //                 (e.g. 100037I11234102 vs 11234102, 769/2026-27 vs 769/26-27) — low priority
-//   sequence      something odd in a supplier's invoice numbers as booked in Busy: the same
-//                 number twice, a later bill with a smaller number, or a gap in the numbers
+//   sequence      odd numbering in a supplier's invoices as booked in Busy: the same number
+//                 twice, or a later bill with a smaller number (within one series; no gaps)
 //   zero          ₹0 purchase vouchers in Busy (FOC / replacement / scheme documents)
 //
 // Data: gst_2a_rows / gst_purchase_rows / gst_parties in the JCM-Busysql project, written
@@ -326,34 +326,40 @@ export function reconcile(rows2a, rowsPur, parties, marks, month) {
 
 // Something odd in a supplier's invoice numbers as booked in Busy. Numbers are compared
 // over the whole year; only problems touching the chosen month are reported.
+// Odd numbering in a supplier's invoices as booked in Busy: the same number twice, or a
+// later-dated bill with a smaller number. Compared only within one series (the prefix
+// before the running number: 'CCPLLT' and 'VL' from the same supplier are never compared),
+// over the whole year; only problems touching the chosen month are reported. Gaps are NOT
+// flagged — suppliers bill other customers in between, so every bill would show one.
+function seriesOf(s) {
+  const digits = String(runningNo(s) ?? '')
+  const base = stripFy(s).toUpperCase()
+  const i = base.lastIndexOf(digits)
+  return (i > 0 ? base.slice(0, i) : '').replace(/[^A-Z]/g, '')
+}
 function sequenceFlags(books, month) {
   const out = []
-  for (const [gstin, list] of groupBy(books, b => b.gstin)) {
+  for (const [key, list] of groupBy(books, b => `${b.gstin}|${seriesOf(b.vch_no)}`)) {
+    const gstin = key.split('|')[0]
     const rows = list.map(b => ({ b, n: runningNo(b.vch_no), k: alnum(b.vch_no) })).filter(x => x.n != null)
     if (rows.length < 2) continue
-    const flag = (x, kind, note, extra = {}) => {
+    const flag = (x, kind, note) => {
       if (x.b.inv_month !== month) return
       out.push({ bucket: 'sequence', row_key: `${x.b.vch_key}|${kind}`, gstin, party: x.b.party_name, party_code: x.b.party_code,
-        b_no: x.b.vch_no, b_date: x.b.vch_date, b_taxable: r2(x.b.taxable), b_tax: tax(x.b), b_total: r2(x.b.total), entered_by: x.b.entered_by, kind, note, ...extra })
+        b_no: x.b.vch_no, b_date: x.b.vch_date, b_taxable: r2(x.b.taxable), b_tax: tax(x.b), b_total: r2(x.b.total), entered_by: x.b.entered_by, kind, note })
     }
     // same number twice
     const seen = new Map()
-    for (const x of rows) {
-      if (seen.has(x.k)) { flag(x, 'duplicate', `Same invoice number as bill dated ${niceDate(seen.get(x.k).b.vch_date)} (${rupees(seen.get(x.k).b.total)})`) }
+    for (const x of [...rows].sort((a, b) => String(a.b.vch_date).localeCompare(String(b.b.vch_date)))) {
+      if (seen.has(x.k)) flag(x, 'duplicate', `Same invoice number as bill dated ${niceDate(seen.get(x.k).b.vch_date)} (${rupees(seen.get(x.k).b.total)})`)
       else seen.set(x.k, x)
     }
     // later date, smaller number
     const byDate = [...rows].sort((a, b) => String(a.b.vch_date).localeCompare(String(b.b.vch_date)) || a.n - b.n)
     let maxSoFar = null
     for (const x of byDate) {
-      if (maxSoFar && x.n < maxSoFar.n && String(x.b.vch_date) > String(maxSoFar.b.vch_date)) flag(x, 'backward', `Number ${x.n} is smaller than ${maxSoFar.b.vch_no} dated ${niceDate(maxSoFar.b.vch_date)}`)
+      if (maxSoFar && x.n < maxSoFar.n && String(x.b.vch_date) > String(maxSoFar.b.vch_date)) flag(x, 'backward', `Number ${x.b.vch_no} is smaller than ${maxSoFar.b.vch_no} dated ${niceDate(maxSoFar.b.vch_date)} — check the date or number typed`)
       if (!maxSoFar || x.n > maxSoFar.n) maxSoFar = x
-    }
-    // gaps between consecutive numbers (supplier bills other customers too — expected, but asked for)
-    const byNo = [...rows].sort((a, b) => a.n - b.n)
-    for (let i = 1; i < byNo.length; i++) {
-      const gap = byNo[i].n - byNo[i - 1].n - 1
-      if (gap > 0 && byNo[i].k !== byNo[i - 1].k) flag(byNo[i], 'gap', `${gap} number${gap === 1 ? '' : 's'} missing between ${byNo[i - 1].b.vch_no} (${niceDate(byNo[i - 1].b.vch_date)}) and this bill`, { gap })
     }
   }
   return out
