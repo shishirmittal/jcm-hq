@@ -98,3 +98,23 @@ export async function sendMedia(toPhone, buffer, { kind = 'image', mime = 'image
     body: JSON.stringify({ messaging_product: 'whatsapp', to, type: kind, [kind]: media }),
   })
 }
+
+// Is our Meta app subscribed to this WhatsApp account's events (messages, button taps)?
+// op: 'get' lists subscribed apps, 'subscribe' subscribes the app that owns the token.
+export async function wabaSubscription(op) {
+  const token = process.env.WHATSAPP_TOKEN
+  const waba = process.env.WHATSAPP_WABA_ID
+  if (!token || !waba) throw new Error('WHATSAPP_TOKEN / WHATSAPP_WABA_ID missing in Vercel.')
+  let res, data
+  try {
+    res = await fetch(`${GRAPH}/${encodeURIComponent(waba)}/subscribed_apps`, {
+      method: op === 'subscribe' ? 'POST' : 'GET',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    data = await res.json().catch(() => null)
+  } catch {
+    throw new Error('Could not reach Meta. Try again in a minute.')
+  }
+  if (!res.ok || data?.error) throw new Error(`Meta said: ${data?.error?.message || `HTTP ${res.status}`}`)
+  return data
+}

@@ -35,6 +35,10 @@ export function renderWhatsappTest(container) {
         <button class="btn-primary" id="waSend" style="padding:10px 18px;border-radius:8px">Send test message</button>
         <p id="waResult" style="margin-top:14px" aria-live="polite"></p>
         <hr style="margin:22px 0;border:0;border-top:1px solid #ddd">
+        <div style="font-weight:500;margin-bottom:6px">Incoming messages and button taps</div>
+        <button class="btn-primary" id="waSub" style="padding:10px 18px;border-radius:8px">Check and connect</button>
+        <p id="waSubResult" style="margin-top:14px" aria-live="polite"></p>
+        <hr style="margin:22px 0;border:0;border-top:1px solid #ddd">
         <div style="font-weight:500;margin-bottom:6px">Send a sample payment reminder (same number as above)</div>
         <select id="waTier" style="width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;font-size:16px;margin-bottom:12px">
           <option value="20">Amber: over 20 days</option>
@@ -80,6 +84,25 @@ export function renderWhatsappTest(container) {
       $('waRemResult').innerHTML = `❌ ${esc(err.message)}`
     } finally {
       $('waRem').disabled = false
+    }
+  })
+
+  $('waSub').addEventListener('click', async () => {
+    $('waSub').disabled = true
+    $('waSubResult').textContent = 'Checking…'
+    try {
+      const a = await call({ action: 'sub-status' })
+      if (a.subscribed) {
+        $('waSubResult').innerHTML = `✅ Connected (${esc(a.apps.join(', '))}). Meta will send taps and replies to HQ.`
+      } else {
+        $('waSubResult').textContent = 'Not connected yet. Connecting…'
+        const b = await call({ action: 'sub-fix' })
+        $('waSubResult').innerHTML = b.subscribed ? `✅ Connected now (${esc(b.apps.join(', '))}). Send a fresh sample reminder and tap again.` : '❌ Meta accepted the request but the connection did not show. Tell Claude.'
+      }
+    } catch (err) {
+      $('waSubResult').innerHTML = `❌ ${esc(err.message)}`
+    } finally {
+      $('waSub').disabled = false
     }
   })
 }

@@ -1,6 +1,6 @@
 import { applyCors } from './_cors.js'
 import { createClient } from '@supabase/supabase-js'
-import { waConfigured, sendTemplate } from './_wa-cloud.js'
+import { waConfigured, sendTemplate, wabaSubscription } from './_wa-cloud.js'
 import { handleIncoming } from './_wa-replies.js'
 
 // WhatsApp via Meta's Cloud API (page src/whatsapp-test.js at #whatsapp-test).
@@ -57,6 +57,12 @@ export default async function handler(req, res) {
     if (body.action === 'test') {
       const out = await sendTemplate(body.phone, 'hello_world', 'en_US', [])
       return send(res, 200, { ok: true, messageId: out?.messages?.[0]?.id || null })
+    }
+    if (body.action === 'sub-status' || body.action === 'sub-fix') {
+      if (body.action === 'sub-fix') await wabaSubscription('subscribe')
+      const d = await wabaSubscription('get')
+      const apps = (d?.data || []).map(a => a.whatsapp_business_api_data?.name || a.name || 'app')
+      return send(res, 200, { subscribed: apps.length > 0, apps })
     }
     if (body.action === 'reminder-test') {
       // Sends one payment-reminder template with sample numbers, to check look + buttons.
