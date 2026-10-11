@@ -33,7 +33,19 @@ GST_TPL_LANG, default `en`):
 1. `gstr1_filing_reminder` → the supplier's `WhatsAppNo` / `Mobile` from Busy.
    Header: **Image** (sample: any 1200×628 PNG; live = `https://hq.jcmretails.com/api/gst?banner=2026-08`,
    the "GST MISMATCH / AUGUST 2026" banner drawn by api/_gst-report.js).
-   Body: `Namaste {{1}}, This is J.C. Mittal & Sons, Ratlam (GSTIN {{4}}). Our GSTR-2A for {{2}} does not show the following invoice(s) of yours: {{3}}. Please check your GSTR-1 and file or amend it so that we can claim the input tax credit. Thank you.`
+   Body (line breaks as shown; {{3}} is a one-line numbered list — Meta forbids line breaks inside a value):
+   ```
+   Namaste, {{1}},
+
+   This is J.C. Mittal & Sons, Ratlam (GSTIN 23AAPFJ0607D1ZT).
+   Our GSTR-2A for {{2}} does not show the following invoice(s) of yours:
+
+   {{3}}
+
+   Please check your GSTR-1 and file or amend it so that we can claim the input tax credit. Thank you.
+
+   Awaiting your reply in the next 3 working days on this.
+   ```
 2. `gst_mismatch_summary` → chosen HQ people (`profiles.whatsapp`), from "Send to staff".
    Header: **Document** (PDF; live = the summary PDF saved in Supabase Storage bucket
    `gst-reports`, public, created by supabase/gst-setup.sql).

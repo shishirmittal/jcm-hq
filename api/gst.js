@@ -413,7 +413,7 @@ function groupBy(list, keyFn) {
 // Business-started messages must be APPROVED TEMPLATES (free text only works within 24 h of
 // the other side writing to us). Two Utility templates, submitted in WhatsApp Manager:
 //   gstr1_filing_reminder  (to a supplier)  IMAGE header = GET /api/gst?banner=<month>;
-//                          body {{1}} party name, {{2}} month, {{3}} invoice list, {{4}} JCM GSTIN
+//                          body {{1}} party name, {{2}} period, {{3}} numbered invoice list (one line)
 //   gst_mismatch_summary   (to staff)       DOCUMENT header = the PDF (public link in Supabase
 //                          Storage bucket gst-reports); body {{1}} sender, {{2}} month, {{3}} deadline
 // Names / language can be overridden with GST_TPL_SUPPLIER, GST_TPL_STAFF, GST_TPL_LANG.
@@ -461,8 +461,8 @@ async function remindParty(busy, { from, to, gstin, keys, who }) {
   const contact = parties.find(p => p.party_code === bills[0].party_code) || parties[0]
   const number = contact?.whatsapp || contact?.mobile
   const name = bills[0].party_name || contact?.party_name || 'Sir/Madam'
-  const list = fitList(bills.map(b => `${b.vch_no} dt ${niceDate(b.vch_date)} (${rupees(b.total)})`))
-  const r = await sendWhatsApp(number, TPL_SUPPLIER, [name, periodName(from, to), list, JCM_GSTIN], { headerImageUrl: `${HQ_URL}/api/gst?banner=${from}${to !== from ? `&to=${to}` : ''}` })
+  const list = fitList(bills.map((b, i) => `${i + 1}. ${b.vch_no} dt ${niceDate(b.vch_date)} (${rupees(b.total)})`))
+  const r = await sendWhatsApp(number, TPL_SUPPLIER, [name, periodName(from, to), list], { headerImageUrl: `${HQ_URL}/api/gst?banner=${from}${to !== from ? `&to=${to}` : ''}` })
   check(await busy.from('gst_log').insert({ month, kind: 'party_reminder', channel: 'whatsapp', gstin, recipient: number ? String(number) : null, status: r.status, detail: `${bills.length} bill(s): ${bills.map(b => b.vch_no).join(', ')}${r.detail ? ` — ${r.detail}` : ''}`.slice(0, 500), by_name: who }), 'log')
   return { status: r.status, detail: r.detail, number: number || null, name, count: bills.length }
 }

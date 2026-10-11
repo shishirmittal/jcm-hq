@@ -321,8 +321,8 @@ export async function renderGstRecon(container) {
     $('gstDrawer').hidden = false; $('gstDrawerBackdrop').hidden = false
     const preview = () => {
       const picked = rows.filter(r => $('gstDrawerBody').querySelector(`input[data-key="${CSS.escape(r.row_key)}"]`)?.checked)
-      const list = picked.map(r => `${r.b_no} dt ${fmtDate(r.b_date)} (${money(r.b_total)})`).join('; ')
-      $('gstPreview').textContent = `Namaste ${name},\n\nThis is J.C. Mittal & Sons, Ratlam (GSTIN 23AAPFJ0607D1ZT). Our GSTR-2A for ${state.data.period} does not show the following invoice(s) of yours: ${list || '—'}.\n\nPlease check your GSTR-1 and file or amend it so that we can claim the input tax credit. Thank you.`
+      const list = picked.map((r, i) => `${i + 1}. ${r.b_no} dt ${fmtDate(r.b_date)} (${money(r.b_total)})`).join('; ')
+      $('gstPreview').textContent = `Namaste, ${name},\n\nThis is J.C. Mittal & Sons, Ratlam (GSTIN 23AAPFJ0607D1ZT).\nOur GSTR-2A for ${state.data.period} does not show the following invoice(s) of yours:\n\n${list || '—'}\n\nPlease check your GSTR-1 and file or amend it so that we can claim the input tax credit. Thank you.\n\nAwaiting your reply in the next 3 working days on this.`
     }
     preview()
     $('gstDrawerBody').querySelectorAll('input[data-key]').forEach(i => i.addEventListener('change', preview))
