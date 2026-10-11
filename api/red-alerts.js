@@ -395,7 +395,7 @@ async function handleAsk(busy, hq, me, body, res) {
     const what = flat(list.slice(0, 4).map(a => alertLine(a).replace(/^• /, '')).join('; ') + (list.length > 4 ? ` and ${list.length - 4} more` : ''), 600)
     const waStatus = (await sendLogged(busy, { kind: 'staff_red_alert', to: phoneByHqId.get(hqUserId), template: 'staff_red_alert',
       params: [name.split(' ')[0], me.name, String(list.length), what, question || 'Please explain these entries'],
-      opts: { headerImageUrl: BANNER('staff-red-alert'), buttonUrlParams: { 1: `${adminWa}?text=${encodeURIComponent(`Hi ${me.name}, about the Busy entries you asked me to explain:`)}` } },
+      opts: { headerImageUrl: BANNER('staff-red-alert'), buttonUrlParams: { 1: adminWa } },
       ref: String(list[0]?.id || ''), refName: name, by: me.name })).status
 
     const { error: uErr } = await busy.from('red_alerts').update({
