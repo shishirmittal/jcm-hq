@@ -51,3 +51,49 @@ export async function sendTemplate(toPhone, templateName, languageCode, bodyPara
   }
   return data
 }
+
+async function graphPost(path, init) {
+  const token = process.env.WHATSAPP_TOKEN
+  let res, data
+  try {
+    res = await fetch(`${GRAPH}/${path}`, { method: 'POST', ...init, headers: { Authorization: `Bearer ${token}`, ...(init.headers || {}) } })
+    data = await res.json().catch(() => null)
+  } catch {
+    throw new Error('Could not reach Meta. Try again in a minute.')
+  }
+  if (!res.ok || data?.error) {
+    const e = data?.error || {}
+    throw new Error(`Meta said: ${e.message || `HTTP ${res.status}`}${e.code ? ` [code ${e.code}]` : ''}`)
+  }
+  return data
+}
+
+// Free-text message. Only works inside 24 h of the customer's last message (e.g. right after
+// they tap a button on a reminder).
+export async function sendText(toPhone, text) {
+  const to = toWaNumber(toPhone)
+  if (!to) throw new Error('Not a valid Indian mobile number.')
+  return graphPost(`${encodeURIComponent(process.env.WHATSAPP_PHONE_NUMBER_ID)}/messages`, {
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messaging_product: 'whatsapp', to, type: 'text', text: { body: text, preview_url: false } }),
+  })
+}
+
+// Upload a PNG/PDF held in memory, then send it as an image or document (inside the 24 h window).
+export async function sendMedia(toPhone, buffer, { kind = 'image', mime = 'image/png', filename = 'file.png', caption = '' } = {}) {
+  const to = toWaNumber(toPhone)
+  if (!to) throw new Error('Not a valid Indian mobile number.')
+  const phoneId = encodeURIComponent(process.env.WHATSAPP_PHONE_NUMBER_ID)
+  const form = new FormData()
+  form.append('messaging_product', 'whatsapp')
+  form.append('type', mime)
+  form.append('file', new Blob([buffer], { type: mime }), filename)
+  const up = await graphPost(`${phoneId}/media`, { body: form })
+  const media = { id: up.id }
+  if (caption) media.caption = caption
+  if (kind === 'document') media.filename = filename
+  return graphPost(`${phoneId}/messages`, {
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messaging_product: 'whatsapp', to, type: kind, [kind]: media }),
+  })
+}

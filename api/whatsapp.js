@@ -1,6 +1,7 @@
 import { applyCors } from './_cors.js'
 import { createClient } from '@supabase/supabase-js'
 import { waConfigured, sendTemplate } from './_wa-cloud.js'
+import { handleIncoming } from './_wa-replies.js'
 
 // WhatsApp via Meta's Cloud API (page src/whatsapp-test.js at #whatsapp-test).
 // Admins only. Existing Whatshub360 sending (collections, purchases, red-alerts, orders)
@@ -18,6 +19,18 @@ function send(res, status, body) {
 }
 
 export default async function handler(req, res) {
+  // Meta webhook (no sign-in; Meta calls this). GET = one-time check with our verify token,
+  // POST = messages / button taps. Env: WHATSAPP_VERIFY_TOKEN (any secret word you choose).
+  if (req.method === 'GET' && req.query?.['hub.mode']) {
+    const ok = process.env.WHATSAPP_VERIFY_TOKEN && req.query['hub.verify_token'] === process.env.WHATSAPP_VERIFY_TOKEN
+    return ok ? res.status(200).send(String(req.query['hub.challenge'] || '')) : res.status(403).send('Forbidden')
+  }
+  if (req.method === 'POST' && req.body?.object === 'whatsapp_business_account') {
+    for (const e of req.body.entry || []) for (const c of e.changes || []) {
+      if (c.value?.metadata?.phone_number_id === process.env.WHATSAPP_PHONE_NUMBER_ID) await handleIncoming(c.value)
+    }
+    return res.status(200).send('ok')
+  }
   if (applyCors(req, res)) return
   if (req.method !== 'POST') return send(res, 405, { error: 'Method not allowed' })
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
