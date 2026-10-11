@@ -43,8 +43,10 @@ export function renderWhatsappTest(container) {
         <input id="waCode" type="text" inputmode="numeric" placeholder="Customer's Busy code (e.g. 1042)" autocomplete="off"
           style="width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;font-size:16px;margin-bottom:12px">
         <select id="waTier" style="width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;font-size:16px;margin-bottom:12px">
-          <option value="20">Amber: over 20 days</option>
-          <option value="40">Red: over 40 days</option>
+          <option value="20">Dealer: amber, over 20 days</option>
+          <option value="40">Dealer: red, over 40 days</option>
+          <option value="r20">Retail: amber, over 20 days</option>
+          <option value="r40">Retail: red, over 40 days</option>
         </select>
         <button class="btn-primary" id="waRem" style="padding:10px 18px;border-radius:8px">Send sample reminder</button>
         <p id="waRemResult" style="margin-top:14px" aria-live="polite"></p>

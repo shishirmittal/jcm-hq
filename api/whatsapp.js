@@ -65,16 +65,24 @@ export default async function handler(req, res) {
       return send(res, 200, { subscribed: apps.length > 0, apps })
     }
     if (body.action === 'reminder-test') {
-      // Sends one payment-reminder template with sample numbers, to check look + buttons.
-      const red = body.tier === '40'
+      // Sends one payment-reminder template for a real customer (by Busy code), with sample amounts, to check look + buttons.
+      // tier: 20 / 40 = Dealer templates (total outstanding + overdue); r20 / r40 = Retail templates (one amount due).
+      const tier = String(body.tier || '20')
+      const red = tier.endsWith('40')
+      const retail = tier.startsWith('r')
       const code = String(body.code || '').replace(/\D/g, '')
       if (!code) return send(res, 400, { error: 'Type the customer\'s Busy code first.' })
       const busy = busyClient()
       const name = busy ? await ledgerNameByCode(busy, code) : ''
       if (!name) return send(res, 400, { error: 'No customer with that Busy code.' })
-      const out = await sendTemplate(body.phone, red ? 'payment_reminder_40d' : 'payment_reminder_20d', body.lang || 'en',
-        [name, '1,25,000', '85,000', red ? '47' : '26', '26 Aug 2026'],
-        { buttonPayloads: [`qr:${code}`, `ledger:${code}`, `inv:${code}`], headerImageUrl: `https://hq.jcmretails.com/wa/${red ? 'reminder-red-40d' : 'reminder-amber-20d'}.png` })
+      const template = `${retail ? 'retail_reminder' : 'payment_reminder'}_${red ? '40d' : '20d'}`
+      const params = retail
+        ? [name, '45,000', red ? '47' : '26', '26 Aug 2026']
+        : [name, '1,25,000', '85,000', red ? '47' : '26', '26 Aug 2026']
+      const out = await sendTemplate(body.phone, template, body.lang || 'en', params, {
+        buttonPayloads: [`qr:${code}`, `ledger:${code}`, `${retail ? 'portal' : 'inv'}:${code}`],
+        headerImageUrl: `https://hq.jcmretails.com/wa/${red ? 'reminder-red-40d' : 'reminder-amber-20d'}.png`,
+      })
       return send(res, 200, { ok: true, messageId: out?.messages?.[0]?.id || null })
     }
     return send(res, 400, { error: 'Unknown request.' })

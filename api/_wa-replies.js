@@ -106,7 +106,7 @@ const WHICH = [
 
 // Button payloads we put on the reminder: "qr:<code>", "ledger:<code>", "inv:<code>".
 function parsePayload(payload) {
-  const m = /^(qr|ledger|inv):(\d{1,9})$/.exec(String(payload || ''))
+  const m = /^(qr|ledger|inv|portal):(\d{1,9})$/.exec(String(payload || ''))
   return m ? { kind: m[1] === 'inv' ? 'invoices' : m[1], code: m[2] } : null
 }
 
@@ -145,6 +145,9 @@ export async function handleIncoming(value) {
             caption: '*Your ledger statement is attached.*\n*आपका लेजर विवरण संलग्न है।*',
           })
         }
+      } else if (parsed.kind === 'portal') {
+        // Retail reminders: no list of bills, just the way to see them all.
+        await sendText(from, `*${name}*\nYou can view and download all your invoices here:\n${PORTAL}\n\nPlease log in with your registered mobile number.\n\n*अपने सभी बिल देखने और डाउनलोड करने के लिए ऊपर दिया गया लिंक खोलें। लॉगिन के लिए अपना रजिस्टर्ड मोबाइल नंबर इस्तेमाल करें।*`)
       } else if (parsed.kind === 'invoices') {
         await sendText(from, await lastInvoicesText(busy, parsed.code, name))
       } else {
