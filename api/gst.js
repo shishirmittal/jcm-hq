@@ -289,7 +289,11 @@ export function reconcile(rows2a, rowsPur, parties, marks, month) {
   const nameByGstin = new Map()
   for (const b of books) if (b.gstin && b.party_name && !nameByGstin.has(b.gstin)) nameByGstin.set(b.gstin, b.party_name)
   for (const p of parties) if (p.gstin && p.party_name && !nameByGstin.has(p.gstin)) nameByGstin.set(p.gstin, p.party_name)
-  for (const r of rows) if (r.bucket === 'missing_busy' && nameByGstin.has(r.gstin)) r.party = nameByGstin.get(r.gstin)
+  for (const r of rows) {
+    if (r.bucket !== 'missing_busy') continue
+    if (nameByGstin.has(r.gstin)) r.party = nameByGstin.get(r.gstin)
+    else if (!r.party || r.party === r.gstin) { r.party = null; r.new_party = true; r.note = 'Not in Busy party master — new party to be created' }
+  }
 
   // Marks
   const markMap = new Map(marks.map(m => [`${m.bucket}|${m.row_key}`, m]))

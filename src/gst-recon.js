@@ -218,7 +218,7 @@ export async function renderGstRecon(container) {
       <section class="gst-party tone-${BUCKETS.find(x => x.id === tab).tone}">
         <div class="gst-party-head">
           <div class="gst-party-main">
-            <div class="gst-party-name">${esc(r0.party || r0.gstin)}</div>
+            <div class="gst-party-name">${esc(r0.party || r0.gstin)}${r0.new_party ? ' <span class="gst-flag gst-flag-bad">Not in Busy party master</span>' : ''}</div>
             <div class="gst-party-sub">${esc(r0.gstin)}${contact?.station ? ` · ${esc(contact.station)}` : ''}${number ? ` · ${esc(String(number))}` : ''}</div>
           </div>
           <div class="gst-party-side">
@@ -381,7 +381,7 @@ export async function renderGstRecon(container) {
   function sheetRow(tab, r) {
     const base = { Party: r.party || '', GSTIN: r.gstin || '' }
     const mark = r.mark ? `${r.mark.state}${r.mark.note ? ': ' + r.mark.note : ''}` : ''
-    if (tab === 'missing_busy') return { ...base, 'Invoice (2A)': r.p_no, Date: r.p_date, Taxable: r.p_taxable, Tax: r.p_tax, Total: r.p_total, 'Filed in': r.filed_period || '', 'Supplier filed on': r.supplier_filed_on || '', Status: mark }
+    if (tab === 'missing_busy') return { ...base, Party: r.party || (r.new_party ? '(not in Busy party master)' : r.gstin), 'Invoice (2A)': r.p_no, Date: r.p_date, Taxable: r.p_taxable, Tax: r.p_tax, Total: r.p_total, 'Filed in': r.filed_period || '', 'Supplier filed on': r.supplier_filed_on || '', Status: mark }
     if (tab === 'not_in_2a') return { ...base, 'Bill (Busy)': r.b_no, Date: r.b_date, Taxable: r.b_taxable, Tax: r.b_tax, Total: r.b_total, 'Entered by': r.entered_by || '', Status: mark }
     if (tab === 'amount') return { ...base, Invoice: r.p_no, 'Busy bill': r.b_no, Date: r.p_date || r.b_date, '2A taxable': r.p_taxable, 'Busy taxable': r.b_taxable, 'Taxable diff': r.diff_taxable, '2A tax': r.p_tax, 'Busy tax': r.b_tax, 'Tax diff': r.diff_tax, Note: r.note || '', Status: mark }
     if (tab === 'docno') return { ...base, 'In 2A': r.p_no, 'In Busy': r.b_no, Date: r.p_date || r.b_date, Taxable: r.p_taxable, Tax: r.p_tax, Note: r.note || '', Status: mark }
