@@ -10,6 +10,8 @@
 //    the Sync status page in JCM HQ (hq.jcmretails.com/#sync-status), which also has a
 //    "Run now" button per job.
 //  - A file named jcm-sync.pause in this folder pauses everything (delete it to resume).
+//  - A file named jcm-sync.restart makes it exit once nothing is running; the .bat starts it again
+//    with the current jcm-sync.js (use after updating the JOBS list).
 //  - The nightly sync runs at its time; if the PC was off then, it runs at the next start.
 //
 //   node jcm-sync.js            run (normally started by run-jcm-sync.bat)
@@ -57,6 +59,7 @@ const KEEP_RUNS_DAYS = 14;
 const LOG_FILE = path.join(DIR, 'jcm-sync.log');
 const LOCK_FILE = path.join(DIR, 'jcm-sync.lock');
 const PAUSE_FILE = path.join(DIR, 'jcm-sync.pause');
+const RESTART_FILE = path.join(DIR, 'jcm-sync.restart'); // create this file → the runner exits and run-jcm-sync.bat starts it again (picks up new jobs)
 
 function log(message) {
   const line = `[${new Date().toISOString()}] ${message}`;
@@ -271,6 +274,10 @@ async function main() {
 
   const tick = async () => {
     touchLock();
+    if (fs.existsSync(RESTART_FILE)) {
+      try { fs.unlinkSync(RESTART_FILE); } catch (_) { /* ignore */ }
+      if (!Object.values(state).some(s => s.running)) { log('jcm-sync.restart found — stopping so run-jcm-sync.bat starts the new copy'); process.exit(0); }
+    }
     const now = Date.now();
     const paused = fs.existsSync(PAUSE_FILE);
     if (paused !== wasPaused) { log(paused ? 'PAUSED (jcm-sync.pause found) — no new runs' : 'resumed'); wasPaused = paused; }

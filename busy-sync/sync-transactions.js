@@ -155,6 +155,13 @@ async function main() {
   }
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
 
+  // Safety: the very first run (empty outbox) loads everything as history, so vouchers typed in
+  // before this was switched on never get a message — the same as --as-history.
+  const probe = await supabase.from('wa_outbox').select('id', { count: 'exact', head: true });
+  if (probe.error) { log(`wa_outbox not found — run the WhatsApp SQL in Supabase first (${probe.error.message})`); return; }
+  const firstRun = (probe.count || 0) === 0;
+  if (firstRun && !AS_HISTORY) { log('first run: outbox is empty — loading these vouchers as history, nothing will be sent'); for (const r of rows) r.status = 'skipped'; }
+
   // Only brand-new vouchers are inserted (ignoreDuplicates): a row already there keeps its status.
   let added = 0;
   for (let i = 0; i < rows.length; i += 200) {
@@ -170,7 +177,7 @@ async function main() {
     if (error) log(`cancel mark failed: ${error.message}`);
   }
   log(`${added} new queued${cancelledCodes.length ? `, ${cancelledCodes.length} cancelled in Busy` : ''}`);
-  if (AS_HISTORY) return;
+  if (AS_HISTORY || firstRun) return;
 
   // Ask HQ to send whatever is due now (it checks this key is the Busy service key).
   if (typeof fetch !== 'function') { log('send step skipped: this Node.js is too old to call HQ (needs Node 18+)'); return; }
