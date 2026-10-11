@@ -31,6 +31,8 @@ export async function sendTemplate(toPhone, templateName, languageCode, bodyPara
   const template = { name: templateName, language: { code: languageCode } }
   const components = []
   if (opts.headerImageUrl) components.push({ type: 'header', parameters: [{ type: 'image', image: { link: opts.headerImageUrl } }] })
+  // Document header (template made with a PDF header): a public link + the file name the reader sees.
+  if (opts.headerDocumentUrl) components.push({ type: 'header', parameters: [{ type: 'document', document: { link: opts.headerDocumentUrl, filename: opts.headerDocumentName || 'document.pdf' } }] })
   if (bodyParams.length) components.push({ type: 'body', parameters: bodyParams.map(t => ({ type: 'text', text: String(t) })) })
   // Quick-reply buttons: each carries a payload that comes back to us when the customer taps it
   // (we put the customer's Busy code in it, so replies never have to guess who it is).

@@ -3,8 +3,9 @@
 //   Missing in Busy · Not in 2A · Amount mismatch · Doc no. mismatch · Odd numbering · ₹0 value
 // Data: gst_2a_rows / gst_purchase_rows / gst_parties (JCM-Busysql project), filled every
 // 30 minutes by busy-sync/sync-gst.js on JCM-Server; the matching is done by /api/gst.
-// Actions: Download Excel (all tabs), WhatsApp (Meta template) reminder to a supplier that has not filed,
-// "Send to admins" (the missing-in-Busy list by WhatsApp + email), Done / Ignore per row.
+// Actions: Download Excel (all tabs), WhatsApp (Meta template + banner) reminder to a supplier
+// that has not filed, "Send to staff" (PDF of chosen red flags to chosen people on WhatsApp,
+// 2-day deadline), Done / Ignore per row.
 import { supabase } from './supabase.js'
 import { openSidebar } from './sidebar.js'
 import { canSee } from './permissions.js'
@@ -84,7 +85,7 @@ export async function renderGstRecon(container) {
         </div>
         <div class="gst-header-actions">
           <button class="btn-ghost btn-small" id="gstExcelBtn">${icon('clipboard', 14)} Download Excel</button>
-          <button class="btn-ghost btn-small" id="gstAdminBtn">${icon('send', 14)} Send to admins</button>
+          <button class="btn-ghost btn-small" id="gstStaffBtn">${icon('send', 14)} Send to staff</button>
           <button class="btn-ghost btn-small" id="gstRefreshBtn">Refresh</button>
         </div>
       </header>
@@ -118,7 +119,7 @@ export async function renderGstRecon(container) {
   $('gstMonth').addEventListener('change', e => { state.month = e.target.value; load() })
   $('gstShowMarked').addEventListener('change', e => { state.showMarked = e.target.checked; paintList() })
   $('gstExcelBtn').addEventListener('click', () => downloadExcel())
-  $('gstAdminBtn').addEventListener('click', () => sendToAdmins())
+  $('gstStaffBtn').addEventListener('click', () => openStaff())
   $('gstLogBtn').addEventListener('click', () => toggleLog())
   $('gstDrawerClose').addEventListener('click', closeDrawer)
   $('gstDrawerBackdrop').addEventListener('click', closeDrawer)
@@ -330,17 +331,47 @@ export async function renderGstRecon(container) {
   }
   function closeDrawer() { $('gstDrawer').hidden = true; $('gstDrawerBackdrop').hidden = true }
 
-  // ---- admins
-  async function sendToAdmins() {
-    const n = rowsFor('missing_busy', false).length
-    if (!n) return flash('Nothing is missing in Busy for this month.')
-    if (!window.confirm(`Send the ${n} "missing in Busy" invoice(s) for ${monthName(state.month)} to every admin by WhatsApp and email?`)) return
-    $('gstAdminBtn').disabled = true
-    try {
-      const r = await call({ action: 'notify-admins', month: state.month })
-      flash(r.results.map(x => `${x.channel === 'email' ? 'Email' : x.name}: ${STATUS_WORD[x.status] || x.status}${x.status === 'failed' && x.detail ? ' (' + x.detail + ')' : ''}`).join(' · '))
-      if (!$('gstLog').hidden) loadLog()
-    } catch (err) { flash(err.message) } finally { $('gstAdminBtn').disabled = false }
+  // ---- staff: PDF summary of chosen red flags → WhatsApp template with the PDF attached
+  async function openStaff() {
+    const d = state.data
+    if (!d?.month) return
+    $('gstDrawerTitle').textContent = `Send to staff — ${monthName(d.month)}`
+    $('gstDrawerBody').innerHTML = '<div class="loading-state">Loading people…</div>'
+    $('gstDrawer').hidden = false; $('gstDrawerBackdrop').hidden = false
+    let people = []
+    try { ({ people } = await call({ action: 'people' })) } catch (err) { $('gstDrawerBody').innerHTML = `<div class="empty-state">${esc(err.message)}</div>`; return }
+    const remembered = (() => { try { return JSON.parse(localStorage.getItem('gst-staff-picks') || '{}') } catch { return {} } })()
+    const kinds = remembered.kinds || ['missing_busy', 'not_in_2a', 'amount', 'docno']
+    const ids = new Set(remembered.ids || [])
+    const deadline = new Date(Date.now() + 2 * 86400000)
+    $('gstDrawerBody').innerHTML = `
+      <p class="gst-hint">One PDF with the ticked red flags for <b>${esc(monthName(d.month))}</b> (party-wise, only items not marked Done / Ignored) goes to each ticked person on WhatsApp, with a note that <b>you</b> sent it and that everything is to be cleared by <b>${esc(fmtDate(deadline.toISOString()))}</b>.</p>
+      <p class="gst-drawer-sub">Red flags to include</p>
+      <div class="gst-pick">${BUCKETS.map(b => `<label><input type="checkbox" data-kind="${b.id}" ${kinds.includes(b.id) ? 'checked' : ''} /> ${esc(b.label)} <small>· ${d.counts[b.id] || 0} item${(d.counts[b.id] || 0) === 1 ? '' : 's'}</small></label>`).join('')}</div>
+      <p class="gst-drawer-sub">Send to</p>
+      <div class="gst-pick">${people.map(p => `<label${p.hasNumber ? '' : ' class="gst-nonum"'}><input type="checkbox" data-person="${esc(p.id)}" ${ids.has(p.id) && p.hasNumber ? 'checked' : ''} ${p.hasNumber ? '' : 'disabled'} /> ${esc(p.name)}${p.admin ? ' <span class="gst-flag gst-flag-quiet">admin</span>' : ''}${p.hasNumber ? '' : ' <small>— no WhatsApp number in Manage Users</small>'}</label>`).join('') || '<div class="empty-state">No people found.</div>'}</div>
+      <div class="gst-drawer-actions">
+        <button class="btn-primary btn-small" id="gstSendStaff">${icon('send', 13)} Send PDF on WhatsApp</button>
+      </div>`
+    $('gstSendStaff').addEventListener('click', async e => {
+      const btn = e.currentTarget
+      const pickedKinds = [...$('gstDrawerBody').querySelectorAll('input[data-kind]:checked')].map(i => i.dataset.kind)
+      const pickedIds = [...$('gstDrawerBody').querySelectorAll('input[data-person]:checked')].map(i => i.dataset.person)
+      if (!pickedKinds.length) return flash('Tick at least one red flag.')
+      if (!pickedIds.length) return flash('Tick at least one person.')
+      const items = pickedKinds.reduce((s, k) => s + (d.counts[k] || 0), 0)
+      if (!window.confirm(`Send the ${monthName(d.month)} summary (${items} item${items === 1 ? '' : 's'}) to ${pickedIds.length} ${pickedIds.length === 1 ? 'person' : 'people'} on WhatsApp?`)) return
+      try { localStorage.setItem('gst-staff-picks', JSON.stringify({ kinds: pickedKinds, ids: pickedIds })) } catch { /* fine */ }
+      btn.disabled = true
+      try {
+        const r = await call({ action: 'send-staff', month: d.month, kinds: pickedKinds, user_ids: pickedIds })
+        if (r.error) { flash(r.error); return }
+        const ok = r.results.filter(x => x.status === 'sent').length
+        flash(ok === r.results.length ? `Sent to ${ok} ${ok === 1 ? 'person' : 'people'}.` : r.results.map(x => `${x.name}: ${STATUS_WORD[x.status] || x.status}${x.status === 'failed' && x.detail ? ' (' + x.detail + ')' : ''}`).join(' · '))
+        if (ok) closeDrawer()
+        if (!$('gstLog').hidden) loadLog()
+      } catch (err) { flash(err.message) } finally { btn.disabled = false }
+    })
   }
 
   // ---- log
@@ -355,7 +386,7 @@ export async function renderGstRecon(container) {
     try {
       const { rows } = await call({ action: 'log', month: state.month })
       box.innerHTML = rows.length
-        ? `<table class="gst-table gst-logtable"><thead><tr><th>When</th><th>What</th><th>To</th><th>Result</th><th>By</th></tr></thead><tbody>${rows.map(r => `<tr><td>${esc(fmtWhen(r.sent_at))}</td><td>${esc(r.kind === 'party_reminder' ? `Supplier reminder (${r.gstin || ''})` : `Admin list by ${r.channel}`)}<br><small>${esc(r.detail || '')}</small></td><td>${esc(r.recipient || '—')}</td><td><span class="gst-flag gst-flag-${r.status === 'sent' ? 'ok' : 'bad'}">${esc(STATUS_WORD[r.status] || r.status)}</span></td><td>${esc(r.by_name || '')}</td></tr>`).join('')}</tbody></table>`
+        ? `<table class="gst-table gst-logtable"><thead><tr><th>When</th><th>What</th><th>To</th><th>Result</th><th>By</th></tr></thead><tbody>${rows.map(r => `<tr><td>${esc(fmtWhen(r.sent_at))}</td><td>${esc(r.kind === 'party_reminder' ? `Supplier reminder (${r.gstin || ''})` : r.kind === 'staff_summary' ? 'PDF summary to staff' : `Admin list by ${r.channel}`)}<br><small>${esc(r.detail || '')}</small></td><td>${esc(r.recipient || '—')}</td><td><span class="gst-flag gst-flag-${r.status === 'sent' ? 'ok' : 'bad'}">${esc(STATUS_WORD[r.status] || r.status)}</span></td><td>${esc(r.by_name || '')}</td></tr>`).join('')}</tbody></table>`
         : '<div class="empty-state">Nothing sent for this month yet.</div>'
     } catch (err) { box.innerHTML = `<div class="empty-state">${esc(err.message)}</div>` }
   }

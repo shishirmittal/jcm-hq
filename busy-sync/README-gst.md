@@ -23,18 +23,21 @@ each month (around the 14th); the page shows when the newest download happened.
 4. Copy the new `jcm-sync.js` (it has the `gst` job) and restart JCM Sync (or run
    `node jcm-sync.js --once gst` to load everything now). Status: HQ → Admin → Sync status.
 
-## WhatsApp / email sent by the page
+## WhatsApp sent by the page
 
-Sent through JCM's own Meta WhatsApp Cloud API (api/_wa-cloud.js, number +91 91091 05999).
-Business-started messages must be approved templates, so two Utility templates are needed in
-WhatsApp Manager (names overridable with GST_TPL_SUPPLIER / GST_TPL_ADMIN, language GST_TPL_LANG, default en):
+Through JCM's own Meta WhatsApp Cloud API (api/_wa-cloud.js, number +91 91091 05999).
+Business-started messages must be approved templates, so two **Utility** templates are needed
+in WhatsApp Manager (names overridable with GST_TPL_SUPPLIER / GST_TPL_STAFF, language
+GST_TPL_LANG, default `en`):
 
-- `gstr1_filing_reminder` → the supplier's `WhatsAppNo` / `Mobile` from Busy.
-  Body: `Namaste {{1}}, This is J.C. Mittal & Sons, Ratlam (GSTIN {{4}}). Our GSTR-2A for {{2}} does not show the following invoice(s) of yours: {{3}}. Please check your GSTR-1 and file or amend it so that we can claim the input tax credit. Thank you.`
-- `gst_missing_in_busy` → every admin's `profiles.whatsapp`.
-  Body: `JCM HQ — GSTR-2A {{1}}: {{2}} invoice(s) in the GST portal are NOT entered in Busy (total {{3}}). Please get these bills to the accountant: {{4}}` + URL button "Open in HQ" → https://hq.jcmretails.com/#gst-recon
+1. `gstr1_filing_reminder` → the supplier's `WhatsAppNo` / `Mobile` from Busy.
+   Header: **Image** (sample: any 1200×628 PNG; live = `https://hq.jcmretails.com/api/gst?banner=2026-08`,
+   the "GST MISMATCH / AUGUST 2026" banner drawn by api/_gst-report.js).
+   Body: `Namaste {{1}}, This is J.C. Mittal & Sons, Ratlam (GSTIN {{4}}). Our GSTR-2A for {{2}} does not show the following invoice(s) of yours: {{3}}. Please check your GSTR-1 and file or amend it so that we can claim the input tax credit. Thank you.`
+2. `gst_mismatch_summary` → chosen HQ people (`profiles.whatsapp`), from "Send to staff".
+   Header: **Document** (PDF; live = the summary PDF saved in Supabase Storage bucket
+   `gst-reports`, public, created by supabase/gst-setup.sql).
+   Body: `{{1}} has sent the GSTR-2A mismatch summary for {{2}} — see the attached PDF. Please go through every item and clear all of them within 2 days, by {{3}}. Reply here if anything is unclear.`
 
 Template parameters cannot contain line breaks, so invoice lists are one line, "; " separated,
-cut at about 900 characters ("and N more"). The admin list also goes by email when
-`RESEND_API_KEY` is set (to every admin's `profiles.email` plus `GST_REPORT_EMAIL`; sender
-`GST_EMAIL_FROM`, default `JCM HQ <onboarding@resend.dev>`).
+cut at about 900 characters ("and N more"). Every send is logged in `gst_log`.

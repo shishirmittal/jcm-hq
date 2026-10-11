@@ -65,6 +65,8 @@
 .gst-drawer-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .gst-pick { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--body); margin-bottom: 8px; }
 .gst-pick label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.gst-pick label.gst-nonum { color: var(--muted); }
+.gst-drawer-sub { margin: 10px 0 4px; font-size: 13px; font-weight: 700; color: var(--ink); }
 .gst-pick input { width: 16px; height: 16px; accent-color: var(--blue); }
 .gst-preview { white-space: pre-wrap; font-size: 13px; color: var(--body); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
 .gst-textarea { width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); padding: 8px 10px; font: inherit; font-size: 13px; resize: vertical; }

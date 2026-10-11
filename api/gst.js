@@ -1,6 +1,7 @@
 import { applyCors } from './_cors.js'
 import { createClient } from '@supabase/supabase-js'
 import { waConfigured, sendTemplate, toWaNumber } from './_wa-cloud.js'
+import { bannerPng, buildMismatchPdf, BUCKET_LABEL } from './_gst-report.js'
 
 // GSTR-2A Reconciliation — Busy purchases vs the 2A data Busy downloaded through its GSP,
 // party-wise, showing ONLY the red flags (Ruchir's rules, 12 Oct 2026):
@@ -23,12 +24,16 @@ import { waConfigured, sendTemplate, toWaNumber } from './_wa-cloud.js'
 // chosen month is reported.
 //
 // Access: admins, or anyone with 'gst-recon' in profiles.allowed_tabs.
+// GET  ?banner=YYYY-MM                 the "GST MISMATCH <month>" banner PNG (public; the header
+//                                      image of the supplier reminder template)
 // Actions (POST JSON):
 //   recon  month                         everything for one month ('YYYY-MM') + month list
 //   mark   month, bucket, row_key, state ('ignored' | 'done' | ''), note
 //   remind-party  month, gstin, row_keys[]   WhatsApp template to the supplier (not_in_2a)
+//   people                               HQ users (for "Send to staff")
+//   send-staff  month, kinds[], user_ids[]   PDF summary of the chosen red flags → WhatsApp
+//                                      template (document header) to the chosen people
 //   wa-status                            is the Meta sender configured, template names
-//   notify-admins month                  missing_busy list → every admin, WhatsApp + email
 //   log    month                         what was sent for this month
 
 export const config = { maxDuration: 60 }
@@ -70,6 +75,14 @@ const monthName = m => {
 // ---------- handler ----------
 export default async function handler(req, res) {
   if (applyCors(req, res)) return
+  if (req.method === 'GET' && isMonth(req.query?.banner)) {
+    try {
+      const png = await bannerPng(req.query.banner)
+      res.setHeader('Content-Type', 'image/png')
+      res.setHeader('Cache-Control', 'public, max-age=86400')
+      return res.status(200).send(png)
+    } catch (err) { console.error('gst banner:', err); return res.status(500).send('banner failed') }
+  }
   if (req.method !== 'POST') return send(res, 405, { error: 'Method not allowed' })
 
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -118,12 +131,18 @@ export default async function handler(req, res) {
       if (!month || !gstin || !keys.length) return send(res, 400, { error: 'Pick the invoices to remind about.' })
       return send(res, 200, await remindParty(busy, { month, gstin, keys, who }))
     }
-    if (action === 'notify-admins') {
-      const month = isMonth(body.month) ? body.month : null
-      if (!month) return send(res, 400, { error: 'Pick a month.' })
-      return send(res, 200, await notifyAdmins(busy, hq, { month, who }))
+    if (action === 'people') {
+      const rows = check(await hq.from('profiles').select('id, name, email, role, is_admin, active, whatsapp').order('name'), 'people')
+      return send(res, 200, { people: rows.filter(p => p.active !== false).map(p => ({ id: p.id, name: p.name || p.email, admin: p.is_admin === true || p.role === 'admin', hasNumber: !!toWaNumber(p.whatsapp) })) })
     }
-    if (action === 'wa-status') return send(res, 200, { configured: waConfigured(), supplierTemplate: TPL_SUPPLIER, adminTemplate: TPL_ADMIN, lang: TPL_LANG, emailReady: !!process.env.RESEND_API_KEY })
+    if (action === 'send-staff') {
+      const month = isMonth(body.month) ? body.month : null
+      const kinds = Array.isArray(body.kinds) ? body.kinds.filter(k => BUCKETS.includes(k)) : []
+      const ids = Array.isArray(body.user_ids) ? body.user_ids.map(String).slice(0, 30) : []
+      if (!month || !kinds.length || !ids.length) return send(res, 400, { error: 'Pick a month, at least one red flag and at least one person.' })
+      return send(res, 200, await sendStaff(busy, hq, { month, kinds, ids, who }))
+    }
+    if (action === 'wa-status') return send(res, 200, { configured: waConfigured(), supplierTemplate: TPL_SUPPLIER, staffTemplate: TPL_STAFF, lang: TPL_LANG })
     if (action === 'log') {
       const month = isMonth(body.month) ? body.month : null
       const rows = check(await busy.from('gst_log').select('*').eq('month', month).order('sent_at', { ascending: false }).limit(200), 'log')
@@ -376,14 +395,18 @@ function groupBy(list, keyFn) {
 // ---------- WhatsApp (Meta Cloud API, direct — api/_wa-cloud.js) ----------
 // Business-started messages must be APPROVED TEMPLATES (free text only works within 24 h of
 // the other side writing to us). Two Utility templates, submitted in WhatsApp Manager:
-//   gstr1_filing_reminder  (to a supplier)  {{1}} party name, {{2}} month, {{3}} invoice list, {{4}} JCM GSTIN
-//   gst_missing_in_busy    (to admins)      {{1}} month, {{2}} count, {{3}} total, {{4}} invoice list
-// Names / language can be overridden with GST_TPL_SUPPLIER, GST_TPL_ADMIN, GST_TPL_LANG.
+//   gstr1_filing_reminder  (to a supplier)  IMAGE header = GET /api/gst?banner=<month>;
+//                          body {{1}} party name, {{2}} month, {{3}} invoice list, {{4}} JCM GSTIN
+//   gst_mismatch_summary   (to staff)       DOCUMENT header = the PDF (public link in Supabase
+//                          Storage bucket gst-reports); body {{1}} sender, {{2}} month, {{3}} deadline
+// Names / language can be overridden with GST_TPL_SUPPLIER, GST_TPL_STAFF, GST_TPL_LANG.
 // Template parameters may not contain new lines, so lists are one line, "; " separated.
 const TPL_SUPPLIER = process.env.GST_TPL_SUPPLIER || 'gstr1_filing_reminder'
-const TPL_ADMIN = process.env.GST_TPL_ADMIN || 'gst_missing_in_busy'
+const TPL_STAFF = process.env.GST_TPL_STAFF || 'gst_mismatch_summary'
 const TPL_LANG = process.env.GST_TPL_LANG || 'en'
 const JCM_GSTIN = '23AAPFJ0607D1ZT'
+const DEADLINE_DAYS = 2
+const STORAGE_BUCKET = 'gst-reports'
 const PARAM_MAX = 900 // characters per template parameter (Meta's body limit is 1024 in all)
 
 function fitList(items) {
@@ -398,11 +421,11 @@ function fitList(items) {
 }
 
 // Returns { status, detail } — status: sent | failed | no_number | not_set_up.
-async function sendWhatsApp(mobile, templateName, params) {
+async function sendWhatsApp(mobile, templateName, params, opts = {}) {
   if (!waConfigured()) return { status: 'not_set_up', detail: 'WHATSAPP_TOKEN / WHATSAPP_PHONE_NUMBER_ID missing in Vercel' }
   if (!toWaNumber(mobile)) return { status: 'no_number', detail: '' }
   try {
-    const out = await sendTemplate(mobile, templateName, TPL_LANG, params)
+    const out = await sendTemplate(mobile, templateName, TPL_LANG, params, opts)
     return { status: 'sent', detail: out?.messages?.[0]?.id ? `id ${out.messages[0].id}` : '' }
   } catch (err) {
     console.error('GST WhatsApp failed:', err.message)
@@ -421,65 +444,35 @@ async function remindParty(busy, { month, gstin, keys, who }) {
   const number = contact?.whatsapp || contact?.mobile
   const name = bills[0].party_name || contact?.party_name || 'Sir/Madam'
   const list = fitList(bills.map(b => `${b.vch_no} dt ${niceDate(b.vch_date)} (${rupees(b.total)})`))
-  const r = await sendWhatsApp(number, TPL_SUPPLIER, [name, monthName(month), list, JCM_GSTIN])
+  const r = await sendWhatsApp(number, TPL_SUPPLIER, [name, monthName(month), list, JCM_GSTIN], { headerImageUrl: `${HQ_URL}/api/gst?banner=${month}` })
   check(await busy.from('gst_log').insert({ month, kind: 'party_reminder', channel: 'whatsapp', gstin, recipient: number ? String(number) : null, status: r.status, detail: `${bills.length} bill(s): ${bills.map(b => b.vch_no).join(', ')}${r.detail ? ` — ${r.detail}` : ''}`.slice(0, 500), by_name: who }), 'log')
   return { status: r.status, detail: r.detail, number: number || null, name, count: bills.length }
 }
 
-// ---------- admins: the "missing in Busy" list ----------
-async function notifyAdmins(busy, hq, { month, who }) {
+// ---------- staff: PDF summary of the chosen red flags ----------
+async function sendStaff(busy, hq, { month, kinds, ids, who }) {
   const data = await loadRecon(busy, month)
-  const missing = data.rows.filter(r => r.bucket === 'missing_busy' && !r.mark)
-  const admins = check(await hq.from('profiles').select('id, name, email, whatsapp, role, is_admin, active'), 'admins')
-    .filter(p => p.active !== false && (p.is_admin === true || p.role === 'admin'))
+  const rows = data.rows.filter(r => kinds.includes(r.bucket) && !r.mark)
+  const people = check(await hq.from('profiles').select('id, name, email, whatsapp, active').in('id', ids), 'people')
+    .filter(p => p.active !== false)
+  if (!people.length) return { error: 'None of those people were found.' }
+
+  const deadline = new Date(Date.now() + DEADLINE_DAYS * 86400000)
+  const pdf = await buildMismatchPdf({ month, kinds, rows, counts: data.counts, totals: data.totals, sender: who, deadline, contacts: data.contacts })
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)
+  const path = `${month}/GSTR2A-mismatch-${month}-${stamp}.pdf`
+  const up = await busy.storage.from(STORAGE_BUCKET).upload(path, pdf, { contentType: 'application/pdf', upsert: true })
+  if (up.error) return { error: `Could not save the PDF: ${up.error.message}. Is the ${STORAGE_BUCKET} bucket created (supabase/gst-setup.sql)?` }
+  const { data: pub } = busy.storage.from(STORAGE_BUCKET).getPublicUrl(path)
+  const url = pub?.publicUrl
+  const filename = `GSTR2A-mismatch-${monthName(month).replace(/\s+/g, '-')}.pdf`
+
   const results = []
-  const total = missing.reduce((s, r) => s + (r.p_total || 0), 0)
-
-  // WhatsApp (template gst_missing_in_busy)
-  const list = fitList(missing.map(r => `${r.party || r.gstin}: ${r.p_no} dt ${niceDate(r.p_date)} (${rupees(r.p_total)})`))
-  for (const a of admins) {
-    const r = await sendWhatsApp(a.whatsapp, TPL_ADMIN, [monthName(month), String(missing.length), rupees(total), list || 'none'])
-    results.push({ name: a.name || a.email, channel: 'whatsapp', status: r.status, detail: r.detail })
-    check(await busy.from('gst_log').insert({ month, kind: 'admin_list', channel: 'whatsapp', recipient: a.whatsapp ? String(a.whatsapp) : null, status: r.status, detail: `${missing.length} missing in Busy${r.detail ? ` — ${r.detail}` : ''}`.slice(0, 500), by_name: who }), 'log')
+  for (const p of people) {
+    const r = await sendWhatsApp(p.whatsapp, TPL_STAFF, [who, monthName(month), niceDate(deadline.toISOString())], { headerDocumentUrl: url, headerDocumentName: filename })
+    results.push({ name: p.name || p.email, status: r.status, detail: r.detail })
+    check(await busy.from('gst_log').insert({ month, kind: 'staff_summary', channel: 'whatsapp', recipient: p.whatsapp ? String(p.whatsapp) : null, status: r.status,
+      detail: `${p.name || p.email}: ${kinds.map(k => BUCKET_LABEL[k]).join(', ')} (${rows.length} items)${r.detail ? ` — ${r.detail}` : ''}`.slice(0, 500), by_name: who }), 'log')
   }
-
-  // Email (Resend), when set up
-  const to = [...new Set([...admins.map(a => a.email), ...String(process.env.GST_REPORT_EMAIL || '').split(/[,;\s]+/)].filter(x => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x || '')))]
-  const apiKey = process.env.RESEND_API_KEY
-  let emailStatus = 'not_set_up', emailDetail = apiKey ? (to.length ? '' : 'no admin has an email') : 'RESEND_API_KEY is not set in Vercel'
-  if (apiKey && to.length) {
-    try {
-      const r = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from: process.env.GST_EMAIL_FROM || 'JCM HQ <onboarding@resend.dev>', to, subject: `GSTR-2A ${monthName(month)} — ${missing.length} invoice(s) not entered in Busy (${rupees(total)})`, html: adminEmailHtml(month, missing, total) }),
-      })
-      const t = (await r.text()).slice(0, 300)
-      emailStatus = r.ok ? 'sent' : 'failed'; emailDetail = r.ok ? `to ${to.join(', ')}` : `Resend said ${r.status}: ${t}`
-    } catch (err) { emailStatus = 'failed'; emailDetail = err.message }
-  }
-  results.push({ name: to.join(', ') || '—', channel: 'email', status: emailStatus, detail: emailDetail })
-  check(await busy.from('gst_log').insert({ month, kind: 'admin_list', channel: 'email', recipient: to.join(', ') || null, status: emailStatus, detail: emailDetail.slice(0, 500), by_name: who }), 'log')
-  return { count: missing.length, total, results }
-}
-
-const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
-function adminEmailHtml(month, missing, total) {
-  const th = 'style="text-align:left;padding:6px 10px;background:#F1ECE0;font-size:12px;letter-spacing:.04em;color:#3E4553"'
-  const td = 'style="padding:6px 10px;border-top:1px solid #ECE6D8;font-size:14px;vertical-align:top"'
-  const tdr = td.replace('text-align:left;', '') + ' align="right"'
-  const byParty = groupBy(missing, r => `${r.party || ''}|${r.gstin}`)
-  const parts = [`<div style="font-family:Arial,sans-serif;color:#0C111B;max-width:760px">
-    <div style="background:#12213B;color:#FFFFFF;padding:14px 18px;border-bottom:3px solid #D9AE55;font-size:20px;font-weight:bold">GSTR-2A ${esc(monthName(month))} — not entered in Busy</div>
-    <p style="font-size:14px">${missing.length} invoice(s) are in the GST portal's 2A but have no matching purchase entry in Busy, total ${esc(rupees(total))}. Please get these bills to the accountant for entry.</p>`]
-  for (const [, list] of byParty) {
-    const r0 = list[0]
-    parts.push(`<p style="font-size:15px;font-weight:bold;margin:14px 0 4px">${esc(r0.party || r0.gstin)} <span style="font-weight:normal;color:#5A606C">${esc(r0.gstin)}</span></p>
-      <table style="border-collapse:collapse;width:100%;border:1px solid #E2DCCD"><tr><th ${th}>INVOICE</th><th ${th}>DATE</th><th ${th}>TAXABLE</th><th ${th}>TAX</th><th ${th}>TOTAL</th><th ${th}>FILED IN</th></tr>
-      ${list.map(r => `<tr><td ${td}>${esc(r.p_no)}</td><td ${td}>${esc(niceDate(r.p_date))}</td><td ${tdr}>${esc(rupees(r.p_taxable))}</td><td ${tdr}>${esc(rupees(r.p_tax))}</td><td ${tdr}><b>${esc(rupees(r.p_total))}</b></td><td ${td}>${esc(r.filed_period || '')}</td></tr>`).join('')}
-      </table>`)
-  }
-  parts.push(`<p style="font-size:14px;margin-top:18px">Open the page for the full picture and the Excel: <a href="${PAGE_URL}">${PAGE_URL}</a></p>
-    <p style="font-size:12px;color:#5A606C;margin-top:24px">Sent by JCM HQ — GSTR-2A Reconciliation.</p></div>`)
-  return parts.join('\n')
+  return { count: rows.length, pdfUrl: url, results }
 }

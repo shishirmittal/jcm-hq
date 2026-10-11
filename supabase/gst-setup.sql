@@ -118,3 +118,8 @@ create table if not exists gst_log (
 );
 create index if not exists gst_log_month_idx on gst_log (month, kind);
 alter table gst_log enable row level security;
+
+-- Storage bucket for the staff summary PDFs ("Send to staff" on the page). Public: the
+-- WhatsApp template fetches the PDF by plain link. Names carry a timestamp, nothing secret.
+insert into storage.buckets (id, name, public) values ('gst-reports', 'gst-reports', true)
+on conflict (id) do update set public = true;
