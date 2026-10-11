@@ -125,3 +125,58 @@ export async function wabaSubscription(op) {
   if (!res.ok || data?.error) throw new Error(`Meta said: ${data?.error?.message || `HTTP ${res.status}`}`)
   return data
 }
+
+// ---------------------------------------------------------------------------
+// Shared bits for every module that sends (2026-10-12): one log, one set of switches.
+//   wa_log       every template send: kind, to, template, status, error, Meta message id, ref
+//   wa_settings  { key, value } — 'off:<kind>' = 'true' switches that kind off (HQ → WhatsApp page)
+// Both live in the Busy project; pass the Busy service-key client as `busy`.
+// Kinds: invoice, receipt, credit_note, debit_note, payment, purchase, order, quotation,
+//        dispatch, gst_supplier, reminder, staff_followup, staff_evening, staff_red_alert,
+//        staff_purchase, staff_purchase_summary, staff_gst, staff_orders, test
+// ---------------------------------------------------------------------------
+export const HQ_URL = 'https://hq.jcmretails.com'
+export const BANNER = name => `${HQ_URL}/wa/${name}.png`
+export const inr = n => Math.round(Number(n) || 0).toLocaleString('en-IN')
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+export const niceDate = iso => {
+  const s = String(iso || '').slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return s || '—'
+  const [y, m, d] = s.split('-').map(Number)
+  return `${d} ${MONTHS[m - 1]} ${y}`
+}
+// Meta refuses a body value with a line break, a tab or 4+ spaces in a row; and never an empty one.
+export const flat = (v, max = 900) => {
+  const s = String(v ?? '').replace(/[\r\n\t]+/g, ' · ').replace(/ {2,}/g, ' ').trim()
+  return (s || '—').slice(0, max)
+}
+
+export async function waSwitches(busy) {
+  const r = await busy.from('wa_settings').select('key, value')
+  if (r.error) return { ready: false, off: new Set(), get: () => null }
+  const map = new Map((r.data || []).map(x => [x.key, x.value]))
+  const off = new Set([...map.keys()].filter(k => k.startsWith('off:') && map.get(k) === 'true').map(k => k.slice(4)))
+  return { ready: true, off, get: k => map.get(k) ?? null, map }
+}
+
+// Send a template and write one wa_log row whatever happens.
+// Returns { status: 'sent' | 'failed' | 'no_number' | 'off', id?, error? } — never throws.
+export async function sendLogged(busy, { kind, to, template, lang = 'en', params = [], opts = {}, ref = null, refName = null, by = null, switches = null }) {
+  const sw = switches || await waSwitches(busy)
+  const number = toWaNumber(to)
+  const row = { kind, template, to_number: number, ref, ref_name: refName, sent_by: by, params: params.map(p => String(p)) }
+  let out
+  if (sw.off.has(kind)) out = { status: 'off', error: 'switched off on the WhatsApp page' }
+  else if (!number) out = { status: 'no_number', error: `no valid mobile (${String(to || '').slice(0, 30)})` }
+  else {
+    try {
+      const d = await sendTemplate(number, template, lang, params.map(p => flat(p)), opts)
+      out = { status: 'sent', id: d?.messages?.[0]?.id || null }
+    } catch (err) {
+      out = { status: 'failed', error: String(err.message || err).slice(0, 400) }
+    }
+  }
+  const ins = await busy.from('wa_log').insert({ ...row, status: out.status, error: out.error || null, meta_id: out.id || null })
+  if (ins.error) console.error('wa_log insert failed:', ins.error.message)
+  return out
+}

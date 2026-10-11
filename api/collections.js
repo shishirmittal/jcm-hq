@@ -1,6 +1,6 @@
 import { applyCors } from './_cors.js'
 import { createClient } from '@supabase/supabase-js'
-import { sendTemplate, waConfigured } from './_wa-cloud.js'
+import { waConfigured, sendLogged, waSwitches, BANNER, HQ_URL, inr, niceDate } from './_wa-cloud.js'
 
 // Payment Follow-up (JCM HQ → Collections) — page src/payment-followup.js.
 //
@@ -36,14 +36,15 @@ import { sendTemplate, waConfigured } from './_wa-cloud.js'
 //   daily-now { which: 'morning' | 'evening' } (admins)  the same, right now, from the Today tab
 //   owners / owners-save (admins)   who follows up which account group (collection_group_owners,
 //           collection_settings.default_owner for groups nobody was given)
-//   send-template { party_code }   ONE party, from the row's WhatsApp button, through Meta's own API with the
-//           approved template: Dealer groups payment_reminder_20d/40d, Retail groups retail_reminder_20d/40d
-//           (amber / red by days overdue). Same skip rules as below; logged as channel 'reminder'.
-//   send-reminders { party_codes[], template }   WhatsApp through Whatshub360, at most 25 per call.
-//           The server re-checks every party: the DND group, "check balance"
-//           parties, nothing due, no number and anyone reminded in the last
-//           20 hours are skipped whatever the page sent. Each attempt is kept
-//           in collection_followups (channel 'reminder', outcome sent / failed / no_number).
+//   send-template { party_code }   ONE party, from the row's WhatsApp button: the approved Meta template
+//           (Dealer groups payment_reminder_20d/40d, Retail groups retail_reminder_20d/40d; red when
+//           something is over 40 days, else amber). Logged in collection_followups (channel 'reminder').
+//   send-reminders { party_codes[], tier }   the same template, for ticked parties (max 25 per call).
+//   reminder-plan { tier }         who the automatic run would message right now, and why others are skipped.
+//   reminder-settings / reminder-settings-save (admins)  automatic daily reminders: on/off, time, tiers, cap.
+//   All reminder sends re-check: DND group, "check balance", nothing over 20 days, no number,
+//   any reminder in the last 20 h, and the contact gap (over 40 days: nothing in the last 6 days,
+//   over 20 days: nothing in the last 13 days — calls, notes and reminders all count).
 
 const SUPABASE_URL = 'https://cmtnzmfuasniicsdxyle.supabase.co'      // HQ / CRM project (profiles)
 const SUPABASE_BUSY_URL = 'https://jlkjjqnmhsgefpluemyz.supabase.co' // Busy-data project (dues)
@@ -136,13 +137,16 @@ export default async function handler(req, res) {
     if (action === 'owners') return await handleOwners(busy, hq, me, res)
     if (action === 'daily-now') {
       if (!me.isAdmin) return send(res, 403, { error: 'Only admins can send these.' })
-      const which = body.which === 'evening' ? 'evening' : 'morning'
+      const which = body.which === 'evening' ? 'evening' : body.which === 'reminders' ? 'reminders' : 'morning'
       return send(res, 200, { ok: true, ...(await runDaily(busy, hq, which)) })
     }
     if (action === 'owners-save') return await handleOwnersSave(busy, me, body, res)
     if (action === 'history') return await handleHistory(busy, body, res)
     if (action === 'save') return await handleSave(busy, hq, body, me, res)
     if (action === 'send-template') return await handleSendTemplate(busy, body, me, res)
+    if (action === 'reminder-plan') return await handleReminderPlan(busy, body, me, res)
+    if (action === 'reminder-settings') return await handleReminderSettings(busy, me, body, res, false)
+    if (action === 'reminder-settings-save') return await handleReminderSettings(busy, me, body, res, true)
     if (action === 'send-reminders') return await handleSendReminders(busy, body, me, res)
     return send(res, 400, { error: 'Unknown request.' })
   } catch (err) {
@@ -376,7 +380,7 @@ async function handleMeta(busy, me, res) {
     cadence: CADENCE,
     setupNeeded,
     dndGroup: DND_GROUP,
-    whatsappReady: !!process.env.WHATSHUB_SEND_URL,
+    whatsappReady: waConfigured(),
     today: todayIST(),
     lastSync: fresh.lastSync,
   })
@@ -639,205 +643,232 @@ async function handleSave(busy, hq, body, me, res) {
 }
 
 // ---------------------------------------------------------------------------
-// WhatsApp reminders (Whatshub360)
+// WhatsApp payment reminders (Meta templates) — one party, ticked parties, or the daily automatic run
 // ---------------------------------------------------------------------------
 const REMINDER_GAP_HOURS = 20
 const MAX_PER_CALL = 25
+// Contact gap (Shishir, 2026-10-12): a party contacted (call / note / visit / reminder) within
+// this many days is left alone by every reminder send. Over 40 days → 6 days, over 20 → 13 days.
+const CONTACT_GAP = { 40: 6, 20: 13 }
+const AUTO_DEFAULTS = { reminders_on: false, reminders_at: '11:00', reminders_tiers: '20,40', reminders_max: 150 }
 
-async function sendWhatsApp(mobile, message) {
-  const template = process.env.WHATSHUB_SEND_URL
-  if (!template) return 'not_set_up'
-  const digits = cleanPhone(mobile)
-  if (!digits) return 'no_number'
-  // Same Vercel settings as Red Alerts: the send link is kept as a template,
-  //   https://…?vid={vid}&recMobileNo=91{mobile}&msg={msg}
-  const url = template
-    .replace('{vid}', encodeURIComponent(process.env.WHATSHUB_VID || ''))
-    .replace('{mobile}', digits)
-    .replace('{msg}', encodeURIComponent(message))
-  try {
-    const r = await fetch(url, { method: 'GET', signal: AbortSignal.timeout(10000) })
-    const text = (await r.text()).slice(0, 300)
-    if (!r.ok || /error|fail|invalid/i.test(text)) {
-      console.error('Whatshub360 reminder failed:', r.status, text)
-      return 'failed'
-    }
-    return 'sent'
-  } catch (err) {
-    console.error('Whatshub360 reminder error:', err)
-    return 'failed'
-  }
-}
-
-const rupeesText = n => '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN')
-
-function fillTemplate(template, party) {
-  return template
-    .replace(/\{name\}/gi, party.party_name || '')
-    .replace(/\{amount\}/gi, rupeesText(party.balance))
-    .replace(/\{overdue\}/gi, rupeesText(party.overdue))
-    .trim()
-}
-
-async function handleSendReminders(busy, body, me, res) {
-  if (!process.env.WHATSHUB_SEND_URL) {
-    return send(res, 400, { error: 'WhatsApp sending is not set up yet (WHATSHUB_SEND_URL in Vercel).' })
-  }
-  const codes = Array.isArray(body.party_codes)
-    ? [...new Set(body.party_codes.map(c => String(c).slice(0, 40)).filter(Boolean))]
-    : []
-  if (!codes.length) return send(res, 400, { error: 'Tick at least one party.' })
-  if (codes.length > MAX_PER_CALL) return send(res, 400, { error: `At most ${MAX_PER_CALL} at a time.` })
-  const template = String(body.template || '').trim().slice(0, 1000)
-  if (template.length < 10) return send(res, 400, { error: 'Write the message first.' })
-
-  const intCodes = codes.filter(c => /^\d+$/.test(c)).map(Number)
-  const since = new Date(Date.now() - REMINDER_GAP_HOURS * 3600 * 1000).toISOString()
-  const [seg, pd, cu, recent, fresh, ageing] = await Promise.all([
-    busy.from('dues_segmented').select('party_code, party_name, outstanding_balance, group_name, group_path, due_type').in('party_code', codes),
-    busy.from('party_dues').select('party_code, phone_primary, phone_all, needs_review').in('party_code', codes),
-    intCodes.length ? busy.from('customers').select('party_code, mobile, whatsapp_no').in('party_code', intCodes) : Promise.resolve({ data: [] }),
-    busy.from('collection_followups').select('party_code').eq('channel', 'reminder').eq('outcome', 'sent')
-      .in('party_code', codes).gte('created_at', since),
-    dueFreshness(busy),
-    /\{overdue\}/i.test(template) ? ageingFor(busy, codes) : Promise.resolve([]),
-  ])
-  const ageMap = new Map(ageing.map(a => [String(a.party_code), a]))
-  const segMap = new Map(check(seg, 'dues').map(r => [String(r.party_code), r]))
-  const pdMap = new Map(check(pd, 'party_dues').map(r => [String(r.party_code), r]))
-  const cuMap = new Map(check(cu, 'customers').map(r => [String(r.party_code), r]))
-  const recentSet = new Set(check(recent, 'recent').map(r => String(r.party_code)))
-
-  const results = []
-  const toSend = []
-  for (const code of codes) {
-    const s = segMap.get(code)
-    const p = pdMap.get(code) || {}
-    const c = cuMap.get(code) || {}
-    const party = s && {
-      party_code: code, party_name: s.party_name, group_name: s.group_name,
-      balance: Number(s.outstanding_balance) || 0,
-      overdue: Math.min(overdueOf(ageMap.get(code)), Number(s.outstanding_balance) || 0),
-    }
-    let skip = null
-    if (!s || s.due_type !== 'Receivable') skip = 'not_found'
-    else if (isDnd(s)) skip = 'dnd'
-    else if (p.needs_review === true) skip = 'needs_review'
-    else if (party.balance <= 0 || fresh.stale.has(code)) skip = 'nothing_due'
-    else if (recentSet.has(code)) skip = 'recent'
-    if (skip) { results.push({ party_code: code, status: skip }); continue }
-    const mobile = cleanPhone(c.whatsapp_no) || phonesFrom(c.mobile, s.phone_primary, p.phone_primary, p.phone_all)[0] || null
-    toSend.push({ party, mobile })
-  }
-
-  // Three at a time keeps a batch of 25 well inside the function time limit.
-  const queue = [...toSend]
-  const logRows = []
-  async function worker() {
-    while (queue.length) {
-      const { party, mobile } = queue.shift()
-      const message = fillTemplate(template, party)
-      const status = mobile ? await sendWhatsApp(mobile, message) : 'no_number'
-      results.push({ party_code: party.party_code, status, mobile })
-      logRows.push({
-        party_code: party.party_code, party_name: party.party_name, group_name: party.group_name,
-        channel: 'reminder', outcome: status, mobile, message, balance_at_time: party.balance,
-        created_by: me.id, created_by_name: me.name,
-      })
-    }
-  }
-  await Promise.all([worker(), worker(), worker()])
-
-  if (logRows.length) {
-    const ins = await busy.from('collection_followups').insert(logRows)
-    if (ins.error) console.error('collections reminder log failed:', ins.error)
-  }
-  const sentAt = new Date().toISOString()
-  return send(res, 200, { results, sentAt })
-}
-
-// ---------------------------------------------------------------------------
-// One WhatsApp reminder through Meta (the row's WhatsApp button)
-// ---------------------------------------------------------------------------
-const HQ_SITE = 'https://hq.jcmretails.com'
-const inr = n => Math.round(Number(n) || 0).toLocaleString('en-IN')
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-const niceDate = iso => { const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number); return `${d} ${MONTHS[m - 1]} ${y}` }
+const rupeesText = n => '₹' + inr(n)
 const daysSince = iso => Math.max(0, Math.round((Date.parse(todayIST()) - Date.parse(String(iso).slice(0, 10))) / 86400000))
 const fyStartIST = () => { const t = todayIST(); const y = Number(t.slice(0, 4)); return `${Number(t.slice(5, 7)) >= 4 ? y : y - 1}-04-01` }
+
+// Everything needed to decide and send reminders for `codes`: dues, phones, ageing at 20 and 40
+// days, last contact, last reminder, group kind. One round of queries for the whole batch.
+async function reminderContext(busy, codes) {
+  const intCodes = codes.filter(c => /^\d+$/.test(c)).map(Number)
+  const sinceRem = new Date(Date.now() - REMINDER_GAP_HOURS * 3600 * 1000).toISOString()
+  const sinceContact = new Date(Date.now() - Math.max(...Object.values(CONTACT_GAP)) * 86400000).toISOString()
+  const q = (table, select) => inChunks(codes, 300, part => busy.from(table).select(select).in('party_code', part).then(r => check(r, table)))
+  const [seg, pd, cu, recentRem, contacts, fresh, ag20, ag40, kr] = await Promise.all([
+    q('dues_segmented', 'party_code, party_name, outstanding_balance, group_name, group_path, due_type, phone_primary'),
+    q('party_dues', 'party_code, phone_primary, phone_all, needs_review'),
+    intCodes.length ? inChunks(intCodes, 300, part => busy.from('customers').select('party_code, mobile, whatsapp_no').in('party_code', part).then(r => check(r, 'customers'))) : [],
+    inChunks(codes, 300, part => busy.from('collection_followups').select('party_code, created_at').eq('channel', 'reminder').eq('outcome', 'sent')
+      .in('party_code', part).gte('created_at', sinceRem).then(r => check(r, 'recent reminders'))),
+    inChunks(codes, 300, part => busy.from('collection_followups').select('party_code, created_at, channel').in('party_code', part)
+      .gte('created_at', sinceContact).then(r => check(r, 'contacts'))),
+    dueFreshness(busy),
+    ageingFor(busy, codes),
+    ageingFor(busy, codes, 40),
+    busy.from('collection_group_owners').select('group_name, kind'),
+  ])
+  const latestOf = rows => { const m = new Map(); for (const r of rows) { const k = String(r.party_code); if (!m.has(k) || m.get(k) < r.created_at) m.set(k, r.created_at) } return m }
+  return {
+    seg: new Map(seg.map(r => [String(r.party_code), r])),
+    pd: new Map(pd.map(r => [String(r.party_code), r])),
+    cu: new Map(cu.map(r => [String(r.party_code), r])),
+    lastReminder: latestOf(recentRem),
+    lastContact: latestOf(contacts),
+    fresh,
+    ag20: new Map(ag20.map(a => [String(a.party_code), a])),
+    ag40: new Map(ag40.map(a => [String(a.party_code), a])),
+    kinds: new Map((kr.error ? [] : kr.data || []).map(r => [r.group_name, r.kind])),
+  }
+}
+
+// Decide for one party. Returns { ok: true, plan } or { ok: false, skip, why }.
+//   minOver: 20 = anyone with something over 20 days, 40 = only parties with something over 40 days.
+function planReminder(ctx, code, { minOver = 20, respectGap = true } = {}) {
+  const s = ctx.seg.get(code)
+  const p = ctx.pd.get(code) || {}
+  const c = ctx.cu.get(code) || {}
+  if (!s || s.due_type !== 'Receivable') return { ok: false, skip: 'not_found', why: 'No dues in Busy' }
+  const balance = Number(s.outstanding_balance) || 0
+  if (isDnd(s)) return { ok: false, skip: 'dnd', why: 'JCM Due DND group' }
+  if (p.needs_review === true) return { ok: false, skip: 'needs_review', why: 'Balance flagged "Check balance"' }
+  if (balance <= 0 || ctx.fresh.stale.has(code)) return { ok: false, skip: 'nothing_due', why: 'Nothing due right now' }
+  const overdue = Math.min(overdueOf(ctx.ag20.get(code)), balance)
+  const overdue40 = Math.min(overdueOf(ctx.ag40.get(code)), balance)
+  if (overdue <= 0) return { ok: false, skip: 'recent_credit', why: 'Nothing over 20 days yet' }
+  const red = overdue40 > 0
+  if (minOver >= 40 && !red) return { ok: false, skip: 'under_40', why: 'Nothing over 40 days' }
+  const rem = ctx.lastReminder.get(code)
+  if (rem) {
+    const hrs = Math.max(1, Math.round((Date.now() - Date.parse(rem)) / 3600000))
+    return { ok: false, skip: 'recent', why: `Reminder already sent ${hrs} h ago` }
+  }
+  const gapDays = red ? CONTACT_GAP[40] : CONTACT_GAP[20]
+  const last = ctx.lastContact.get(code)
+  if (respectGap && last && Date.now() - Date.parse(last) < gapDays * 86400000) {
+    const d = Math.floor((Date.now() - Date.parse(last)) / 86400000)
+    return { ok: false, skip: 'contacted', why: `Contacted ${d === 0 ? 'today' : `${d} day${d === 1 ? '' : 's'} ago`} (gap for over ${red ? 40 : 20} days is ${gapDays} days)` }
+  }
+  const mobile = cleanPhone(c.whatsapp_no) || phonesFrom(c.mobile, s.phone_primary, p.phone_primary, p.phone_all)[0] || null
+  if (!mobile) return { ok: false, skip: 'no_number', why: 'No WhatsApp number in Busy' }
+  const ag = ctx.ag20.get(code) || {}
+  const oldest = ag.oldest_unpaid_date || (Number(ag.older) > 0 ? fyStartIST() : ag.last_bill_date)
+  if (!oldest) return { ok: false, skip: 'no_dates', why: 'Bill dates not synced yet' }
+  const retail = ctx.kinds.get(s.group_name) === 'retail'
+  const name = String(s.party_name || '').trim()
+  const days = String(daysSince(oldest))
+  const when = niceDate(oldest)
+  return {
+    ok: true,
+    plan: {
+      code, name, group: s.group_name, mobile, balance, overdue, red, retail,
+      template: `${retail ? 'retail_reminder' : 'payment_reminder'}_${red ? '40d' : '20d'}`,
+      params: retail ? [name, inr(balance), days, when] : [name, inr(balance), inr(overdue), days, when],
+      opts: {
+        headerImageUrl: BANNER(red ? 'reminder-red-40d' : 'reminder-amber-20d'),
+        buttonPayloads: [`qr:${code}`, `ledger:${code}`, `${retail ? 'portal' : 'inv'}:${code}`],
+      },
+    },
+  }
+}
+
+// Send one planned reminder and log it in collection_followups (channel 'reminder').
+async function dispatchReminder(busy, plan, me, switches) {
+  const out = await sendLogged(busy, { kind: 'reminder', to: plan.mobile, template: plan.template, params: plan.params, opts: plan.opts,
+    ref: plan.code, refName: plan.name, by: me.name, switches })
+  const outcome = out.status === 'sent' ? 'sent' : out.status === 'no_number' ? 'no_number' : 'failed'
+  const ins = await busy.from('collection_followups').insert({
+    party_code: plan.code, party_name: plan.name, group_name: plan.group, channel: 'reminder', outcome, mobile: plan.mobile,
+    message: `${plan.template}: ${plan.params.join(' | ')}${out.error ? ` — ${out.error}` : ''}`,
+    balance_at_time: plan.balance, created_by: me.id, created_by_name: me.name,
+  })
+  if (ins.error) console.error('collections reminder log failed:', ins.error)
+  return { status: outcome, error: out.error || null }
+}
 
 async function handleSendTemplate(busy, body, me, res) {
   if (!waConfigured()) return send(res, 400, { error: 'WhatsApp (Meta) is not set up yet in Vercel.' })
   const code = String(body.party_code || '').slice(0, 40)
   if (!/^\d{1,9}$/.test(code)) return send(res, 400, { error: 'No party chosen.' })
-  const since = new Date(Date.now() - REMINDER_GAP_HOURS * 3600 * 1000).toISOString()
-  const [seg, pd, cu, recent, fresh, ag20, ag40, kr] = await Promise.all([
-    busy.from('dues_segmented').select('party_code, party_name, outstanding_balance, group_name, group_path, due_type, phone_primary').eq('party_code', code),
-    busy.from('party_dues').select('party_code, phone_primary, phone_all, needs_review').eq('party_code', code),
-    busy.from('customers').select('party_code, mobile, whatsapp_no').eq('party_code', Number(code)),
-    busy.from('collection_followups').select('created_at').eq('party_code', code).eq('channel', 'reminder').eq('outcome', 'sent')
-      .gte('created_at', since).order('created_at', { ascending: false }).limit(1),
-    dueFreshness(busy),
-    ageingFor(busy, [code]),
-    ageingFor(busy, [code], 40),
-    busy.from('collection_group_owners').select('group_name, kind'),
-  ])
-  const s = check(seg, 'dues')[0]
-  const p = check(pd, 'party_dues')[0] || {}
-  const c = check(cu, 'customers')[0] || {}
-  if (!s || s.due_type !== 'Receivable') return send(res, 400, { error: 'This party has no dues in Busy.' })
-  const balance = Number(s.outstanding_balance) || 0
-  if (isDnd(s)) return send(res, 400, { error: 'This group is "JCM Due DND" — reminders are never sent to it.' })
-  if (p.needs_review === true) return send(res, 400, { error: 'This balance is flagged "Check balance" — sort that out before reminding.' })
-  if (balance <= 0 || fresh.stale.has(code)) return send(res, 400, { error: 'Nothing is due from this party right now.' })
-  const last = check(recent, 'recent')[0]
-  if (last) {
-    const hrs = Math.max(1, Math.round((Date.now() - Date.parse(last.created_at)) / 3600000))
-    return send(res, 400, { error: `A reminder was already sent ${hrs} hour${hrs === 1 ? '' : 's'} ago. Wait until tomorrow.` })
-  }
-  const mobile = cleanPhone(c.whatsapp_no) || phonesFrom(c.mobile, s.phone_primary, p.phone_primary, p.phone_all)[0] || null
-  if (!mobile) return send(res, 400, { error: 'No WhatsApp number for this party in Busy.' })
+  const ctx = await reminderContext(busy, [code])
+  // A person pressing the button has decided; only the 20-hour repeat guard and the hard skips apply.
+  const d = planReminder(ctx, code, { respectGap: false })
+  if (!d.ok) return send(res, 400, { error: d.why + '.' })
+  const r = await dispatchReminder(busy, d.plan, me)
+  if (r.status !== 'sent') return send(res, 502, { error: r.error || 'Could not send.' })
+  return send(res, 200, { ok: true, template: d.plan.template, tone: d.plan.red ? 'red' : 'amber', kind: d.plan.retail ? 'retail' : 'dealer', mobile: d.plan.mobile, name: d.plan.name })
+}
 
-  const overdue = Math.min(overdueOf(ag20[0]), balance)
-  const overdue40 = Math.min(overdueOf(ag40[0]), balance)
-  if (overdue <= 0) return send(res, 400, { error: 'Nothing is over 20 days yet — only recent credit.' })
-  const red = overdue40 > 0
-  const ag = ag20[0] || {}
-  const oldest = ag.oldest_unpaid_date || (Number(ag.older) > 0 ? fyStartIST() : ag.last_bill_date)
-  if (!oldest) return send(res, 400, { error: 'Bill dates are not available for this party yet.' })
+async function handleSendReminders(busy, body, me, res) {
+  if (!waConfigured()) return send(res, 400, { error: 'WhatsApp (Meta) is not set up yet in Vercel.' })
+  const codes = Array.isArray(body.party_codes) ? [...new Set(body.party_codes.map(c => String(c).slice(0, 40)).filter(c => /^\d{1,9}$/.test(c)))] : []
+  if (!codes.length) return send(res, 400, { error: 'Tick at least one party.' })
+  if (codes.length > MAX_PER_CALL) return send(res, 400, { error: `At most ${MAX_PER_CALL} at a time.` })
+  const minOver = Number(body.tier) === 40 ? 40 : 20
+  const ctx = await reminderContext(busy, codes)
+  const switches = await waSwitches(busy)
+  const results = []
+  const queue = codes.map(code => ({ code, d: planReminder(ctx, code, { minOver, respectGap: body.respect_gap !== false }) }))
+  for (const x of queue) if (!x.d.ok) results.push({ party_code: x.code, status: x.d.skip, why: x.d.why })
+  const toSend = queue.filter(x => x.d.ok)
+  async function worker() {
+    while (toSend.length) {
+      const { code, d } = toSend.shift()
+      const r = await dispatchReminder(busy, d.plan, me, switches)
+      results.push({ party_code: code, status: r.status, mobile: d.plan.mobile, template: d.plan.template, why: r.error })
+    }
+  }
+  await Promise.all([worker(), worker(), worker()])
+  return send(res, 200, { results, sentAt: new Date().toISOString() })
+}
 
-  const kinds = new Map((kr.error ? [] : kr.data || []).map(r => [r.group_name, r.kind]))
-  const retail = kinds.get(s.group_name) === 'retail'
-  const name = String(s.party_name || '').trim()
-  const days = String(daysSince(oldest))
-  const when = niceDate(oldest)
-  const params = retail ? [name, inr(balance), days, when] : [name, inr(balance), inr(overdue), days, when]
-  const template = `${retail ? 'retail_reminder' : 'payment_reminder'}_${red ? '40d' : '20d'}`
-  const detail = `${template}: ${params.join(' | ')}`
-  const row = {
-    party_code: code, party_name: name, group_name: s.group_name, channel: 'reminder', mobile, message: detail,
-    balance_at_time: balance, created_by: me.id, created_by_name: me.name,
+// Who would get an automatic reminder right now (admins' preview on the reminders tab).
+async function autoCandidates(busy, settings) {
+  const tiers = String(settings.reminders_tiers || AUTO_DEFAULTS.reminders_tiers).split(',').map(Number).filter(n => n === 20 || n === 40)
+  const minOver = tiers.includes(20) ? 20 : 40
+  const rows = await fetchAll(receivables(busy, 'party_code'), 'dues')
+  const codes = rows.map(r => String(r.party_code)).filter(c => /^\d{1,9}$/.test(c))
+  const ctx = await reminderContext(busy, codes)
+  const plans = []
+  const skipped = {}
+  for (const code of codes) {
+    const d = planReminder(ctx, code, { minOver })
+    if (d.ok) plans.push(d.plan)
+    else if (!['nothing_due', 'recent_credit', 'not_found'].includes(d.skip)) skipped[d.skip] = (skipped[d.skip] || 0) + 1
   }
-  try {
-    await sendTemplate(mobile, template, 'en', params, {
-      headerImageUrl: `${HQ_SITE}/wa/${red ? 'reminder-red-40d' : 'reminder-amber-20d'}.png`,
-      buttonPayloads: [`qr:${code}`, `ledger:${code}`, `${retail ? 'portal' : 'inv'}:${code}`],
-    })
-  } catch (err) {
-    console.error('collections send-template failed:', err)
-    const ins = await busy.from('collection_followups').insert({ ...row, outcome: 'failed' })
-    if (ins.error) console.error('collections reminder log failed:', ins.error)
-    return send(res, 502, { error: String(err.message || err).slice(0, 300) })
+  plans.sort((a, b) => (b.red - a.red) || b.overdue - a.overdue)
+  const max = Math.max(1, Math.min(500, Number(settings.reminders_max) || AUTO_DEFAULTS.reminders_max))
+  return { plans: plans.slice(0, max), beyondCap: Math.max(0, plans.length - max), skipped, tiers, max }
+}
+
+async function handleReminderPlan(busy, body, me, res) {
+  if (!me.isAdmin) return send(res, 403, { error: 'Only admins can see this.' })
+  const settings = check(await busy.from('collection_settings').select('*').eq('id', 1), 'settings')[0] || {}
+  const c = await autoCandidates(busy, settings)
+  return send(res, 200, {
+    parties: c.plans.map(p => ({ party_code: p.code, party_name: p.name, group_name: p.group, mobile: p.mobile, balance: p.balance, overdue: p.overdue, tone: p.red ? 'red' : 'amber', kind: p.retail ? 'retail' : 'dealer', template: p.template })),
+    beyondCap: c.beyondCap, skipped: c.skipped, tiers: c.tiers, max: c.max,
+  })
+}
+
+async function handleReminderSettings(busy, me, body, res, save) {
+  if (!me.isAdmin) return send(res, 403, { error: 'Only admins can change this.' })
+  if (save) {
+    const patch = { updated_at: new Date().toISOString() }
+    if (typeof body.reminders_on === 'boolean') patch.reminders_on = body.reminders_on
+    if (/^\d{2}:\d{2}$/.test(String(body.reminders_at || ''))) patch.reminders_at = body.reminders_at
+    if (Array.isArray(body.reminders_tiers)) patch.reminders_tiers = body.reminders_tiers.map(Number).filter(n => n === 20 || n === 40).join(',') || '20,40'
+    if (Number.isFinite(Number(body.reminders_max))) patch.reminders_max = Math.max(1, Math.min(500, Math.round(Number(body.reminders_max))))
+    const r = await busy.from('collection_settings').update(patch).eq('id', 1)
+    if (r.error) return send(res, 500, { error: /column/i.test(r.error.message) ? 'Run the reminder-scheduler SQL in Supabase first.' : r.error.message })
   }
-  const ins = await busy.from('collection_followups').insert({ ...row, outcome: 'sent' })
-  if (ins.error) console.error('collections reminder log failed:', ins.error)
-  return send(res, 200, { ok: true, template, tone: red ? 'red' : 'amber', kind: retail ? 'retail' : 'dealer', mobile, name })
+  const row = check(await busy.from('collection_settings').select('*').eq('id', 1), 'settings')[0] || {}
+  const last = await busy.from('collection_followups').select('created_at, outcome').eq('channel', 'reminder').eq('created_by_name', 'Auto reminders')
+    .order('created_at', { ascending: false }).limit(1)
+  return send(res, 200, {
+    settings: {
+      reminders_on: row.reminders_on === true,
+      reminders_at: row.reminders_at || AUTO_DEFAULTS.reminders_at,
+      reminders_tiers: String(row.reminders_tiers || AUTO_DEFAULTS.reminders_tiers).split(',').map(Number),
+      reminders_max: row.reminders_max || AUTO_DEFAULTS.reminders_max,
+      last_reminders: row.last_reminders || null,
+      ready: 'reminders_on' in row,
+    },
+    lastRun: last.data?.[0] || null,
+    contactGap: CONTACT_GAP,
+  })
+}
+
+// The automatic daily run (from runDaily, once a day after reminders_at).
+async function runAutoReminders(busy, settings) {
+  if (!waConfigured()) return { skipped: 'WhatsApp not configured' }
+  const c = await autoCandidates(busy, settings)
+  const switches = await waSwitches(busy)
+  const me = { id: null, name: 'Auto reminders' }
+  const counts = { sent: 0, failed: 0, no_number: 0 }
+  const queue = [...c.plans]
+  async function worker() {
+    while (queue.length) {
+      const plan = queue.shift()
+      const r = await dispatchReminder(busy, plan, me, switches)
+      counts[r.status] = (counts[r.status] || 0) + 1
+    }
+  }
+  await Promise.all([worker(), worker(), worker()])
+  return { ...counts, planned: c.plans.length, beyondCap: c.beyondCap, skipped: c.skipped }
 }
 
 // ---------------------------------------------------------------------------
 // Daily WhatsApps + Task Board tasks (JCM-Server timer, or admins from the Today tab)
 // ---------------------------------------------------------------------------
-const HQ_URL = 'https://hq.jcmretails.com'
 
 async function isBusyServiceKey(key) {
   try {
@@ -854,7 +885,7 @@ const nowISTClock = () => new Date(Date.now() + 5.5 * 3600 * 1000).toISOString()
 // Claim today's run so two timers can never both send: the update only goes
 // through if last_<which> still holds the value we read (compare-and-set).
 async function claimRun(busy, which, today, previous) {
-  const col = which === 'morning' ? 'last_morning' : 'last_evening'
+  const col = which === 'morning' ? 'last_morning' : which === 'reminders' ? 'last_reminders' : 'last_evening'
   let q = busy.from('collection_settings').update({ [col]: today }).eq('id', 1)
   q = previous ? q.eq(col, previous) : q.is(col, null)
   const r = await q.select('id')
@@ -875,7 +906,11 @@ async function runDaily(busy, hq, force) {
   if (force === 'evening' || (!force && clock >= eveningAt && settings.last_evening !== today)) {
     if (force || await claimRun(busy, 'evening', today, settings.last_evening)) out.evening = await runEvening(busy, hq, today)
   }
-  if (!out.morning && !out.evening) out.note = `nothing to do (morning ${morningAt}, evening ${eveningAt}, last ${settings.last_morning || '-'} / ${settings.last_evening || '-'})`
+  const remAt = settings.reminders_at || AUTO_DEFAULTS.reminders_at
+  if (force === 'reminders' || (!force && settings.reminders_on === true && clock >= remAt && settings.last_reminders !== today)) {
+    if (force || await claimRun(busy, 'reminders', today, settings.last_reminders)) out.reminders = await runAutoReminders(busy, settings)
+  }
+  if (!out.morning && !out.evening && !out.reminders) out.note = `nothing to do (morning ${morningAt}, evening ${eveningAt}, reminders ${settings.reminders_on ? remAt : 'off'}, last ${settings.last_morning || '-'} / ${settings.last_evening || '-'} / ${settings.last_reminders || '-'})`
   return out
 }
 
@@ -934,16 +969,11 @@ async function runMorning(busy, hq, today) {
         if (h.error) console.error('daily task history failed:', h.error)
       }
     }
-    const text = [
-      `Good morning ${person.name.split(' ')[0]} 🙏`,
-      `Payment follow-ups for today: *${list.length}* part${list.length === 1 ? 'y' : 'ies'}, ${rupeesText(total)} due.`,
-      '',
-      ...top,
-      list.length > 10 ? `…and ${list.length - 10} more.` : null,
-      '',
-      `Open your list: ${HQ_URL}/#payment-followup/today`,
-    ].filter(x => x !== null).join('\n')
-    const wa = person.whatsapp ? await sendWhatsApp(person.whatsapp, text) : 'no_number'
+    // staff_followup_morning: {{1}} first name, {{2}} parties, {{3}} total due, {{4}} the biggest three. Button → Today's follow-ups.
+    const top3 = list.slice(0, 3).map(x => `${x.name} ₹${inr(x.balance)}`).join(', ') + (list.length > 3 ? ` and ${list.length - 3} more` : '')
+    const wa = (await sendLogged(busy, { kind: 'staff_followup', to: person.whatsapp, template: 'staff_followup_morning',
+      params: [person.name.split(' ')[0], String(list.length), inr(total), top3], opts: { headerImageUrl: BANNER('staff-followup') },
+      ref: person.id, refName: person.name, by: 'HQ timer' })).status
     const up = await busy.from('collection_daily_tasks').upsert({
       day: today, hq_user_id: person.id, due_count: list.length, whatsapp: wa,
       ...(taskId ? { task_id: taskId } : {}),
@@ -996,17 +1026,16 @@ async function runEvening(busy, hq, today) {
   const none = (byPerson.get('none') || []).length
   if (none) lines.push(`• Nobody assigned: ${none} parties due — set them in Assign groups.`)
   const promiseTotal = promisedToday.reduce((s, p) => s + (Number(p.promised_amount) || 0), 0)
-  const text = [
-    `Payment follow-up — ${new Date(`${today}T00:00:00+05:30`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', timeZone: 'Asia/Kolkata' })}`,
-    `${tDone} parties followed up, ${tLeft} still due.`,
-    '',
-    ...lines,
-    promisedToday.length ? `\nPromised for today: ${promisedToday.length} part${promisedToday.length === 1 ? 'y' : 'ies'}, ${rupeesText(promiseTotal)} — check they came in.` : null,
-    `\n${HQ_URL}/#payment-followup/today`,
-  ].filter(x => x !== null).join('\n')
+  // staff_followup_evening: {{1}} date, {{2}} done, {{3}} still due, {{4}} per person, {{5}} promised for today. Button → Today's follow-ups.
+  const perPerson = lines.map(l => l.replace(/^• /, '')).join('; ') || 'nobody had follow-ups today'
+  const promised = promisedToday.length ? `${promisedToday.length} part${promisedToday.length === 1 ? 'y' : 'ies'}, ₹${inr(promiseTotal)} — check they came in` : 'none'
   const sent = []
+  const switches = await waSwitches(busy)
   for (const admin of people.filter(p => p.isAdmin)) {
-    sent.push({ to: admin.name, whatsapp: admin.whatsapp ? await sendWhatsApp(admin.whatsapp, text) : 'no_number' })
+    const r = await sendLogged(busy, { kind: 'staff_evening', to: admin.whatsapp, template: 'staff_followup_evening',
+      params: [niceDate(today), String(tDone), String(tLeft), perPerson, promised], opts: { headerImageUrl: BANNER('staff-evening') },
+      ref: admin.id, refName: admin.name, by: 'HQ timer', switches })
+    sent.push({ to: admin.name, whatsapp: r.status })
   }
   return { done: tDone, left: tLeft, sent }
 }

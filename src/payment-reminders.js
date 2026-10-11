@@ -1,14 +1,17 @@
 // Payment Follow-up → WhatsApp reminders (#payment-followup/reminders)
 //
-// Pick an account group, tick parties, check the message, Send. Messages go
-// out through Whatshub360 from the server (api/collections.js, action
-// send-reminders), 10 parties per request so a progress bar can move.
+// Two things on this tab (2026-10-12, Meta templates — no free text any more):
+//   1. Automatic daily reminders (admins): on/off, time, which tiers, cap per day. HQ runs it once
+//      a day after the time (api/collections.js runDaily → runAutoReminders, asked every 15 min by
+//      JCM Sync's followup-notify job). Preview shows exactly who would get one right now.
+//   2. Send now: pick a group, tick parties, Send — the same approved template goes out.
+// Which template: Dealer group → payment_reminder_20d / _40d, Retail group → retail_reminder_20d / _40d
+// (Assign groups on the Today tab sets Dealer / Retail); red when something is over 40 days, else amber.
 //
-// Never sent, whatever is ticked — and the server checks again:
-//   • the JCM Due DND group (not even listed here)
-//   • parties flagged "check balance" (needs_review in the dues sync)
-//   • parties with nothing due, or no WhatsApp/mobile number
-//   • anyone already reminded in the last 20 hours
+// Never sent, whatever is ticked — the server checks again:
+//   • the JCM Due DND group (not even listed here) • parties flagged "check balance"
+//   • nothing over 20 days, or no WhatsApp number • anyone reminded in the last 20 hours
+//   • contacted (call / note / visit / reminder) in the last 6 days (over 40 d) or 13 days (over 20 d)
 // Every attempt lands in that party's History on the Follow-up calls tab.
 import { openSidebar } from './sidebar.js'
 import { esc } from './utils.js'
@@ -18,23 +21,19 @@ import {
 
 const BATCH = 10
 
-const DEFAULT_TEMPLATE = `Namaste {name},
-
-This is a gentle reminder from J.C. Mittal & Sons (JCM Retails), Ratlam. Your outstanding balance with us is {amount}.
-
-Kindly arrange the payment at the earliest. If you have already paid, please ignore this message.
-
-Thank you.`
-
 const STATUS_TEXT = {
   sent: 'Sent',
   failed: 'Failed',
   no_number: 'No number',
-  not_set_up: 'WhatsApp not set up',
+  off: 'Switched off',
   dnd: 'DND — not sent',
   needs_review: 'Check balance — not sent',
   nothing_due: 'Nothing due — not sent',
+  recent_credit: 'Nothing over 20 days',
+  under_40: 'Nothing over 40 days',
   recent: 'Already reminded today',
+  contacted: 'Contacted recently — skipped',
+  no_dates: 'Bill dates not synced',
   not_found: 'Not in dues list',
 }
 
@@ -48,8 +47,9 @@ export function renderPaymentReminders(container) {
     selected: new Set(),
     results: {},          // party_code -> status from the last send
     minAmount: Number(store('pfr.min')) || 0,
-    skipDays: store('pfr.skipDays') === null ? 7 : Number(store('pfr.skipDays')),
-    template: store('pfr.template') || DEFAULT_TEMPLATE,
+    respectGap: true,
+    auto: null,          // automatic-reminder settings (admins)
+    plan: null,          // preview of the automatic run
     sending: false,
     today: todayIST(),
     overDays: 20,        // 20 / 40, or 0 = any dues; not remembered: always starts at 20
@@ -79,26 +79,18 @@ export function renderPaymentReminders(container) {
               <label>Due at least ₹ <input id="pfrMin" type="number" min="0" step="100" inputmode="numeric"></label>
               <label>Only dues over
                 <select id="pfrOverdue">
-                  <option value="20" selected>20 days</option><option value="40">40 days</option><option value="0">— (any dues)</option>
+                  <option value="20" selected>20 days</option><option value="40">40 days</option>
                 </select>
               </label>
-              <label>Skip if reminded in the last
-                <select id="pfrSkip">
-                  <option value="0">— (don't skip)</option><option value="3">3 days</option>
-                  <option value="7">7 days</option><option value="15">15 days</option><option value="30">30 days</option>
-                </select>
-              </label>
+              <label><input type="checkbox" id="pfrGap" checked> Skip anyone contacted recently (6 / 13 days)</label>
             </div>
             <div class="pfr-bulkbar" id="pfrBulk"></div>
             <div id="pfrList" class="pfr-list"><div class="empty-state">Pick an account group above.</div></div>
           </section>
 
           <aside class="pfr-right">
-            <label class="pf-field"><span>Message</span>
-              <textarea id="pfrTemplate" rows="9" maxlength="1000"></textarea>
-            </label>
-            <div class="pfr-help">{name} becomes the party name, {amount} the total due, {overdue} the part over 20 days. <button type="button" class="pf-link" id="pfrReset">Use the standard message</button></div>
-            <div class="pfr-preview-label">Preview</div>
+            <section class="pfr-auto" id="pfrAuto" hidden></section>
+            <div class="pfr-preview-label">What goes out</div>
             <div class="pfr-preview" id="pfrPreview"></div>
             <p class="pf-error" id="pfrError" hidden></p>
             <div class="pfr-progress" id="pfrProgress" hidden><div class="pfr-progress-bar" id="pfrProgressBar"></div><span id="pfrProgressText"></span></div>
@@ -115,8 +107,6 @@ export function renderPaymentReminders(container) {
   $('pfrHamburger').addEventListener('click', () => openSidebar())
   $('pfrRefresh').addEventListener('click', () => { loadMeta(); loadList() })
   $('pfrMin').value = state.minAmount || ''
-  $('pfrSkip').value = String([0, 3, 7, 15, 30].includes(state.skipDays) ? state.skipDays : 7)
-  $('pfrTemplate').value = state.template
 
   $('pfrGroup').addEventListener('change', e => {
     state.group = e.target.value
@@ -128,30 +118,17 @@ export function renderPaymentReminders(container) {
     store('pfr.min', String(state.minAmount))
     resetSelection(); draw()
   })
-  $('pfrSkip').addEventListener('change', e => {
-    state.skipDays = Number(e.target.value) || 0
-    store('pfr.skipDays', String(state.skipDays))
-    resetSelection(); draw()
-  })
+  $('pfrGap').addEventListener('change', e => { state.respectGap = e.target.checked; draw() })
   $('pfrOverdue').addEventListener('change', e => {
     state.overDays = Number(e.target.value) || 0
     resetSelection(); draw()
   })
-  $('pfrTemplate').addEventListener('input', e => {
-    state.template = e.target.value
-    store('pfr.template', state.template)
-    drawPreview()
-  })
-  $('pfrReset').addEventListener('click', () => {
-    state.template = DEFAULT_TEMPLATE
-    $('pfrTemplate').value = DEFAULT_TEMPLATE
-    store('pfr.template', DEFAULT_TEMPLATE)
-    drawPreview()
-  })
+  $('pfrAuto').addEventListener('click', onAutoClick)
+  $('pfrAuto').addEventListener('change', e => { if (e.target.closest('[data-auto]')) saveAuto() })
   $('pfrBulk').addEventListener('click', e => {
     const b = e.target.closest('[data-bulk]')
     if (!b || state.sending) return
-    if (b.dataset.bulk === 'jump') { $('pfrTemplate').closest('.pfr-right').scrollIntoView({ behavior: 'smooth', block: 'start' }); return }
+    if (b.dataset.bulk === 'jump') { $('pfrSend').scrollIntoView({ behavior: 'smooth', block: 'center' }); return }
     if (b.dataset.bulk === 'all') eligible().forEach(p => state.selected.add(p.party_code))
     else state.selected.clear()
     draw()
@@ -167,6 +144,85 @@ export function renderPaymentReminders(container) {
 
   loadMeta()
   loadList()
+
+  // ---- Automatic daily reminders (admins) ----------------------------------
+  async function loadAuto() {
+    if (!state.meta?.me?.isAdmin) return
+    try {
+      const d = await call({ action: 'reminder-settings' })
+      state.auto = d
+      drawAuto()
+    } catch (err) {
+      $('pfrAuto').hidden = false
+      $('pfrAuto').innerHTML = `<div class="pf-muted">${esc(err.message)}</div>`
+    }
+  }
+  function drawAuto() {
+    const a = state.auto
+    if (!a) return
+    const st = a.settings
+    const el = $('pfrAuto')
+    el.hidden = false
+    if (!st.ready) {
+      el.innerHTML = '<h3>Automatic daily reminders</h3><div class="pf-warn">Not set up yet — run the reminder-scheduler SQL in Supabase (ask in the HQ chat).</div>'
+      return
+    }
+    const last = a.lastRun ? `Last automatic send ${esc(fmtDateTime(a.lastRun.created_at))}` : 'Never run yet'
+    el.innerHTML = `
+      <h3>Automatic daily reminders</h3>
+      <label class="pfr-auto-row"><input type="checkbox" data-auto="on" ${st.reminders_on ? 'checked' : ''}> <strong>${st.reminders_on ? 'On' : 'Off'}</strong> — HQ sends by itself every day</label>
+      <div class="pfr-auto-grid">
+        <label>At <input type="time" data-auto="at" value="${esc(st.reminders_at)}"></label>
+        <label><input type="checkbox" data-auto="t20" ${st.reminders_tiers.includes(20) ? 'checked' : ''}> over 20 days (amber)</label>
+        <label><input type="checkbox" data-auto="t40" ${st.reminders_tiers.includes(40) ? 'checked' : ''}> over 40 days (red)</label>
+        <label>Max per day <input type="number" data-auto="max" min="1" max="500" value="${st.reminders_max}"></label>
+      </div>
+      <div class="pf-muted">Skips anyone contacted in the last ${a.contactGap[40]} days (over 40 d) or ${a.contactGap[13] ?? a.contactGap[20]} days (over 20 d), the DND group, "check balance" and anyone reminded in the last 20 h. ${last}.</div>
+      <div class="pfr-auto-actions">
+        <button type="button" class="btn-ghost btn-small" data-act="preview">Who gets it today?</button>
+        <button type="button" class="btn-ghost btn-small" data-act="run">Run now</button>
+      </div>
+      <div id="pfrPlan"></div>`
+  }
+  async function saveAuto() {
+    const el = $('pfrAuto')
+    const v = sel => el.querySelector(`[data-auto="${sel}"]`)
+    try {
+      state.auto = await call({ action: 'reminder-settings-save',
+        reminders_on: v('on').checked, reminders_at: v('at').value,
+        reminders_tiers: [v('t20').checked ? 20 : null, v('t40').checked ? 40 : null].filter(Boolean),
+        reminders_max: Number(v('max').value) || 150 })
+      drawAuto()
+    } catch (err) { showError(err.message) }
+  }
+  async function onAutoClick(e) {
+    const b = e.target.closest('[data-act]')
+    if (!b) return
+    const out = $('pfrPlan')
+    if (b.dataset.act === 'preview') {
+      out.innerHTML = '<div class="loading-state">Working it out…</div>'
+      try {
+        const d = await call({ action: 'reminder-plan' })
+        const skipped = Object.entries(d.skipped || {}).map(([k, n]) => `${n} ${(STATUS_TEXT[k] || k).toLowerCase()}`).join(' · ')
+        out.innerHTML = `
+          <div><strong>${d.parties.length}</strong> would be sent now${d.beyondCap ? ` (${d.beyondCap} more wait for tomorrow — cap ${d.max})` : ''}.${skipped ? ` Skipped: ${esc(skipped)}.` : ''}</div>
+          <div class="pfr-plan-list">${d.parties.slice(0, 200).map(p => `
+            <div class="pfr-plan-row"><span class="pf-pill pf-tone-${p.tone === 'red' ? 'red' : 'amb'}">${p.tone}</span> ${esc(p.party_name)} <span class="pf-muted">${esc(p.group_name || '')} · ${p.kind}</span><span class="pfr-amount">${esc(rupees(p.balance))}</span></div>`).join('')}
+            ${d.parties.length > 200 ? `<div class="pf-muted">…and ${d.parties.length - 200} more</div>` : ''}</div>`
+      } catch (err) { out.innerHTML = `<div class="pf-error">${esc(err.message)}</div>` }
+    }
+    if (b.dataset.act === 'run') {
+      if (!window.confirm('Send today\'s automatic reminders now? This sends real WhatsApps to customers and cannot be taken back.')) return
+      b.disabled = true; b.textContent = 'Sending…'
+      try {
+        const r = await call({ action: 'daily-now', which: 'reminders' })
+        const x = r.reminders || {}
+        out.innerHTML = `<div><strong>Done:</strong> ${x.sent || 0} sent · ${x.failed || 0} failed · ${x.no_number || 0} no number${x.beyondCap ? ` · ${x.beyondCap} left for tomorrow` : ''}.</div>`
+        loadAuto()
+      } catch (err) { out.innerHTML = `<div class="pf-error">${esc(err.message)}</div>` }
+      finally { b.disabled = false; b.textContent = 'Run now' }
+    }
+  }
 
   // -------------------------------------------------------------------------
   async function loadMeta() {
@@ -201,8 +257,9 @@ export function renderPaymentReminders(container) {
       $('pfrNote').innerHTML = `
         <strong>${esc(m.dndGroup)}</strong> is never sent reminders${dnd ? ` (${dnd.parties} part${dnd.parties === 1 ? 'y' : 'ies'})` : ''}.
         Parties marked “check balance”, with nothing due or with no number are skipped too.
-        ${m.whatsappReady ? '' : '<div class="pf-warn">WhatsApp sending is not set up yet — WHATSHUB_SEND_URL and WHATSHUB_VID need to be added in Vercel. You can still look at the list.</div>'}`
+        ${m.whatsappReady ? '' : '<div class="pf-warn">WhatsApp (Meta) is not set up yet in Vercel. You can still look at the list.</div>'}`
       drawSend()
+      loadAuto()
     } catch (err) {
       $('pfrGroup').innerHTML = `<option>${esc(err.message)}</option>`
     }
@@ -238,9 +295,12 @@ export function renderPaymentReminders(container) {
   function blockReason(p) {
     if (p.needs_review) return 'Check balance'
     if (!p.whatsapp) return 'No number'
-    if (p.last_reminder && state.skipDays > 0) {
-      const d = daysBetween(new Date(new Date(p.last_reminder).getTime() + 5.5 * 3600e3).toISOString().slice(0, 10), state.today)
-      if (d < state.skipDays) return `Reminded ${d === 0 ? 'today' : `${d} day${d === 1 ? '' : 's'} ago`}`
+    if (p.last_reminder && Date.now() - Date.parse(p.last_reminder) < 20 * 3600e3) return 'Reminded today'
+    if (state.respectGap && p.latest?.created_at) {
+      const red = overdueOf(p, 40) >= 1
+      const gap = red ? 6 : 13
+      const d = daysBetween(new Date(new Date(p.latest.created_at).getTime() + 5.5 * 3600e3).toISOString().slice(0, 10), state.today)
+      if (d < gap) return `Contacted ${d === 0 ? 'today' : `${d} d ago`}`
     }
     return null
   }
@@ -305,24 +365,22 @@ export function renderPaymentReminders(container) {
     $('pfrSend').textContent = state.sending ? 'Sending…' : n ? `Send WhatsApp to ${n} part${n === 1 ? 'y' : 'ies'}` : 'Tick parties to send'
   }
 
-  function fill(t, p) {
-    return t.replace(/\{name\}/gi, p.party_name || '').replace(/\{amount\}/gi, rupees(p.balance))
-      .replace(/\{overdue\}/gi, rupees(Math.min(p.overdue ?? p.balance, p.balance))).trim()
-  }
-
   function drawPreview() {
-    const p = state.parties.find(x => state.selected.has(x.party_code)) || eligible()[0] || { party_name: 'Badshah Electric', balance: 15000 }
-    $('pfrPreview').textContent = fill(state.template, p)
+    const picked = state.parties.filter(x => state.selected.has(x.party_code))
+    const red = picked.filter(p => overdueOf(p, 40) >= 1).length
+    $('pfrPreview').innerHTML = `
+      <div>The approved JCM reminder, with the <strong>QR Code</strong>, <strong>Ledger</strong> and <strong>Invoices</strong> buttons.</div>
+      <div class="pf-muted">Dealer groups get the total outstanding and the overdue part; Retail groups (set in Assign groups) get one amount due. Amber banner for over 20 days, red for over 40 days — each party gets the one that fits.</div>
+      ${picked.length ? `<div class="pfr-preview-count"><span class="pf-pill pf-tone-red">${red} red</span> <span class="pf-pill pf-tone-amb">${picked.length - red} amber</span></div>` : ''}`
   }
 
   // ---- Sending -----------------------------------------------------------
   function askConfirm() {
     const n = state.selected.size
     if (!n || state.sending) return
-    if (state.template.trim().length < 10) return showError('Write the message first.')
     const total = state.parties.filter(p => state.selected.has(p.party_code)).reduce((s, p) => s + p.balance, 0)
     $('pfrConfirm').innerHTML = `
-      <p>Send this WhatsApp to <strong>${n} part${n === 1 ? 'y' : 'ies'}</strong> (${esc(shortRupees(total))} due)? It can't be taken back.</p>
+      <p>Send the WhatsApp reminder to <strong>${n} part${n === 1 ? 'y' : 'ies'}</strong> (${esc(shortRupees(total))} due)? It can't be taken back.</p>
       <div class="pf-modal-actions">
         <button class="btn-ghost btn-small" id="pfrNo">Cancel</button>
         <button class="btn-whatsapp-solid btn-small" id="pfrYes">Yes, send</button>
@@ -352,7 +410,7 @@ export function renderPaymentReminders(container) {
       for (let i = 0; i < codes.length; i += BATCH) {
         if (!container.isConnected) return
         $('pfrProgressText').textContent = `Sending ${Math.min(i + BATCH, codes.length)} of ${codes.length}…`
-        const data = await call({ action: 'send-reminders', party_codes: codes.slice(i, i + BATCH), template: state.template })
+        const data = await call({ action: 'send-reminders', party_codes: codes.slice(i, i + BATCH), tier: state.overDays || 20, respect_gap: state.respectGap })
         for (const r of data.results || []) {
           state.results[r.party_code] = r.status
           counts[r.status] = (counts[r.status] || 0) + 1

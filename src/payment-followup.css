@@ -233,3 +233,14 @@ body.pf-modal-open { overflow: hidden; }
 .pf-wa-confirm { max-width: 420px; }
 .pf-wa-lines { display: grid; gap: 6px; padding: 4px 2px 10px; font-size: 15px; }
 .pf-wa-sent { flex: 1 0 100%; background: #e7f6ec; color: #17653a; border-radius: 8px; padding: 8px 10px; font-size: 14px; font-weight: 600; }
+.pfr-auto { border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: grid; gap: 8px; background: var(--surface, #fff); }
+.pfr-auto h3 { margin: 0; font-size: 15px; }
+.pfr-auto-row { display: flex; align-items: center; gap: 8px; }
+.pfr-auto-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; font-size: 14px; }
+.pfr-auto-grid input[type=time], .pfr-auto-grid input[type=number] { width: 90px; height: 30px; margin-left: 4px; }
+.pfr-auto-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.pfr-plan-list { display: grid; gap: 4px; margin-top: 6px; max-height: 320px; overflow: auto; }
+.pfr-plan-row { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+.pfr-plan-row .pfr-amount { margin-left: auto; }
+.pfr-preview-count { display: flex; gap: 6px; margin-top: 6px; }
+.pf-toast { position: fixed; left: 50%; bottom: calc(var(--app-nav-h, 0px) + 18px); transform: translateX(-50%); background: #17653a; color: #fff; padding: 10px 14px; border-radius: 10px; font-size: 14px; font-weight: 600; z-index: 1200; max-width: 92vw; box-shadow: 0 6px 20px rgba(0,0,0,.2); }

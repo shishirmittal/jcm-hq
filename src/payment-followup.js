@@ -368,7 +368,14 @@ export function renderPaymentFollowup(container, sub) {
     if (e.target.closest('[data-modal-wa]') && state.modal) confirmWhatsApp(state.modal.party)
   })
 
-  // ---- WhatsApp reminder: ask first, send the approved template, then the outcome form ----
+  // ---- WhatsApp reminder: ask first, send the approved template; the send is logged by itself ----
+  function toast(text) {
+    document.getElementById('pfToast')?.remove()
+    const t = document.createElement('div')
+    t.className = 'pf-toast'; t.id = 'pfToast'; t.textContent = text
+    document.body.appendChild(t)
+    setTimeout(() => t.remove(), 5000)
+  }
   function confirmWhatsApp(party) {
     if (document.getElementById('pfWaConfirm')) return
     const ov = document.createElement('div')
@@ -383,7 +390,7 @@ export function renderPaymentFollowup(container, sub) {
         <div class="pf-wa-lines">
           <div>To: <strong>${esc(String(party.whatsapp).replace(/(\d{5})(\d{5})/, '+91 $1 $2'))}</strong></div>
           <div>Amount due: <strong>${esc(rupees(party.balance))}</strong></div>
-          <div class="pf-muted">The approved JCM message goes out at once, with the QR Code, Ledger and Invoices buttons. It cannot be taken back.</div>
+          <div class="pf-muted">The approved JCM message goes out at once, with the QR Code, Ledger and Invoices buttons, and is saved in History by itself. It cannot be taken back.</div>
         </div>
         <div class="pf-error" id="pfWaErr" hidden></div>
         <div class="pf-modal-actions">
@@ -403,11 +410,10 @@ export function renderPaymentFollowup(container, sub) {
       try {
         const r = await call({ action: 'send-template', party_code: party.party_code })
         ov.remove()
-        if (state.modal?.party === party) { state.modal.channel = 'whatsapp'; state.modal.outcome = 'message_sent'; drawModalChoices() }
-        else openModal(party, 'whatsapp')
-        $('pfModalContact').insertAdjacentHTML('afterbegin',
-          `<div class="pf-wa-sent">✓ Reminder sent to ${esc(r.mobile)} (${r.tone === 'red' ? 'red' : 'amber'} · ${r.kind}). Now save what happened below.</div>`)
-        $('pfModal').scrollTop = 0
+        party.last_reminder = new Date().toISOString()
+        toast(`✓ Reminder sent to ${r.name} (${r.tone === 'red' ? 'red' : 'amber'} · ${r.kind}). Saved in History.`)
+        if (state.modal?.party === party) loadHistory(party)
+        drawList()
         if (state.mode === 'today') loadList(true)
       } catch (err) {
         const el = ov.querySelector('#pfWaErr')
@@ -783,7 +789,7 @@ export function renderPaymentFollowup(container, sub) {
 
   function latestHtml(p) {
     const l = p.latest
-    if (!l) return '<div class="pf-latest pf-muted">Not followed up yet</div>'
+    if (!l) return `<div class="pf-latest pf-muted">Not followed up yet${p.last_reminder ? ` · <span class="pf-pill pf-tone-blue">WA ${esc(fmtDate(p.last_reminder))}</span>` : ''}</div>`
     const o = OUTCOME[l.outcome]
     const bits = [`${fmtDate(l.created_at)}`, l.created_by_name, CHANNEL_LABEL[l.channel] || l.channel].filter(Boolean)
     let promise = ''
@@ -791,9 +797,10 @@ export function renderPaymentFollowup(container, sub) {
       const missed = l.promised_date && l.promised_date < state.today && p.balance > 0
       promise = `<span class="pf-pill ${missed ? 'pf-pill-red' : 'pf-pill-grn'}">${missed ? 'Promise missed' : 'Promised'}${l.promised_amount ? ` ${esc(rupees(l.promised_amount))}` : ''}${l.promised_date ? ` by ${esc(fmtDate(l.promised_date))}` : ''}</span>`
     }
+    const rem = p.last_reminder ? `<span class="pf-pill pf-tone-blue" title="WhatsApp reminder">WA ${esc(fmtDate(p.last_reminder))}</span>` : ''
     return `
       <div class="pf-latest">
-        <span class="pf-muted">Last: ${esc(bits.join(' · '))}</span>
+        <span class="pf-muted">Last: ${esc(bits.join(' · '))}</span>${rem}
         ${promise || (o ? `<span class="pf-pill pf-tone-${o.tone}">${esc(o.label)}</span>` : '')}
         ${l.remarks ? `<div class="pf-remark">“${esc(l.remarks)}”</div>` : ''}
       </div>`
