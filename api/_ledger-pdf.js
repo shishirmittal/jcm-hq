@@ -80,29 +80,36 @@ export function buildLedgerPdf({ partyName, stmt }) {
 
     // Table
     const cols = [
-      { k: 'date', t: 'Date', w: 72 }, { k: 'type', t: 'Particulars', w: 118 }, { k: 'no', t: 'Vch No.', w: 62 },
-      { k: 'debit', t: 'Debit', w: 76, right: true }, { k: 'credit', t: 'Credit', w: 76, right: true }, { k: 'balance', t: 'Balance', w: 0, right: true },
+      { k: 'date', t: 'Date', w: 68 }, { k: 'type', t: 'Particulars', w: 86 }, { k: 'no', t: 'Vch No.', w: 104 },
+      { k: 'debit', t: 'Debit', w: 70, right: true }, { k: 'credit', t: 'Credit', w: 70, right: true }, { k: 'balance', t: 'Balance', w: 0, right: true },
     ]
     cols[5].w = FULL - cols.slice(0, 5).reduce((s, c) => s + c.w, 0)
+    // Cut text to fit a column (pdfkit would otherwise wrap it onto a second line and run into the next row).
+    const fit = (text, width) => {
+      let t = String(text ?? '')
+      if (doc.widthOfString(t) <= width) return t
+      while (t.length > 1 && doc.widthOfString(t + '…') > width) t = t.slice(0, -1)
+      return t + '…'
+    }
     const header = yy => {
       doc.rect(L, yy, FULL, 20).fill(NAVY)
       let x = L
       doc.fillColor('#ffffff').font('B').fontSize(9)
-      for (const c of cols) { doc.text(c.t, x + 4, yy + 6, { width: c.w - 8, align: c.right ? 'right' : 'left', lineBreak: false }); x += c.w }
+      for (const c of cols) { doc.text(fit(c.t, c.w - 8), x + 4, yy + 6, { width: c.w - 8, align: c.right ? 'right' : 'left', lineBreak: false }); x += c.w }
       return yy + 20
     }
     const line = (yy, vals, o = {}) => {
       if (o.tint) doc.rect(L, yy, FULL, 18).fill(TINT)
       let x = L
       doc.fillColor(o.color || NAVY).font(o.bold ? 'B' : 'R').fontSize(9)
-      for (const c of cols) { doc.text(vals[c.k] ?? '', x + 4, yy + 5, { width: c.w - 8, align: c.right ? 'right' : 'left', lineBreak: false, ellipsis: true }); x += c.w }
+      for (const c of cols) { doc.text(fit(vals[c.k] ?? '', c.w - 8), x + 4, yy + 5, { width: c.w - 8, align: c.right ? 'right' : 'left', lineBreak: false }); x += c.w }
       doc.moveTo(L, yy + 18).lineTo(R, yy + 18).lineWidth(0.4).strokeColor(LINE).stroke()
       return yy + 18
     }
     let yy = header(top)
     const bottomLimit = doc.page.height - 56
     const ensure = () => { if (yy + 18 > bottomLimit) { doc.addPage(); yy = header(36) } }
-    ensure(); yy = line(yy, { type: 'Opening balance b/f', balance: drcr(stmt.opening) }, { bold: true, tint: true })
+    ensure(); yy = line(yy, { type: 'Opening b/f', balance: drcr(stmt.opening) }, { bold: true, tint: true })
     stmt.rows.forEach((x, i) => {
       ensure()
       yy = line(yy, { date: dmy(x.date), type: x.type, no: x.no, debit: x.debit ? inr(x.debit) : '', credit: x.credit ? inr(x.credit) : '', balance: drcr(x.balance) }, { tint: i % 2 === 1 })
