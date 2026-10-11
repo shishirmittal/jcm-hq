@@ -11,7 +11,7 @@ import { waConfigured, sendLogged, BANNER } from '../../_wa-cloud.js'
 // Two Meta templates (docs/whatsapp-templates.md):
 //   order_dispatched_photo   image header = the LR photo (a signed link, 7 days)
 //   order_dispatched         image header = the Dispatched banner (no LR, e.g. self-pickup)
-// Both take the same eight body values, plus the Invoices button → the customer's Busy code.
+// Both take three body values (name, boxes, invoice no.) + the Invoice PDF button → invpdf:<code>:<invoice no>.
 //
 // Sends only when WHATSAPP_TOKEN / WHATSAPP_PHONE_NUMBER_ID are set in Vercel and the
 // 'dispatch' kind is not switched off on the HQ WhatsApp page. Otherwise nothing is sent:
@@ -46,36 +46,10 @@ export function whatsappNumber(raw) {
 }
 export const showNumber = n => (n ? `+91 ${n.slice(2, 7)} ${n.slice(7)}` : '')
 
-// The eight template values, in order. Meta does not allow an empty value, so
-// "none" and ₹0 stand in when nothing is pending.
+// The three template values (2026-10-12 templates): customer name, boxes, invoice number.
+// (The older eight-value version is gone; pending items are left for the Orders page.)
 export function dispatchParams(order, lines) {
-  const sent = lines.filter(l => Number(l.invoiced_qty) > 0)
-  const pieces = sent.reduce((s, l) => s + Number(l.invoiced_qty), 0)
-  const pending = lines.filter(l => Number(l.pending_qty) > 0)
-  let pendingText = pending.map(l => `${l.item_name || 'Item'} × ${qty(l.pending_qty)}`).join(', ')
-  if (pendingText.length > MAX_PENDING_TEXT) {
-    const kept = []
-    for (const l of pending) {
-      const next = [...kept, `${l.item_name || 'Item'} × ${qty(l.pending_qty)}`].join(', ')
-      if (next.length > MAX_PENDING_TEXT - 20) break
-      kept.push(`${l.item_name || 'Item'} × ${qty(l.pending_qty)}`)
-    }
-    pendingText = `${kept.join(', ')} and ${pending.length - kept.length} more`
-  }
-  const pendingValue = pending.reduce((s, l) => {
-    const ordered = Number(l.ordered_qty)
-    return s + (ordered > 0 && l.line_value ? (Number(l.line_value) / ordered) * Number(l.pending_qty) : 0)
-  }, 0)
-  return [
-    order.party_name || 'Customer',
-    String(order.boxes || 0),
-    `${sent.length} ${sent.length === 1 ? 'item' : 'items'} (${qty(pieces)} pcs)`,
-    pending.length ? pendingText : 'none',
-    rupees(pendingValue),
-    rupees(order.invoice_value),
-    order.invoice_vch_no || '—',
-    INVOICE_PORTAL,
-  ]
+  return [order.party_name || 'Customer', String(order.boxes || 0), order.invoice_vch_no || '—']
 }
 
 export function whatsappSettings() {
@@ -115,7 +89,7 @@ export async function sendDispatchWhatsApp(dbc, orderId, me, device, { photoPath
     const code = String(order.party_code || '').replace(/\D/g, '')
     const out = await sendLogged(busy, {
       kind: 'dispatch', to, template: photoUrl ? 'order_dispatched_photo' : 'order_dispatched', params,
-      opts: { headerImageUrl: photoUrl || BANNER('dispatched'), buttonPayloads: code ? [`portal:${code}`] : [] },
+      opts: { headerImageUrl: photoUrl || BANNER('dispatched'), buttonPayloads: code && order.invoice_vch_no ? [`invpdf:${code}:${order.invoice_vch_no}`] : [] },
       ref: order.invoice_vch_no || order.so_vch_no || String(orderId), refName: order.party_name, by: me?.name || null,
     })
     const note = photoPath && !photoUrl ? 'LR photo link could not be made; sent without it' : undefined

@@ -103,7 +103,7 @@ async function readVouchers(pool) {
            CONVERT(VARCHAR(10), t1.[Date], 23) AS VchDate,
            t1.MasterCode1 AS PartyCode, p.Name AS PartyName,
            a.Mobile, a.WhatsAppNo,
-           ISNULL(ps.Amt, ABS(ISNULL(t1.Value1, 0))) AS Amount,
+           ISNULL(ps.Amt, 0) AS Amount,
            ISNULL(i.n, 0) AS Items,
            ISNULL(t1.Cancelled, 0) AS Cancelled, ISNULL(t1.VchCancelled, 0) AS VchCancelled,
            e.UserName AS EnteredBy, CONVERT(VARCHAR(19), e.ActionTime, 126) AS EnteredAt

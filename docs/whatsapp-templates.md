@@ -27,8 +27,8 @@ Banners live at `https://hq.jcmretails.com/wa/<name>.png` (1200 × 628).
 
 Queued by JCM Sync every 5 minutes from Busy. **Invoices go out at 20:30** in the evening; everything else goes at the next run. Each kind can be switched off on the WhatsApp page.
 
-### 1. `txn_invoice` — Invoice generated
-Header image: `invoice.png` · Buttons: Quick reply **QR Code**, Quick reply **Ledger**, Quick reply **Invoices**
+### 1. `txn_invoice` — Invoice generated  ✅ created by Shishir 12 Oct
+Header image: `invoice.png` · Buttons: Quick reply **QR Code**, Quick reply **Ledger**
 
 ```
 Namaste {{1}},
@@ -40,16 +40,12 @@ Your invoice has been generated.
 💰 Amount: ₹{{4}}
 📦 Items: {{5}}
 
-You can view and download the bill any time on our invoice portal: https://invoice.jcmretails.com (log in with your registered mobile number).
-
-For payment, tap QR Code below. For your account statement, tap Ledger.
-
 Thank you for your business.
 J.C. Mittal and Sons, Ratlam
 ```
 Samples: {{1}} Badshah Electric · {{2}} JCM/1234 · {{3}} 12 Oct 2026 · {{4}} 45,600 · {{5}} 7
 
-### 2. `txn_receipt` — Payment received
+### 2. `txn_receipt` — Payment received  ✅ created by Shishir 12 Oct
 Header image: `receipt.png` · Buttons: Quick reply **Ledger**
 
 ```
@@ -104,8 +100,8 @@ J.C. Mittal and Sons, Ratlam
 ```
 Samples: Lapp India Pvt Ltd · 1,20,000 · 12 Oct 2026 · P/310
 
-### 5. `txn_order` — Order booked
-Header image: `order.png` · Buttons: Quick reply **Invoices**
+### 5. `txn_order` — Order booked  ✅ created by Shishir 12 Oct
+Header image: `order.png` · Buttons: **Call phone number** "Call for changes" (+91 91091 05999), then Quick reply **Order copy** (HQ replies with a PDF of the order from JCM Orders)
 
 ```
 Namaste {{1}},
@@ -117,7 +113,7 @@ Thank you for your order. It has been booked with us.
 📦 Items: {{4}}
 💰 Order Value: ₹{{5}}
 
-We will message you again when the material is dispatched. If anything in the order needs a change, please reply here today so we can correct it before billing.
+We will message you again when the material is dispatched. If anything changes, please let us know at the earliest.
 
 J.C. Mittal and Sons, Ratlam
 ```
@@ -182,8 +178,8 @@ Samples: Ronak Moonat · Q-2026-118 · 12 Oct 2026 · 1,85,000
 
 ## B. Customers and suppliers (sent by HQ pages)
 
-### 8. `order_dispatched_photo` — Dispatched, with LR photo
-Header image: upload `dispatched.png` as the sample (live messages carry the LR photo instead) · Buttons: Quick reply **Invoices**
+### 8. `order_dispatched_photo` — Dispatched, with LR photo  ✅ created by Shishir 12 Oct
+Header image: upload `dispatched.png` as the sample (live messages carry the LR photo instead) · Buttons: Quick reply **Invoice PDF** (HQ replies with a PDF copy of the invoice)
 
 ```
 Namaste {{1}},
@@ -191,35 +187,14 @@ Namaste {{1}},
 Your material has been dispatched.
 
 📦 Boxes: {{2}}
-✅ Sent: {{3}}
-⏳ Still to come: {{4}} (₹{{5}})
-🧾 Invoice: {{7}} for ₹{{6}}
-
-The LR copy is attached above. Download the invoice at {{8}} (log in with your registered mobile number).
+🧾 Invoice: {{3}}
 
 J.C. Mittal and Sons, Ratlam
 ```
-Samples: {{1}} Badshah Electric · {{2}} 3 · {{3}} 5 items (18 pcs) · {{4}} Daikin 1.5T split AC × 1 · {{5}} 42,000 · {{6}} 68,500 · {{7}} JCM/1234 · {{8}} https://invoice.jcmretails.com
+Samples: Badshah Electric · 6 · JCM/1234
 
-### 9. `order_dispatched` — Dispatched, no LR (self-pickup / local delivery)
-Header image: `dispatched.png` · Buttons: Quick reply **Invoices**
-Same body as 8 but the LR line replaced:
-
-```
-Namaste {{1}},
-
-Your material has been dispatched.
-
-📦 Boxes: {{2}}
-✅ Sent: {{3}}
-⏳ Still to come: {{4}} (₹{{5}})
-🧾 Invoice: {{7}} for ₹{{6}}
-
-Download the invoice at {{8}} (log in with your registered mobile number).
-
-J.C. Mittal and Sons, Ratlam
-```
-Samples: as in 8 (with {{4}} none · {{5}} 0)
+### 9. `order_dispatched` — Dispatched, no LR (self-pickup / local delivery)  ✅ created by Shishir 12 Oct
+Header image: `dispatched.png` · Buttons: Quick reply **Invoice PDF** · Same body as 8.
 
 ### 10. `gstr1_filing_reminder` — Supplier has not filed our invoice
 Header image: upload any 1200 × 628 PNG as sample (live = the month's GST banner drawn by HQ) · Buttons: none
@@ -359,16 +334,16 @@ Samples: 12 Oct 2026 · 9 · 4 · 7 · Badshah Electric (not all ordered), Nexus
 
 | # | Template | Banner | Buttons | Done |
 |---|---|---|---|---|
-| 1 | txn_invoice | invoice.png | QR Code · Ledger · Invoices | ☐ |
-| 2 | txn_receipt | receipt.png | Ledger | ☐ |
+| 1 | txn_invoice | invoice.png | QR Code · Ledger | ✅ |
+| 2 | txn_receipt | receipt.png | Ledger | ✅ |
 | 3 | txn_purchase | purchase.png | — | ☐ |
 | 4 | txn_payment | payment.png | — | ☐ |
-| 5 | txn_order | order.png | Invoices | ☐ |
+| 5 | txn_order | order.png | Call for changes · Order copy | ✅ |
 | 6a | txn_credit_note | credit-note.png | Ledger | ☐ |
 | 6b | txn_debit_note | debit-note.png | Ledger | ☐ |
 | 7 | quotation_sent | quotation.png | — | ☐ |
-| 8 | order_dispatched_photo | dispatched.png (sample) | Invoices | ☐ |
-| 9 | order_dispatched | dispatched.png | Invoices | ☐ |
+| 8 | order_dispatched_photo | dispatched.png (sample) | Invoice PDF | ✅ |
+| 9 | order_dispatched | dispatched.png | Invoice PDF | ✅ |
 | 10 | gstr1_filing_reminder | any (live = GST banner) | — | ☐ |
 | 11 | portal_login_otp | — (Authentication) | Copy code | ☐ only if needed |
 | 12 | staff_followup_morning | staff-followup.png | Open my list (URL) | ☐ |

@@ -4,6 +4,7 @@ import { createCanvas, loadImage, GlobalFonts } from '@napi-rs/canvas'
 import { FRAME_PNG, NAME_FONT } from './_qr-assets.js'
 import { loadStatement, buildLedgerPdf } from './_ledger-pdf.js'
 import { sendText, sendMedia } from './_wa-cloud.js'
+import { loadOrder, buildOrderPdf, loadInvoice, buildInvoicePdf } from './_doc-pdf.js'
 
 // Answers the quick-reply buttons on the payment-reminder templates (QR Code / Ledger / Last 3 Invoices).
 // Called from the WhatsApp webhook in api/whatsapp.js. Never throws to the caller.
@@ -104,11 +105,23 @@ const WHICH = [
   [/invoice|bill/i, 'invoices'],
 ]
 
-// Button payloads we put on the reminder: "qr:<code>", "ledger:<code>", "inv:<code>".
+// Button payloads we put on messages:
+//   "qr:<code>", "ledger:<code>", "inv:<code>", "portal:<code>"   (code = the customer's Busy account code)
+//   "so:<code>:<order no>"        Order copy  (txn_order)         → PDF of the sales order from JCM Orders
+//   "invpdf:<code>:<invoice no>"  Invoice PDF (order_dispatched*) → PDF copy from the invoice portal's tables
 function parsePayload(payload) {
-  const m = /^(qr|ledger|inv|portal):(\d{1,9})$/.exec(String(payload || ''))
-  return m ? { kind: m[1] === 'inv' ? 'invoices' : m[1], code: m[2] } : null
+  const p = String(payload || '')
+  let m = /^(qr|ledger|inv|portal):(\d{1,9})$/.exec(p)
+  if (m) return { kind: m[1] === 'inv' ? 'invoices' : m[1], code: m[2] }
+  m = /^(so|invpdf):(\d{1,9}):(.{1,60})$/.exec(p)
+  return m ? { kind: m[1], code: m[2], ref: m[3] } : null
 }
+const hqClient = () => {
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  return key ? createClient('https://cmtnzmfuasniicsdxyle.supabase.co', key, { auth: { autoRefreshToken: false, persistSession: false } }) : null
+}
+const safeName = name => name.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30) || 'JCM'
+
 
 export async function handleIncoming(value) {
   try {
@@ -150,6 +163,23 @@ export async function handleIncoming(value) {
         await sendText(from, `*${name}*\nYou can view and download all your invoices here:\n${PORTAL}\n\nPlease log in with your registered mobile number.\n\n*अपने सभी बिल देखने और डाउनलोड करने के लिए ऊपर दिया गया लिंक खोलें। लॉगिन के लिए अपना रजिस्टर्ड मोबाइल नंबर इस्तेमाल करें।*`)
       } else if (parsed.kind === 'invoices') {
         await sendText(from, await lastInvoicesText(busy, parsed.code, name))
+      } else if (parsed.kind === 'so') {
+        const hq = hqClient()
+        const data = hq ? await loadOrder(hq, parsed.ref) : null
+        if (!data) await sendText(from, `*${name}*\nOur team will send you a copy of order ${parsed.ref} here shortly.`)
+        else {
+          const pdf = await buildOrderPdf({ partyName: name, ...data })
+          await sendMedia(from, pdf, { kind: 'document', mime: 'application/pdf', filename: `JCM-Order-${safeName(parsed.ref)}.pdf`,
+            caption: `*Copy of your order ${parsed.ref} is attached.*\n*आपके ऑर्डर की कॉपी संलग्न है।*` })
+        }
+      } else if (parsed.kind === 'invpdf') {
+        const data = await loadInvoice(busy, parsed.ref)
+        if (!data) await sendText(from, `*${name}*\nInvoice ${parsed.ref} will be on the portal by tomorrow morning:\n${PORTAL}\n\nPlease log in with your registered mobile number.`)
+        else {
+          const pdf = await buildInvoicePdf({ partyName: name, ...data })
+          await sendMedia(from, pdf, { kind: 'document', mime: 'application/pdf', filename: `JCM-Invoice-${safeName(parsed.ref)}.pdf`,
+            caption: `*Copy of invoice ${parsed.ref} is attached.*\n*आपके बिल की कॉपी संलग्न है।*` })
+        }
       } else {
         await sendText(from, 'Thank you. Our team will send this to you here shortly.')
       }
