@@ -39,11 +39,9 @@ export function renderWhatsappTest(container) {
         <button class="btn-primary" id="waSub" style="padding:10px 18px;border-radius:8px">Check and connect</button>
         <p id="waSubResult" style="margin-top:14px" aria-live="polite"></p>
         <hr style="margin:22px 0;border:0;border-top:1px solid #ddd">
-        <div style="font-weight:500;margin-bottom:6px">Which customer record matches this number? (name used on the QR)</div>
-        <button class="btn-primary" id="waPeek" style="padding:10px 18px;border-radius:8px">Look up (number above)</button>
-        <pre id="waPeekResult" style="margin-top:14px;white-space:pre-wrap;word-break:break-word;font-size:13px" aria-live="polite"></pre>
-        <hr style="margin:22px 0;border:0;border-top:1px solid #ddd">
-        <div style="font-weight:500;margin-bottom:6px">Send a sample payment reminder (same number as above)</div>
+        <div style="font-weight:500;margin-bottom:6px">Send a sample payment reminder to the number above, for this customer</div>
+        <input id="waCode" type="text" inputmode="numeric" placeholder="Customer's Busy code (e.g. 1042)" autocomplete="off"
+          style="width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;font-size:16px;margin-bottom:12px">
         <select id="waTier" style="width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;font-size:16px;margin-bottom:12px">
           <option value="20">Amber: over 20 days</option>
           <option value="40">Red: over 40 days</option>
@@ -82,7 +80,7 @@ export function renderWhatsappTest(container) {
     $('waRem').disabled = true
     $('waRemResult').textContent = 'Sending…'
     try {
-      await call({ action: 'reminder-test', phone, tier: $('waTier').value })
+      await call({ action: 'reminder-test', phone, code: $('waCode').value.trim(), tier: $('waTier').value })
       $('waRemResult').innerHTML = '✅ Sent. Tap the QR Code button on it to test the reply.'
     } catch (err) {
       $('waRemResult').innerHTML = `❌ ${esc(err.message)}`
@@ -107,20 +105,6 @@ export function renderWhatsappTest(container) {
       $('waSubResult').innerHTML = `❌ ${esc(err.message)}`
     } finally {
       $('waSub').disabled = false
-    }
-  })
-
-  $('waPeek').addEventListener('click', async () => {
-    const phone = $('waPhone').value.trim()
-    if (!phone) { $('waPeekResult').textContent = 'Type a mobile number above first.'; return }
-    $('waPeekResult').textContent = 'Looking…'
-    try {
-      const d = await call({ action: 'customer-peek', phone })
-      $('waPeekResult').textContent = d.found
-        ? `QR note uses: ${d.noteUses}\n\n` + Object.entries(d.row).map(([k, v]) => `${k}: ${v}`).join('\n')
-        : 'No customer found with that number.'
-    } catch (err) {
-      $('waPeekResult').textContent = err.message
     }
   })
 }

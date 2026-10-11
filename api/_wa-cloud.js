@@ -32,6 +32,11 @@ export async function sendTemplate(toPhone, templateName, languageCode, bodyPara
   const components = []
   if (opts.headerImageUrl) components.push({ type: 'header', parameters: [{ type: 'image', image: { link: opts.headerImageUrl } }] })
   if (bodyParams.length) components.push({ type: 'body', parameters: bodyParams.map(t => ({ type: 'text', text: String(t) })) })
+  // Quick-reply buttons: each carries a payload that comes back to us when the customer taps it
+  // (we put the customer's Busy code in it, so replies never have to guess who it is).
+  ;(opts.buttonPayloads || []).forEach((payload, index) => {
+    components.push({ type: 'button', sub_type: 'quick_reply', index: String(index), parameters: [{ type: 'payload', payload: String(payload) }] })
+  })
   if (components.length) template.components = components
 
   let res, data

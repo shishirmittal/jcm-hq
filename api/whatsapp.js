@@ -1,7 +1,7 @@
 import { applyCors } from './_cors.js'
 import { createClient } from '@supabase/supabase-js'
 import { waConfigured, sendTemplate, wabaSubscription, toWaNumber } from './_wa-cloud.js'
-import { handleIncoming, findCustomerRow, busyClient, billedName } from './_wa-replies.js'
+import { handleIncoming, busyClient, ledgerNameByCode } from './_wa-replies.js'
 
 // WhatsApp via Meta's Cloud API (page src/whatsapp-test.js at #whatsapp-test).
 // Admins only. Existing Whatshub360 sending (collections, purchases, red-alerts, orders)
@@ -64,22 +64,17 @@ export default async function handler(req, res) {
       const apps = (d?.data || []).map(a => a.whatsapp_business_api_data?.name || a.name || 'app')
       return send(res, 200, { subscribed: apps.length > 0, apps })
     }
-    if (body.action === 'customer-peek') {
-      // Admin helper: which customers row does this mobile match, and what name would the QR note use?
-      const busy = busyClient()
-      if (!busy) return send(res, 500, { error: 'Busy data is not configured.' })
-      const row = await findCustomerRow(busy, toWaNumber(body.phone) || String(body.phone || ''))
-      if (!row) return send(res, 200, { found: false })
-      const shown = {}
-      for (const [k, v] of Object.entries(row)) if (v !== null && v !== '' && !/password|pin|token/i.test(k)) shown[k] = v
-      return send(res, 200, { found: true, noteUses: billedName(row), row: shown })
-    }
     if (body.action === 'reminder-test') {
       // Sends one payment-reminder template with sample numbers, to check look + buttons.
       const red = body.tier === '40'
+      const code = String(body.code || '').replace(/\D/g, '')
+      if (!code) return send(res, 400, { error: 'Type the customer\'s Busy code first.' })
+      const busy = busyClient()
+      const name = busy ? await ledgerNameByCode(busy, code) : ''
+      if (!name) return send(res, 400, { error: 'No customer with that Busy code.' })
       const out = await sendTemplate(body.phone, red ? 'payment_reminder_40d' : 'payment_reminder_20d', body.lang || 'en',
-        ['Test Customer', '1,25,000', '85,000', red ? '47' : '26', '26 Aug 2026'],
-        { headerImageUrl: `https://hq.jcmretails.com/wa/${red ? 'reminder-red-40d' : 'reminder-amber-20d'}.png` })
+        [name, '1,25,000', '85,000', red ? '47' : '26', '26 Aug 2026'],
+        { buttonPayloads: [`qr:${code}`, `ledger:${code}`, `inv:${code}`], headerImageUrl: `https://hq.jcmretails.com/wa/${red ? 'reminder-red-40d' : 'reminder-amber-20d'}.png` })
       return send(res, 200, { ok: true, messageId: out?.messages?.[0]?.id || null })
     }
     return send(res, 400, { error: 'Unknown request.' })

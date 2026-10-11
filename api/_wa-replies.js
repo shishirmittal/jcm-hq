@@ -56,32 +56,17 @@ function busyClient() {
   return createClient(SUPABASE_BUSY_URL, key, { auth: { autoRefreshToken: false, persistSession: false } })
 }
 
-// Names Busy may keep for "billed party" (the name printed on invoices), best first.
-const BILLED_COLS = ['billed_party_name', 'billed_party', 'billing_name', 'bill_name', 'print_name', 'printing_name', 'mailing_name', 'party_print_name']
 const NAME_COLS = ['party_name', 'name', 'customer_name', 'account_name']
-const MOBILE_COLS = ['mobile', 'mobile_no', 'phone', 'phone_no', 'whatsapp_no', 'whatsapp']
 
-// WhatsApp number (91XXXXXXXXXX) → customers row (full), or null. Tries mobile and whatsapp columns.
-export async function findCustomerRow(busy, waNumber) {
-  const last10 = String(waNumber).slice(-10)
-  const r = await busy.from('customers').select('*').limit(1)
-  const cols = Object.keys(r.data?.[0] || {})
-  const mobileCols = MOBILE_COLS.filter(c => cols.includes(c))
-  if (!mobileCols.length) return null
-  const { data } = await busy.from('customers').select('*').or(mobileCols.map(c => `${c}.ilike.%${last10}%`).join(',')).limit(5)
-  return (data || [])[0] || null
-}
-
-// Who the QR is for: the billed party name if Busy has one (what Busy prints in its own QR note), else the ledger name.
-export function billedName(row) {
-  for (const c of BILLED_COLS) if (row?.[c] && String(row[c]).trim()) return String(row[c]).trim()
-  for (const c of NAME_COLS) if (row?.[c] && String(row[c]).trim()) return String(row[c]).trim()
+// Ledger name of the customer a reminder was sent about (by Busy code). Never looked up from a phone number.
+export async function ledgerNameByCode(busy, code) {
+  const n = Number(code)
+  if (!Number.isFinite(n)) return ''
+  const { data } = await busy.from('customers').select('*').eq('party_code', n).limit(1)
+  const row = (data || [])[0]
+  if (!row) return ''
+  for (const c of NAME_COLS) if (row[c] && String(row[c]).trim()) return String(row[c]).trim()
   return ''
-}
-
-async function findCustomer(busy, waNumber) {
-  const row = await findCustomerRow(busy, waNumber)
-  return row ? { code: row.party_code, name: billedName(row) } : null
 }
 
 export { busyClient }
@@ -92,22 +77,31 @@ const WHICH = [
   [/invoice|bill/i, 'invoices'],
 ]
 
+// Button payloads we put on the reminder: "qr:<code>", "ledger:<code>", "inv:<code>".
+function parsePayload(payload) {
+  const m = /^(qr|ledger|inv):(\d{1,9})$/.exec(String(payload || ''))
+  return m ? { kind: m[1] === 'inv' ? 'invoices' : m[1], code: m[2] } : null
+}
+
 export async function handleIncoming(value) {
   try {
     const busy = busyClient()
     for (const m of value?.messages || []) {
-      const label = m.button?.text || m.button?.payload || m.interactive?.button_reply?.title || ''
-      const kind = (WHICH.find(([re]) => re.test(label)) || [])[1]
-      if (!kind) continue
+      const payload = m.button?.payload || m.interactive?.button_reply?.id || ''
+      const label = m.button?.text || m.interactive?.button_reply?.title || ''
+      const parsed = parsePayload(payload)
+      const kindByLabel = (WHICH.find(([re]) => re.test(label)) || [])[1]
+      if (!parsed && !kindByLabel) continue
       const from = m.from
-      console.log(`wa reply: button="${label}" kind=${kind}`)
-      const cust = busy ? await findCustomer(busy, from) : null
-      if (!cust) {
-        await sendText(from, 'Thank you. We could not match this number to an account. Please call us on this number and our team will help you.')
+      console.log(`wa reply: button="${label}" payload=${payload ? 'yes' : 'none'}`)
+      const name = parsed && busy ? await ledgerNameByCode(busy, parsed.code) : ''
+      if (!parsed || !name) {
+        // Old message without a customer code, or the code is unknown: never guess from the phone number.
+        await sendText(from, 'Thank you. Our team will send this to you here shortly.')
         continue
       }
-      if (kind === 'qr') {
-        const png = await qrPng(cust.name)
+      if (parsed.kind === 'qr') {
+        const png = await qrPng(name)
         await sendMedia(from, png, {
           kind: 'image', mime: 'image/png', filename: 'JCM-payment-QR.png',
           caption: '*Please share payment details with us after payment.*\n*भुगतान के बाद कृपया भुगतान की जानकारी हमें भेजें।*',
@@ -118,7 +112,6 @@ export async function handleIncoming(value) {
     }
   } catch (err) {
     console.error('wa reply error:', err.message)
-    // Tell the customer something rather than staying silent (they just messaged us, so free text is allowed).
     for (const m of value?.messages || []) {
       try { await sendText(m.from, 'Thank you. Our team will send this to you here shortly.') } catch (e2) { console.error('wa fallback error:', e2.message) }
     }
