@@ -86,15 +86,22 @@
 (function () {
   // JCM's business UPI account. Change here only.
   var UPI_ID = '7415277521-1@okbizaxis';
-  var PAYEE = 'JCM Retails';
+  // Same merchant details Busy prints in the QR on every invoice (pn, mc, aid, tr), so payment
+  // apps recognise this as the registered business and do not flag the link as risky.
+  var PAYEE = 'J C MITTAL AND SONS';
+  var MC = '5732';
+  var AID = 'uGICAgIC_9KuFXw';
+  var TR = 'BCR2DN6TQ7PITK3E';
 
   // Customer name comes from the WhatsApp button: /pay.html?n=Rajesh%20Traders
+  // Busy keeps the party name to 20 characters in the note; same here.
   var raw = '';
   try { raw = new URLSearchParams(location.search).get('n') || ''; } catch (e) {}
-  var name = raw.replace(/[\u0000-\u001f\u007f<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
+  var name = raw.replace(/[\u0000-\u001f\u007f<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 20);
 
   function enc(s) { return encodeURIComponent(s).replace(/%40/g, '@'); }
-  var q = 'pa=' + enc(UPI_ID) + '&pn=' + enc(PAYEE) + (name ? '&tn=' + enc(name) : '') + '&cu=INR';
+  var q = 'pa=' + enc(UPI_ID) + '&pn=' + enc(PAYEE) + '&mc=' + MC + '&aid=' + enc(AID) + '&tr=' + enc(TR) +
+    (name ? '&tn=' + enc(name) : '') + '&cu=INR';
 
   var set = function (id, href) { document.getElementById(id).setAttribute('href', href); };
   set('payBtn', 'upi://pay?' + q);
