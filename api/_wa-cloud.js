@@ -21,7 +21,7 @@ export function toWaNumber(raw) {
 
 // Send an approved template. bodyParams = the {{1}}, {{2}} … values, in order.
 // Returns Meta's response ({ messages: [{ id }] }). Throws Error with a plain message.
-export async function sendTemplate(toPhone, templateName, languageCode, bodyParams = []) {
+export async function sendTemplate(toPhone, templateName, languageCode, bodyParams = [], opts = {}) {
   const token = process.env.WHATSAPP_TOKEN
   const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID
   if (!token || !phoneId) throw new Error('WhatsApp (Meta) is not set up: WHATSAPP_TOKEN / WHATSAPP_PHONE_NUMBER_ID missing in Vercel.')
@@ -29,9 +29,10 @@ export async function sendTemplate(toPhone, templateName, languageCode, bodyPara
   if (!to) throw new Error('That does not look like a valid Indian mobile number.')
 
   const template = { name: templateName, language: { code: languageCode } }
-  if (bodyParams.length) {
-    template.components = [{ type: 'body', parameters: bodyParams.map(t => ({ type: 'text', text: String(t) })) }]
-  }
+  const components = []
+  if (opts.headerImageUrl) components.push({ type: 'header', parameters: [{ type: 'image', image: { link: opts.headerImageUrl } }] })
+  if (bodyParams.length) components.push({ type: 'body', parameters: bodyParams.map(t => ({ type: 'text', text: String(t) })) })
+  if (components.length) template.components = components
 
   let res, data
   try {

@@ -34,6 +34,14 @@ export function renderWhatsappTest(container) {
           style="width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;font-size:16px;margin-bottom:12px">
         <button class="btn-primary" id="waSend" style="padding:10px 18px;border-radius:8px">Send test message</button>
         <p id="waResult" style="margin-top:14px" aria-live="polite"></p>
+        <hr style="margin:22px 0;border:0;border-top:1px solid #ddd">
+        <div style="font-weight:500;margin-bottom:6px">Send a sample payment reminder (same number as above)</div>
+        <select id="waTier" style="width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;font-size:16px;margin-bottom:12px">
+          <option value="20">Amber: over 20 days</option>
+          <option value="40">Red: over 40 days</option>
+        </select>
+        <button class="btn-primary" id="waRem" style="padding:10px 18px;border-radius:8px">Send sample reminder</button>
+        <p id="waRemResult" style="margin-top:14px" aria-live="polite"></p>
       </main>
     </div>`
   const $ = id => container.querySelector('#' + id)
@@ -57,6 +65,21 @@ export function renderWhatsappTest(container) {
       $('waResult').innerHTML = `❌ ${esc(err.message)}`
     } finally {
       $('waSend').disabled = false
+    }
+  })
+
+  $('waRem').addEventListener('click', async () => {
+    const phone = $('waPhone').value.trim()
+    if (!phone) { $('waRemResult').textContent = 'Type a mobile number above first.'; return }
+    $('waRem').disabled = true
+    $('waRemResult').textContent = 'Sending…'
+    try {
+      await call({ action: 'reminder-test', phone, tier: $('waTier').value })
+      $('waRemResult').innerHTML = '✅ Sent. Tap the QR Code button on it to test the reply.'
+    } catch (err) {
+      $('waRemResult').innerHTML = `❌ ${esc(err.message)}`
+    } finally {
+      $('waRem').disabled = false
     }
   })
 }

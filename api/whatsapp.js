@@ -55,6 +55,14 @@ export default async function handler(req, res) {
       const out = await sendTemplate(body.phone, 'hello_world', 'en_US', [])
       return send(res, 200, { ok: true, messageId: out?.messages?.[0]?.id || null })
     }
+    if (body.action === 'reminder-test') {
+      // Sends one payment-reminder template with sample numbers, to check look + buttons.
+      const red = body.tier === '40'
+      const out = await sendTemplate(body.phone, red ? 'payment_reminder_40d' : 'payment_reminder_20d', body.lang || 'en',
+        ['Test Customer', '1,25,000', '85,000', red ? '47' : '26', '26 Aug 2026'],
+        { headerImageUrl: `https://hq.jcmretails.com/wa/${red ? 'reminder-red-40d' : 'reminder-amber-20d'}.png` })
+      return send(res, 200, { ok: true, messageId: out?.messages?.[0]?.id || null })
+    }
     return send(res, 400, { error: 'Unknown request.' })
   } catch (err) {
     // Messages from sendTemplate are plain-language and never contain the token.
