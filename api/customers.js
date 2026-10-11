@@ -248,12 +248,14 @@ async function ledger(busy, body) {
   const page = Math.max(0, Number(body.page) || 0)
   // A customer has a few hundred entries a year at most: read them all, work the
   // running balance back from today's outstanding, then hand out one page.
-  const [r, dues, runAt] = await Promise.all([
+  const [r, dues, runAt, job] = await Promise.all([
     busy.from('party_ledger').select('*').eq('party_code', code)
       .order('vch_date', { ascending: false }).order('vch_code', { ascending: false }).order('sr_no', { ascending: false })
       .range(0, 4999),
     busy.from('party_dues').select('outstanding_balance, synced_at').eq('party_code', code).limit(1),
     duesRunAt(busy),
+    // The ledger sync only re-sends changed vouchers, so "as of" is its last good run.
+    busy.from('sync_jobs').select('last_ok_at').eq('job_id', 'ledger').limit(1),
   ])
   if (missing(r)) return { ready: false }
   const all = check(r, 'party_ledger')
@@ -264,7 +266,7 @@ async function ledger(busy, body) {
     bal -= row.debit - row.credit
     return row
   })
-  const asOf = all.reduce((m, x) => (x.synced_at > m ? x.synced_at : m), '') || null
+  const asOf = (!job.error && job.data?.[0]?.last_ok_at) || all.reduce((m, x) => (x.synced_at > m ? x.synced_at : m), '') || null
   return {
     ready: true, total: rows.length, page, pageSize: LEDGER_PAGE, asOf,
     rows: rows.slice(page * LEDGER_PAGE, page * LEDGER_PAGE + LEDGER_PAGE),

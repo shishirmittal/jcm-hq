@@ -22,9 +22,11 @@ const sql = require('mssql');
 const { createClient } = require('@supabase/supabase-js');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const CHECK = process.argv.includes('--check');
 const LOG_FILE = path.join(__dirname, 'ledger.log');
+const CACHE_FILE = path.join(__dirname, 'ledger-cache.json');
 function log(message) {
   const line = `[${new Date().toISOString()}] ${message}`;
   console.log(line);
@@ -168,14 +170,53 @@ async function main() {
     return;
   }
 
-  for (let i = 0; i < out.length; i += 1000) {
-    const { error } = await supabase.from('party_ledger').upsert(out.slice(i, i + 1000), { onConflict: 'party_code,vch_code,sr_no' });
+  // Only what changed since the last run is sent: each voucher (per customer) is
+  // fingerprinted and compared with ledger-cache.json from the last run. Once a day,
+  // or when the cache is missing, everything is sent again (keeps Supabase exact).
+  const groups = new Map();
+  for (const x of out) {
+    const k = `${x.party_code}|${x.vch_code}`;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(x);
+  }
+  const fp = rows => crypto.createHash('sha1').update(JSON.stringify(rows.map(x => [x.sr_no, x.vch_type, x.vch_no, x.vch_date, x.debit, x.credit]))).digest('hex').slice(0, 16);
+  const now = {};
+  for (const [k, rows] of groups) now[k] = fp(rows);
+
+  let cache = null;
+  try {
+    const c = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
+    if (c && c.db === SQL_CONFIG.database && Date.now() - Date.parse(c.fullAt) < 24 * 3600e3) cache = c;
+  } catch (_) { /* no cache → full run */ }
+
+  if (!cache) {
+    for (let i = 0; i < out.length; i += 1000) {
+      const { error } = await supabase.from('party_ledger').upsert(out.slice(i, i + 1000), { onConflict: 'party_code,vch_code,sr_no' });
+      if (error) throw new Error(`writing party_ledger: ${error.message}`);
+    }
+    // Vouchers deleted or cancelled in Busy since the last run.
+    const { error: delErr, count } = await supabase.from('party_ledger').delete({ count: 'exact' }).lt('synced_at', started);
+    if (delErr) throw new Error(`removing old rows: ${delErr.message}`);
+    fs.writeFileSync(CACHE_FILE, JSON.stringify({ db: SQL_CONFIG.database, fullAt: started, groups: now }));
+    log(`done (full) — ${out.length} entries saved, ${count || 0} old entries removed`);
+    return;
+  }
+
+  const changed = Object.keys(now).filter(k => cache.groups[k] !== now[k]);
+  const removed = Object.keys(cache.groups).filter(k => !(k in now));
+  // A changed voucher: its old lines go, its current lines go in.
+  for (const k of [...changed, ...removed]) {
+    const [party, vch] = k.split('|');
+    const { error } = await supabase.from('party_ledger').delete().eq('party_code', party).eq('vch_code', Number(vch));
+    if (error) throw new Error(`removing changed voucher: ${error.message}`);
+  }
+  const sendRows = changed.flatMap(k => groups.get(k));
+  for (let i = 0; i < sendRows.length; i += 1000) {
+    const { error } = await supabase.from('party_ledger').upsert(sendRows.slice(i, i + 1000), { onConflict: 'party_code,vch_code,sr_no' });
     if (error) throw new Error(`writing party_ledger: ${error.message}`);
   }
-  // Vouchers deleted or cancelled in Busy since the last run.
-  const { error: delErr, count } = await supabase.from('party_ledger').delete({ count: 'exact' }).lt('synced_at', started);
-  if (delErr) throw new Error(`removing old rows: ${delErr.message}`);
-  log(`done — ${out.length} entries saved, ${count || 0} old entries removed`);
+  fs.writeFileSync(CACHE_FILE, JSON.stringify({ db: SQL_CONFIG.database, fullAt: cache.fullAt, groups: now }));
+  log(`done — ${changed.length} vouchers new or changed (${sendRows.length} entries sent), ${removed.length} removed, ${Object.keys(now).length - changed.length} unchanged (not sent)`);
 }
 
 main().catch(err => { log(`FAILED: ${err.message}`); process.exit(1); });
