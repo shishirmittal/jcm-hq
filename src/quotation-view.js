@@ -314,7 +314,10 @@ export async function renderQuotationView(container, quotationId, onBack, autoAc
             <span class="qv-label-long">Download PDF</span><span class="qv-label-short">PDF</span>
           </button>
           <button class="btn-whatsapp-solid btn-small" id="whatsappBtn">
-            <span class="qv-label-long">Send via WhatsApp</span><span class="qv-label-short">WhatsApp</span>
+            <span class="qv-label-long">Share on my WhatsApp</span><span class="qv-label-short">Share</span>
+          </button>
+          <button class="btn-whatsapp-solid btn-small" id="jcmWaBtn" title="Sends the quotation_sent template with the PDF from JCM's official number (+91 91091 05999)">
+            <span class="qv-label-long">Send from JCM number</span><span class="qv-label-short">JCM WA</span>
           </button>
         </div>
       </header>
@@ -452,6 +455,28 @@ export async function renderQuotationView(container, quotationId, onBack, autoAc
       const doc = await generatePdfAtFullSize()
       await sharePdf(doc, fileName, { title: fileName })
       alert('PDF downloaded — attach it in the WhatsApp chat that just opened, then hit send.')
+    })
+  })
+
+  // Official number: the quotation_sent template with the PDF attached, sent by HQ (api/whatsapp.js).
+  document.getElementById('jcmWaBtn').addEventListener('click', () => {
+    const phone = (quotation.phone || '').replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '')
+    if (!/^[6-9]\d{9}$/.test(phone)) { alert('No valid 10-digit mobile number on this quotation.'); return }
+    if (!window.confirm(`Send quotation ${quotation.quote_no} to ${quotation.client_name} (+91 ${phone}) from JCM's WhatsApp number? It cannot be taken back.`)) return
+    const btn = document.getElementById('jcmWaBtn')
+    withBusy(btn, 'Sending…', async () => {
+      const doc = await generatePdfAtFullSize()
+      const uri = doc.output('datauristring')
+      const { supabase } = await import('./supabase.js')
+      const { apiUrl } = await import('./native.js')
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(apiUrl('/api/whatsapp'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+        body: JSON.stringify({ action: 'quotation', phone, name: quotation.client_name, quote_no: quotation.quote_no, date: createdDate.toISOString().slice(0, 10), total: Math.round(grandTotal), filename: fileName, pdf_base64: uri.slice(uri.indexOf(',') + 1) }),
+      })
+      const out = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(out.error || 'Could not send.')
+      alert('Sent from JCM\'s WhatsApp number. You can see it under WhatsApp → Log.')
     })
   })
 

@@ -99,3 +99,6 @@ revoke all on table wa_messages from anon, authenticated;
 grant all on table wa_messages to service_role;
 grant usage, select on sequence wa_messages_id_seq to service_role;
 notify pgrst, 'reload schema';
+
+-- Public bucket for PDFs that Meta fetches as a document header (quotations).
+insert into storage.buckets (id, name, public) values ('wa-docs', 'wa-docs', true) on conflict (id) do nothing;

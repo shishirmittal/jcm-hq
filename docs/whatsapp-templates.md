@@ -156,8 +156,8 @@ J.C. Mittal and Sons, Ratlam
 Samples: Badshah Electric · DN/7 · 12 Oct 2026 · 950
 
 ### 7. `quotation_sent` — Quotation
-Header image: `quotation.png` · Buttons: none
-(HQ wiring for this one comes with the Quotations page update; create the template now so it is ready.)
+Header: **Document** (upload any small PDF as the sample; live = the quotation PDF) · Buttons: none
+Sent from a quotation in HQ with the new **Send from JCM number** button (the PDF goes as the attachment).
 
 ```
 Namaste {{1}},
@@ -341,7 +341,7 @@ Samples: 12 Oct 2026 · 9 · 4 · 7 · Badshah Electric (not all ordered), Nexus
 | 5 | txn_order | order.png | Call for changes · Order copy | ✅ |
 | 6a | txn_credit_note | credit-note.png | Ledger | ☐ |
 | 6b | txn_debit_note | debit-note.png | Ledger | ☐ |
-| 7 | quotation_sent | quotation.png | — | ☐ |
+| 7 | quotation_sent | — (Document header) | — | ☐ |
 | 8 | order_dispatched_photo | dispatched.png (sample) | Invoice PDF | ✅ |
 | 9 | order_dispatched | dispatched.png | Invoice PDF | ✅ |
 | 10 | gstr1_filing_reminder | any (live = GST banner) | — | ☐ |

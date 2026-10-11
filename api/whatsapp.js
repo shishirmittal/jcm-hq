@@ -96,7 +96,7 @@ const SAMPLES = {
   txn_payment: cust('payment', { vch_no: 'P/310', vch_date: '2026-10-12', amount: 1_20_000 }),
   txn_purchase: cust('purchase', { vch_no: 'INV-5521', vch_date: '2026-10-12', amount: 88000, items: 12 }),
   txn_order: cust('order', { vch_no: 'SO/261/45', vch_date: '2026-10-12', amount: 32500, items: 5 }),
-  quotation_sent: { params: name => [name, 'Q-2026-118', '12 Oct 2026', '1,85,000'], opts: () => ({ headerImageUrl: BANNER('quotation') }) },
+  quotation_sent: { params: name => [name, 'Q-2026-118', '12 Oct 2026', '1,85,000'], opts: () => ({ headerDocumentUrl: `${HQ}/wa/sample-quotation.pdf`, headerDocumentName: 'Quotation-Q-2026-118.pdf' }) },
   order_dispatched: { params: name => [name, '6', 'JCM/1234'], opts: code => ({ headerImageUrl: BANNER('dispatched'), buttonPayloads: [`invpdf:${code}:JCM/1234`] }) },
   order_dispatched_photo: { params: name => [name, '6', 'JCM/1234'], opts: code => ({ headerImageUrl: BANNER('dispatched'), buttonPayloads: [`invpdf:${code}:JCM/1234`] }) },
   staff_followup_morning: { params: () => ['Keshav', '12', '4,85,000', 'Badshah Electric ₹1,20,000, Nexus Enterprises ₹95,000, Shree Traders ₹60,000 and 9 more'], opts: () => ({ headerImageUrl: BANNER('staff-followup') }) },
@@ -223,6 +223,25 @@ export default async function handler(req, res) {
       })
       const extra = live.filter(t => !EXPECTED.some(e => e.name === t.name)).map(t => ({ name: t.name, used: '(not used by HQ)', found: true, status: t.status, category: t.category, language: t.language, rejected_reason: t.rejected_reason || null, body: (t.components || []).find(c => c.type === 'BODY')?.text || '', buttons: ((t.components || []).find(c => c.type === 'BUTTONS')?.buttons || []).map(b => b.text) }))
       return send(res, 200, { templates: [...rows, ...extra] })
+    }
+    if (body.action === 'quotation') {
+      // The Quotations page made the PDF in the browser; keep it in a public bucket so Meta can fetch it as the document header.
+      const b64 = String(body.pdf_base64 || '')
+      if (!b64 || b64.length > 6_000_000) return send(res, 400, { error: b64 ? 'That PDF is too big to send this way (over ~4 MB).' : 'No PDF received.' })
+      const pdf = Buffer.from(b64, 'base64')
+      const safe = String(body.quote_no || 'quotation').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '')
+      const path = `quotations/${safe}-${Date.now()}.pdf`
+      let url = null
+      for (const bucket of ['wa-docs', 'gst-reports']) {
+        const up = await busy.storage.from(bucket).upload(path, pdf, { contentType: 'application/pdf', upsert: true })
+        if (!up.error) { url = busy.storage.from(bucket).getPublicUrl(path).data?.publicUrl || null; break }
+      }
+      if (!url) return send(res, 500, { error: 'Could not store the PDF (no public bucket wa-docs / gst-reports).' })
+      const out = await sendLogged(busy, { kind: 'quotation', to: body.phone, template: 'quotation_sent',
+        params: [String(body.name || 'Customer'), String(body.quote_no || ''), niceDate(body.date), Number(body.total || 0).toLocaleString('en-IN')],
+        opts: { headerDocumentUrl: url, headerDocumentName: String(body.filename || `${safe}.pdf`) }, ref: String(body.quote_no || ''), refName: String(body.name || ''), by: me.name })
+      if (out.status !== 'sent') return send(res, 502, { error: out.error || out.status })
+      return send(res, 200, { ok: true, messageId: out.id })
     }
     if (body.action === 'log-summary') {
       const since = new Date(Date.now() - 7 * 86400e3).toISOString()
