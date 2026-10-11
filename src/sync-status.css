@@ -1,0 +1,39 @@
+/* Sync status (src/sync-status.js) — classes ss-*; colours from the HQ theme. */
+.ss-main { max-width: 900px; margin: 0 auto; width: 100%; box-sizing: border-box; padding: 18px 16px 32px; display: flex; flex-direction: column; gap: 14px; }
+.ss-sub { color: var(--muted); font-size: 13px; }
+.ss-empty { background: var(--surface); border: 1px dashed var(--line); border-radius: var(--hq-radius); padding: 28px 18px; text-align: center; color: var(--muted); }
+.ss-runner { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--line); border-radius: var(--hq-radius); padding: 14px 16px; color: var(--text); }
+.ss-runner .ss-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.ss-runner.is-ok .ss-dot { background: #2E9B6A; box-shadow: 0 0 0 4px rgba(46,155,106,.18); }
+.ss-runner.is-bad { border-color: #D0453A; }
+.ss-runner.is-bad .ss-dot { background: #D0453A; box-shadow: 0 0 0 4px rgba(208,69,58,.18); }
+.ss-counts { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+.ss-list { display: flex; flex-direction: column; gap: 10px; }
+.ss-job { background: var(--surface); border: 1px solid var(--line); border-left: 5px solid var(--line); border-radius: var(--hq-radius); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; color: var(--text); }
+.ss-job-ok { border-left-color: #2E9B6A; } .ss-job-run { border-left-color: #3B6FD8; } .ss-job-late { border-left-color: #D08A1E; } .ss-job-bad { border-left-color: #D0453A; }
+.ss-job-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.ss-job-name { display: flex; flex-direction: column; gap: 2px; }
+.ss-job-name b { color: var(--ink); font-size: 16px; }
+.ss-pill, .ss-mini { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
+.ss-mini { padding: 2px 8px; font-size: 11px; }
+.ss-ok { background: var(--grn-bg, #E6F2EC); color: #1E7A50; }
+.ss-run { background: #E4ECFB; color: #2A55B0; }
+.ss-late { background: var(--hq-late-bg); color: var(--hq-late-fg); }
+.ss-bad { background: var(--red-bg, #FDECEA); color: #B3261E; }
+.ss-idle { background: var(--hq-head); color: var(--muted); }
+body.dark-mode .ss-ok { background: #113328; color: #9FE3C2; }
+body.dark-mode .ss-run { background: #1C2E55; color: #A9C4FF; }
+body.dark-mode .ss-bad { background: #3A1A1A; color: #FF9A90; }
+.ss-facts { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13.5px; color: var(--body); }
+.ss-facts b { color: var(--ink); }
+.ss-msg { font-size: 13px; color: var(--body); background: var(--hq-head); border-radius: 10px; padding: 8px 10px; word-break: break-word; }
+.ss-job-bad .ss-msg { color: #B3261E; }
+body.dark-mode .ss-job-bad .ss-msg { color: #FF9A90; }
+.ss-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.ss-actions .btn-small { display: inline-flex; align-items: center; gap: 6px; }
+.ss-runs { border-top: 1px solid var(--line-soft); padding-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.ss-run summary { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; cursor: pointer; font-size: 13px; color: var(--text); padding: 4px 0; }
+.ss-run-msg { flex-basis: 100%; color: var(--muted); font-size: 12.5px; padding-left: 2px; }
+.ss-out { margin: 4px 0 8px; padding: 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; font-size: 12px; white-space: pre-wrap; word-break: break-word; color: var(--body); max-height: 260px; overflow: auto; }
+@media (max-width: 520px) { .ss-counts { margin-left: 0; } }
+.ss-runs[hidden] { display: none; }

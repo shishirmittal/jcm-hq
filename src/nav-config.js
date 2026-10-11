@@ -91,5 +91,7 @@ export const NAV_CONFIG = [
   { section: 'Admin', items: [
     { id: 'users', label: 'Manage Users', icon: 'users', hash: '#admin', adminOnly: true, grantable: false },
     { id: 'warehouse', label: 'Warehouse & Devices', icon: 'monitor', hash: '#warehouse', adminOnly: true },
+    // JCM Sync on JCM-Server: every Busy → Supabase job, last run, failures, Run now.
+    { id: 'sync-status', label: 'Sync status', icon: 'history', hash: '#sync-status', adminOnly: true },
   ] },
 ]

@@ -18,6 +18,7 @@ import { renderRedAlerts } from './red-alerts.js'
 import { renderExplain } from './explain.js'
 import { renderPaymentFollowup } from './payment-followup.js'
 import { renderCustomers } from './customers.js'
+import { renderSyncStatus, unmountSyncStatus } from './sync-status.js'
 import { renderPurchases } from './purchases.js'
 import { renderTaskBoard, unmountTaskBoard } from './task-board.js'
 import { mountPinnedSidebar, unmountPinnedSidebar } from './sidebar.js'
@@ -166,6 +167,7 @@ function route() {
   if (hash !== '#tasks') unmountTaskBoard()
   // Stock holds a debounce and a one-minute ticker for its freshness line.
   if (hash !== '#stock') unmountStock()
+  if (hash !== '#sync-status') unmountSyncStatus()
   if (!ORDERS_HASHES[hash]) ordersModule?.unmountOrdersPage()
 
   syncNativeShell()
@@ -223,6 +225,8 @@ function route() {
     renderPaymentFollowup(app, hash.split('/')[1] || null)
   } else if (hash === '#purchases') {
     renderPurchases(app)
+  } else if (hash === '#sync-status') {
+    renderSyncStatus(app)
   } else if (hash === '#customers' || hash.startsWith('#customers/')) {
     renderCustomers(app, decodeURIComponent(hash.split('/')[1] || '') || null)
   } else if (hash === '#explain') {
