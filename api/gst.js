@@ -21,20 +21,20 @@ import { bannerPng, buildMismatchPdf, BUCKET_LABEL } from './_gst-report.js'
 // every 30 minutes by busy-sync/sync-gst.js on JCM-Server (RLS-closed, read here with the
 // Busy service key after the HQ session is checked). Matching happens here, per request:
 // the whole year is matched (a bill booked a month late still finds its 2A row) and the
-// chosen month is reported.
+// chosen From–To month range is reported, party-wise.
 //
 // Access: admins, or anyone with 'gst-recon' in profiles.allowed_tabs.
-// GET  ?banner=YYYY-MM                 the "GST MISMATCH <month>" banner PNG (public; the header
+// GET  ?banner=YYYY-MM[&to=YYYY-MM]    the "GST MISMATCH <period>" banner PNG (public; the header
 //                                      image of the supplier reminder template)
 // Actions (POST JSON):
-//   recon  month                         everything for one month ('YYYY-MM') + month list
-//   mark   month, bucket, row_key, state ('ignored' | 'done' | ''), note
-//   remind-party  month, gstin, row_keys[]   WhatsApp template to the supplier (not_in_2a)
+//   recon  from, to                      everything for a month range ('YYYY-MM') + month list
+//   mark   month, bucket, row_key, state ('ignored' | 'done' | ''), note   (month = the row's own)
+//   remind-party  from, to, gstin, row_keys[]   WhatsApp template to the supplier (not_in_2a)
 //   people                               HQ users (for "Send to staff")
-//   send-staff  month, kinds[], user_ids[]   PDF summary of the chosen red flags → WhatsApp
+//   send-staff  from, to, kinds[], user_ids[]   PDF summary of the chosen red flags → WhatsApp
 //                                      template (document header) to the chosen people
 //   wa-status                            is the Meta sender configured, template names
-//   log    month                         what was sent for this month
+//   log    from, to                      what was sent for this period
 
 export const config = { maxDuration: 60 }
 
@@ -71,13 +71,28 @@ const monthName = m => {
   const d = new Date(`${m}-01T00:00:00+05:30`)
   return d.toLocaleDateString('en-IN', { month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' })
 }
+// 'August 2026' for one month, 'August – September 2026' / 'March 2026 – April 2027' for a range.
+export function periodName(from, to) {
+  if (!to || to === from) return monthName(from)
+  const a = new Date(`${from}-01T00:00:00+05:30`), b = new Date(`${to}-01T00:00:00+05:30`)
+  const opt = { timeZone: 'Asia/Kolkata' }
+  if (from.slice(0, 4) === to.slice(0, 4)) return `${a.toLocaleDateString('en-IN', { month: 'long', ...opt })} – ${b.toLocaleDateString('en-IN', { month: 'long', year: 'numeric', ...opt })}`
+  return `${monthName(from)} – ${monthName(to)}`
+}
+const periodKey = (from, to) => (!to || to === from ? from : `${from}..${to}`)
+function range(body) {
+  const from = isMonth(body.from) ? body.from : (isMonth(body.month) ? body.month : null)
+  let to = isMonth(body.to) ? body.to : from
+  if (from && to < from) to = from
+  return { from, to }
+}
 
 // ---------- handler ----------
 export default async function handler(req, res) {
   if (applyCors(req, res)) return
   if (req.method === 'GET' && isMonth(req.query?.banner)) {
     try {
-      const png = await bannerPng(req.query.banner)
+      const png = await bannerPng(req.query.banner, isMonth(req.query.to) ? req.query.to : null)
       res.setHeader('Content-Type', 'image/png')
       res.setHeader('Cache-Control', 'public, max-age=86400')
       return res.status(200).send(png)
@@ -113,8 +128,8 @@ export default async function handler(req, res) {
     const who = profile.name || profile.email || 'HQ user'
 
     if (action === 'recon') {
-      const month = isMonth(body.month) ? body.month : null
-      return send(res, 200, await loadRecon(busy, month))
+      const { from, to } = range(body)
+      return send(res, 200, await loadRecon(busy, from, to))
     }
     if (action === 'mark') {
       const { month, bucket, row_key } = body
@@ -125,27 +140,27 @@ export default async function handler(req, res) {
       return send(res, 200, { ok: true })
     }
     if (action === 'remind-party') {
-      const month = isMonth(body.month) ? body.month : null
+      const { from, to } = range(body)
       const gstin = String(body.gstin || '').trim()
       const keys = Array.isArray(body.row_keys) ? body.row_keys.map(String).slice(0, 50) : []
-      if (!month || !gstin || !keys.length) return send(res, 400, { error: 'Pick the invoices to remind about.' })
-      return send(res, 200, await remindParty(busy, { month, gstin, keys, who }))
+      if (!from || !gstin || !keys.length) return send(res, 400, { error: 'Pick the invoices to remind about.' })
+      return send(res, 200, await remindParty(busy, { from, to, gstin, keys, who }))
     }
     if (action === 'people') {
       const rows = check(await hq.from('profiles').select('id, name, email, role, is_admin, active, whatsapp').order('name'), 'people')
       return send(res, 200, { people: rows.filter(p => p.active !== false).map(p => ({ id: p.id, name: p.name || p.email, admin: p.is_admin === true || p.role === 'admin', hasNumber: !!toWaNumber(p.whatsapp) })) })
     }
     if (action === 'send-staff') {
-      const month = isMonth(body.month) ? body.month : null
+      const { from, to } = range(body)
       const kinds = Array.isArray(body.kinds) ? body.kinds.filter(k => BUCKETS.includes(k)) : []
       const ids = Array.isArray(body.user_ids) ? body.user_ids.map(String).slice(0, 30) : []
-      if (!month || !kinds.length || !ids.length) return send(res, 400, { error: 'Pick a month, at least one red flag and at least one person.' })
-      return send(res, 200, await sendStaff(busy, hq, { month, kinds, ids, who }))
+      if (!from || !kinds.length || !ids.length) return send(res, 400, { error: 'Pick a period, at least one red flag and at least one person.' })
+      return send(res, 200, await sendStaff(busy, hq, { from, to, kinds, ids, who }))
     }
     if (action === 'wa-status') return send(res, 200, { configured: waConfigured(), supplierTemplate: TPL_SUPPLIER, staffTemplate: TPL_STAFF, lang: TPL_LANG })
     if (action === 'log') {
-      const month = isMonth(body.month) ? body.month : null
-      const rows = check(await busy.from('gst_log').select('*').eq('month', month).order('sent_at', { ascending: false }).limit(200), 'log')
+      const { from, to } = range(body)
+      const rows = check(await busy.from('gst_log').select('*').or(`month.eq.${periodKey(from, to)},and(month.gte.${from},month.lte.${to})`).order('sent_at', { ascending: false }).limit(200), 'log')
       return send(res, 200, { rows })
     }
     return send(res, 400, { error: 'Unknown action.' })
@@ -166,7 +181,7 @@ async function all(busy, table, select) {
   return out
 }
 
-async function loadRecon(busy, month) {
+async function loadRecon(busy, from, to) {
   const [rows2a, rowsPur, parties, settings] = await Promise.all([
     all(busy, 'gst_2a_rows', 'row_key, db_name, gstin, trade_name, tran_type, vch_no, vch_date, inv_month, filed_period, supplier_filed_on, taxable, cgst, sgst, igst, cess, total, pulled_at'),
     all(busy, 'gst_purchase_rows', 'vch_key, db_name, vch_code, vch_no, vch_date, inv_month, party_code, party_name, gstin, series, taxable, cgst, sgst, igst, cess, total, entered_by, entered_at'),
@@ -174,11 +189,12 @@ async function loadRecon(busy, month) {
     busy.from('gst_settings').select('*').eq('id', 1).maybeSingle().then(r => check(r, 'settings')),
   ])
   const months = [...new Set([...rows2a, ...rowsPur].map(r => r.inv_month).filter(Boolean))].sort().reverse()
-  if (!month) month = months[0] || null
-  const marks = month ? check(await busy.from('gst_marks').select('*').eq('month', month), 'marks') : []
-  const result = month ? reconcile(rows2a, rowsPur, parties, marks, month) : emptyResult()
+  if (!from) { from = months[0] || null; to = from }
+  if (!to) to = from
+  const marks = from ? check(await busy.from('gst_marks').select('*').gte('month', from).lte('month', to), 'marks') : []
+  const result = from ? reconcile(rows2a, rowsPur, parties, marks, from, to) : emptyResult()
   return {
-    month, months,
+    from, to, period: from ? periodName(from, to) : null, months,
     lastSyncAt: settings?.last_sync_at || null,
     pulledAt: settings?.pulled_at || null,
     ...result,
@@ -215,10 +231,11 @@ const sameNumber = (a, b) => {
   return false
 }
 
-export function reconcile(rows2a, rowsPur, parties, marks, month) {
+export function reconcile(rows2a, rowsPur, parties, marks, from, to = from) {
+  const inRange = m => !!m && m >= from && m <= to
   const portal = rows2a.filter(r => r.gstin && r.vch_no)
   const invoices = portal.filter(r => r.tran_type === 1 || r.tran_type == null)
-  const notes2a = portal.filter(r => !(r.tran_type === 1 || r.tran_type == null) && r.inv_month === month)
+  const notes2a = portal.filter(r => !(r.tran_type === 1 || r.tran_type == null) && inRange(r.inv_month))
   const zero = rowsPur.filter(b => r2(b.total) === 0)
   const books = rowsPur.filter(b => r2(b.total) !== 0 && b.gstin && b.vch_no)
 
@@ -267,9 +284,9 @@ export function reconcile(rows2a, rowsPur, parties, marks, month) {
   const partyOf = b => b.party_name || null
   for (const { p, b, how } of pairs) {
     const m = p.inv_month || b.inv_month
-    if (m !== month) continue
+    if (!inRange(m)) continue
     const base = {
-      gstin: p.gstin, party: partyOf(b) || p.trade_name, party_code: b.party_code,
+      month: m, gstin: p.gstin, party: partyOf(b) || p.trade_name, party_code: b.party_code,
       p_no: p.vch_no, p_date: p.vch_date, b_no: b.vch_no, b_date: b.vch_date,
       p_taxable: r2(p.taxable), p_tax: tax(p), p_total: r2(p.total),
       b_taxable: r2(b.taxable), b_tax: tax(b), b_total: r2(b.total),
@@ -281,30 +298,30 @@ export function reconcile(rows2a, rowsPur, parties, marks, month) {
     else matchedOk++
   }
   for (const p of invoices) {
-    if (!unP.has(p.row_key) || p.inv_month !== month) continue
+    if (!unP.has(p.row_key) || !inRange(p.inv_month)) continue
     rows.push({
-      bucket: 'missing_busy', row_key: p.row_key, gstin: p.gstin, party: p.trade_name || p.gstin, party_code: null,
+      month: p.inv_month, bucket: 'missing_busy', row_key: p.row_key, gstin: p.gstin, party: p.trade_name || p.gstin, party_code: null,
       p_no: p.vch_no, p_date: p.vch_date, p_taxable: r2(p.taxable), p_tax: tax(p), p_total: r2(p.total),
       filed_period: p.filed_period, supplier_filed_on: p.supplier_filed_on, note: '',
     })
   }
   for (const b of books) {
-    if (!unB.has(b.vch_key) || b.inv_month !== month) continue
+    if (!unB.has(b.vch_key) || !inRange(b.inv_month)) continue
     rows.push({
-      bucket: 'not_in_2a', row_key: b.vch_key, gstin: b.gstin, party: partyOf(b), party_code: b.party_code,
+      month: b.inv_month, bucket: 'not_in_2a', row_key: b.vch_key, gstin: b.gstin, party: partyOf(b), party_code: b.party_code,
       b_no: b.vch_no, b_date: b.vch_date, b_taxable: r2(b.taxable), b_tax: tax(b), b_total: r2(b.total),
       entered_by: b.entered_by, note: '',
     })
   }
   for (const b of zero) {
-    if (b.inv_month !== month) continue
+    if (!inRange(b.inv_month)) continue
     rows.push({
-      bucket: 'zero', row_key: b.vch_key, gstin: b.gstin, party: partyOf(b), party_code: b.party_code,
+      month: b.inv_month, bucket: 'zero', row_key: b.vch_key, gstin: b.gstin, party: partyOf(b), party_code: b.party_code,
       b_no: b.vch_no, b_date: b.vch_date, b_taxable: 0, b_tax: 0, b_total: 0, entered_by: b.entered_by,
       note: b.series ? `Series ${b.series}` : '',
     })
   }
-  rows.push(...sequenceFlags(books, month))
+  rows.push(...sequenceFlags(books, inRange))
 
   // Busy party names for 2A-only rows, when the GSTIN is known in the party master.
   const nameByGstin = new Map()
@@ -317,9 +334,9 @@ export function reconcile(rows2a, rowsPur, parties, marks, month) {
   }
 
   // Marks
-  const markMap = new Map(marks.map(m => [`${m.bucket}|${m.row_key}`, m]))
+  const markMap = new Map(marks.map(m => [`${m.month}|${m.bucket}|${m.row_key}`, m]))
   for (const r of rows) {
-    const m = markMap.get(`${r.bucket}|${r.row_key}`)
+    const m = markMap.get(`${r.month}|${r.bucket}|${r.row_key}`)
     if (m) r.mark = { state: m.state, note: m.note, by: m.by_name, at: m.marked_at }
   }
 
@@ -358,15 +375,15 @@ function seriesOf(s) {
   const i = base.lastIndexOf(digits)
   return (i > 0 ? base.slice(0, i) : '').replace(/[^A-Z]/g, '')
 }
-function sequenceFlags(books, month) {
+function sequenceFlags(books, inRange) {
   const out = []
   for (const [key, list] of groupBy(books, b => `${b.gstin}|${seriesOf(b.vch_no)}`)) {
     const gstin = key.split('|')[0]
     const rows = list.map(b => ({ b, n: runningNo(b.vch_no), k: alnum(b.vch_no) })).filter(x => x.n != null)
     if (rows.length < 2) continue
     const flag = (x, kind, note) => {
-      if (x.b.inv_month !== month) return
-      out.push({ bucket: 'sequence', row_key: `${x.b.vch_key}|${kind}`, gstin, party: x.b.party_name, party_code: x.b.party_code,
+      if (!inRange(x.b.inv_month)) return
+      out.push({ month: x.b.inv_month, bucket: 'sequence', row_key: `${x.b.vch_key}|${kind}`, gstin, party: x.b.party_name, party_code: x.b.party_code,
         b_no: x.b.vch_no, b_date: x.b.vch_date, b_taxable: r2(x.b.taxable), b_tax: tax(x.b), b_total: r2(x.b.total), entered_by: x.b.entered_by, kind, note })
     }
     // same number twice
@@ -433,7 +450,8 @@ async function sendWhatsApp(mobile, templateName, params, opts = {}) {
   }
 }
 
-async function remindParty(busy, { month, gstin, keys, who }) {
+async function remindParty(busy, { from, to, gstin, keys, who }) {
+  const month = periodKey(from, to)
   const [rows, parties] = await Promise.all([
     all(busy, 'gst_purchase_rows', 'vch_key, vch_no, vch_date, party_code, party_name, gstin, taxable, cgst, sgst, igst, total'),
     busy.from('gst_parties').select('*').eq('gstin', gstin).then(r => check(r, 'parties')),
@@ -444,32 +462,33 @@ async function remindParty(busy, { month, gstin, keys, who }) {
   const number = contact?.whatsapp || contact?.mobile
   const name = bills[0].party_name || contact?.party_name || 'Sir/Madam'
   const list = fitList(bills.map(b => `${b.vch_no} dt ${niceDate(b.vch_date)} (${rupees(b.total)})`))
-  const r = await sendWhatsApp(number, TPL_SUPPLIER, [name, monthName(month), list, JCM_GSTIN], { headerImageUrl: `${HQ_URL}/api/gst?banner=${month}` })
+  const r = await sendWhatsApp(number, TPL_SUPPLIER, [name, periodName(from, to), list, JCM_GSTIN], { headerImageUrl: `${HQ_URL}/api/gst?banner=${from}${to !== from ? `&to=${to}` : ''}` })
   check(await busy.from('gst_log').insert({ month, kind: 'party_reminder', channel: 'whatsapp', gstin, recipient: number ? String(number) : null, status: r.status, detail: `${bills.length} bill(s): ${bills.map(b => b.vch_no).join(', ')}${r.detail ? ` — ${r.detail}` : ''}`.slice(0, 500), by_name: who }), 'log')
   return { status: r.status, detail: r.detail, number: number || null, name, count: bills.length }
 }
 
 // ---------- staff: PDF summary of the chosen red flags ----------
-async function sendStaff(busy, hq, { month, kinds, ids, who }) {
-  const data = await loadRecon(busy, month)
+async function sendStaff(busy, hq, { from, to, kinds, ids, who }) {
+  const month = periodKey(from, to)
+  const data = await loadRecon(busy, from, to)
   const rows = data.rows.filter(r => kinds.includes(r.bucket) && !r.mark)
   const people = check(await hq.from('profiles').select('id, name, email, whatsapp, active').in('id', ids), 'people')
     .filter(p => p.active !== false)
   if (!people.length) return { error: 'None of those people were found.' }
 
   const deadline = new Date(Date.now() + DEADLINE_DAYS * 86400000)
-  const pdf = await buildMismatchPdf({ month, kinds, rows, counts: data.counts, totals: data.totals, sender: who, deadline, contacts: data.contacts })
+  const pdf = await buildMismatchPdf({ period: periodName(from, to), kinds, rows, counts: data.counts, totals: data.totals, sender: who, deadline, contacts: data.contacts })
   const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)
   const path = `${month}/GSTR2A-mismatch-${month}-${stamp}.pdf`
   const up = await busy.storage.from(STORAGE_BUCKET).upload(path, pdf, { contentType: 'application/pdf', upsert: true })
   if (up.error) return { error: `Could not save the PDF: ${up.error.message}. Is the ${STORAGE_BUCKET} bucket created (supabase/gst-setup.sql)?` }
   const { data: pub } = busy.storage.from(STORAGE_BUCKET).getPublicUrl(path)
   const url = pub?.publicUrl
-  const filename = `GSTR2A-mismatch-${monthName(month).replace(/\s+/g, '-')}.pdf`
+  const filename = `GSTR2A-mismatch-${periodName(from, to).replace(/[^\w]+/g, '-')}.pdf`
 
   const results = []
   for (const p of people) {
-    const r = await sendWhatsApp(p.whatsapp, TPL_STAFF, [who, monthName(month), niceDate(deadline.toISOString())], { headerDocumentUrl: url, headerDocumentName: filename })
+    const r = await sendWhatsApp(p.whatsapp, TPL_STAFF, [who, periodName(from, to), niceDate(deadline.toISOString())], { headerDocumentUrl: url, headerDocumentName: filename })
     results.push({ name: p.name || p.email, status: r.status, detail: r.detail })
     check(await busy.from('gst_log').insert({ month, kind: 'staff_summary', channel: 'whatsapp', recipient: p.whatsapp ? String(p.whatsapp) : null, status: r.status,
       detail: `${p.name || p.email}: ${kinds.map(k => BUCKET_LABEL[k]).join(', ')} (${rows.length} items)${r.detail ? ` — ${r.detail}` : ''}`.slice(0, 500), by_name: who }), 'log')

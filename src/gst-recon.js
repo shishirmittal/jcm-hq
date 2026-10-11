@@ -1,5 +1,5 @@
 // GSTR-2A Reconciliation — Busy purchases vs the 2A data Busy downloaded through its GSP,
-// party-wise, one month at a time, showing ONLY the red flags:
+// party-wise, for a From–To month range (always collated party-wise), showing ONLY the red flags:
 //   Missing in Busy · Not in 2A · Amount mismatch · Doc no. mismatch · Odd numbering · ₹0 value
 // Data: gst_2a_rows / gst_purchase_rows / gst_parties (JCM-Busysql project), filled every
 // 30 minutes by busy-sync/sync-gst.js on JCM-Server; the matching is done by /api/gst.
@@ -74,7 +74,8 @@ export async function renderGstRecon(container) {
     return
   }
 
-  const state = { month: null, months: [], data: null, tab: 'missing_busy', showMarked: false, loading: false, log: null, seq: 0 }
+  const state = { from: null, to: null, months: [], data: null, tab: 'missing_busy', showMarked: false, loading: false, log: null, seq: 0 }
+  try { const r = JSON.parse(localStorage.getItem('gst-range') || 'null'); if (r?.from) { state.from = r.from; state.to = r.to || r.from } } catch { /* fine */ }
 
   container.innerHTML = `
     <div class="app-layout gst-page">
@@ -91,7 +92,8 @@ export async function renderGstRecon(container) {
       </header>
       <main class="app-main">
         <div class="gst-toolbar">
-          <label class="gst-month"><span>Month</span><select id="gstMonth" class="gst-select"></select></label>
+          <label class="gst-month"><span>From</span><input type="month" id="gstFrom" class="gst-select" min="2026-04" /></label>
+          <label class="gst-month"><span>To</span><input type="month" id="gstTo" class="gst-select" min="2026-04" /></label>
           <span class="gst-sync" id="gstSync"></span>
           <label class="gst-check"><input type="checkbox" id="gstShowMarked" /> Show done / ignored</label>
         </div>
@@ -99,7 +101,7 @@ export async function renderGstRecon(container) {
         <div class="gst-tiles" id="gstTiles"></div>
         <p class="gst-hint" id="gstHint"></p>
         <div id="gstList"><div class="loading-state">Loading…</div></div>
-        <div class="gst-logbar"><button class="gst-link" id="gstLogBtn">What was sent for this month</button></div>
+        <div class="gst-logbar"><button class="gst-link" id="gstLogBtn">What was sent for this period</button></div>
         <div id="gstLog" hidden></div>
       </main>
 
@@ -116,7 +118,16 @@ export async function renderGstRecon(container) {
   const $ = id => document.getElementById(id)
   $('gstHamburgerBtn').addEventListener('click', () => openSidebar())
   $('gstRefreshBtn').addEventListener('click', () => load())
-  $('gstMonth').addEventListener('change', e => { state.month = e.target.value; load() })
+  const onRange = () => {
+    const f = $('gstFrom').value, t = $('gstTo').value
+    if (!f || !t) return
+    state.from = f; state.to = t < f ? f : t
+    $('gstTo').value = state.to
+    try { localStorage.setItem('gst-range', JSON.stringify({ from: state.from, to: state.to })) } catch { /* fine */ }
+    load()
+  }
+  $('gstFrom').addEventListener('change', onRange)
+  $('gstTo').addEventListener('change', onRange)
   $('gstShowMarked').addEventListener('change', e => { state.showMarked = e.target.checked; paintList() })
   $('gstExcelBtn').addEventListener('click', () => downloadExcel())
   $('gstStaffBtn').addEventListener('click', () => openStaff())
@@ -130,10 +141,10 @@ export async function renderGstRecon(container) {
     state.loading = true
     $('gstList').innerHTML = '<div class="loading-state">Matching Busy against the 2A data…</div>'
     try {
-      const data = await call({ action: 'recon', month: state.month })
+      const data = await call({ action: 'recon', from: state.from, to: state.to })
       if (seq !== state.seq) return
       state.data = data
-      state.month = data.month
+      state.from = data.from; state.to = data.to
       state.months = data.months
       paintToolbar()
       paintTiles()
@@ -147,23 +158,22 @@ export async function renderGstRecon(container) {
 
   function paintToolbar() {
     const d = state.data
-    const sel = $('gstMonth')
-    sel.innerHTML = d.months.length
-      ? d.months.map(m => `<option value="${m}"${m === d.month ? ' selected' : ''}>${esc(monthName(m))}</option>`).join('')
-      : '<option value="">No data yet</option>'
+    $('gstFrom').value = d.from || ''
+    $('gstTo').value = d.to || ''
+    if (d.months.length) { $('gstFrom').max = d.months[0]; $('gstTo').max = d.months[0] }
     $('gstSync').innerHTML = d.lastSyncAt
       ? `${icon('history', 12)} Busy data synced ${esc(ago(d.lastSyncAt))} · 2A last downloaded in Busy ${d.pulledAt ? esc(fmtWhen(d.pulledAt)) : '<b>never</b>'}`
       : 'Nothing synced yet — run sync-gst.js on JCM-Server'
     // Warn when the newest 2A download in Busy is older than the end of the chosen month.
     const warn = $('gstWarn')
-    if (d.month && d.pulledAt) {
-      const [y, mo] = d.month.split('-').map(Number)
-      const monthEnd = new Date(Date.UTC(y, mo, 1) - 5.5 * 3600e3) // first instant of the next month, IST
+    if (d.to && d.pulledAt) {
+      const [y, mo] = d.to.split('-').map(Number)
+      const monthEnd = new Date(Date.UTC(y, mo, 1) - 5.5 * 3600e3) // first instant of the month after "To", IST
       if (new Date(d.pulledAt) < monthEnd) {
         warn.hidden = false
-        warn.textContent = `The 2A data in Busy was last downloaded on ${fmtWhen(d.pulledAt)}, before ${monthName(d.month)} ended. Download it again in Busy (GST → Miscellaneous Utilities → Download GSTR JSON Data), wait for the next sync, then refresh.`
+        warn.textContent = `The 2A data in Busy was last downloaded on ${fmtWhen(d.pulledAt)}, before ${monthName(d.to)} ended. Download it again in Busy (GST → Miscellaneous Utilities → Download GSTR JSON Data), wait for the next sync, then refresh.`
       } else warn.hidden = true
-    } else if (d.month && !d.pulledAt) {
+    } else if (d.from && !d.pulledAt) {
       warn.hidden = false
       warn.textContent = 'No 2A data has been downloaded into Busy yet (GST → Miscellaneous Utilities → Download GSTR JSON Data).'
     } else warn.hidden = true
@@ -198,7 +208,7 @@ export async function renderGstRecon(container) {
     $('gstHint').textContent = b.hint
     const rows = rowsFor(state.tab)
     if (!rows.length) {
-      $('gstList').innerHTML = `<div class="empty-state">Nothing in "${esc(b.label)}" for ${esc(monthName(d.month))}.${state.showMarked ? '' : ' (Done / ignored rows are hidden.)'}</div>`
+      $('gstList').innerHTML = `<div class="empty-state">Nothing in "${esc(b.label)}" for ${esc(d.period)}.${state.showMarked ? '' : ' (Done / ignored rows are hidden.)'}</div>`
       return
     }
     const groups = groupByParty(rows)
@@ -275,7 +285,7 @@ export async function renderGstRecon(container) {
     }
     el.disabled = true
     try {
-      await call({ action: 'mark', month: state.month, bucket: state.tab, row_key: key, state: st, note })
+      await call({ action: 'mark', month: row.month, bucket: state.tab, row_key: key, state: st, note })
       if (st) row.mark = { state: st, note, by: 'you', at: new Date().toISOString() }
       else delete row.mark
       recount(); paintTiles(); paintList()
@@ -312,7 +322,7 @@ export async function renderGstRecon(container) {
     const preview = () => {
       const picked = rows.filter(r => $('gstDrawerBody').querySelector(`input[data-key="${CSS.escape(r.row_key)}"]`)?.checked)
       const list = picked.map(r => `${r.b_no} dt ${fmtDate(r.b_date)} (${money(r.b_total)})`).join('; ')
-      $('gstPreview').textContent = `Namaste ${name},\n\nThis is J.C. Mittal & Sons, Ratlam (GSTIN 23AAPFJ0607D1ZT). Our GSTR-2A for ${monthName(state.month)} does not show the following invoice(s) of yours: ${list || '—'}.\n\nPlease check your GSTR-1 and file or amend it so that we can claim the input tax credit. Thank you.`
+      $('gstPreview').textContent = `Namaste ${name},\n\nThis is J.C. Mittal & Sons, Ratlam (GSTIN 23AAPFJ0607D1ZT). Our GSTR-2A for ${state.data.period} does not show the following invoice(s) of yours: ${list || '—'}.\n\nPlease check your GSTR-1 and file or amend it so that we can claim the input tax credit. Thank you.`
     }
     preview()
     $('gstDrawerBody').querySelectorAll('input[data-key]').forEach(i => i.addEventListener('change', preview))
@@ -322,7 +332,7 @@ export async function renderGstRecon(container) {
       if (!keys.length) return flash('Tick at least one bill.')
       btn.disabled = true
       try {
-        const r = await call({ action: 'remind-party', month: state.month, gstin, row_keys: keys })
+        const r = await call({ action: 'remind-party', from: state.from, to: state.to, gstin, row_keys: keys })
         flash(r.status === 'sent' ? `Sent to ${r.name} (${r.number}) for ${r.count} bill(s).` : `Not sent: ${STATUS_WORD[r.status] || r.status}${r.detail ? ' — ' + r.detail : ''}`)
         if (r.status === 'sent') closeDrawer()
         if (!$('gstLog').hidden) loadLog()
@@ -334,8 +344,8 @@ export async function renderGstRecon(container) {
   // ---- staff: PDF summary of chosen red flags → WhatsApp template with the PDF attached
   async function openStaff() {
     const d = state.data
-    if (!d?.month) return
-    $('gstDrawerTitle').textContent = `Send to staff — ${monthName(d.month)}`
+    if (!d?.from) return
+    $('gstDrawerTitle').textContent = `Send to staff — ${d.period}`
     $('gstDrawerBody').innerHTML = '<div class="loading-state">Loading people…</div>'
     $('gstDrawer').hidden = false; $('gstDrawerBackdrop').hidden = false
     let people = []
@@ -345,7 +355,7 @@ export async function renderGstRecon(container) {
     const ids = new Set(remembered.ids || [])
     const deadline = new Date(Date.now() + 2 * 86400000)
     $('gstDrawerBody').innerHTML = `
-      <p class="gst-hint">One PDF with the ticked red flags for <b>${esc(monthName(d.month))}</b> (party-wise, only items not marked Done / Ignored) goes to each ticked person on WhatsApp, with a note that <b>you</b> sent it and that everything is to be cleared by <b>${esc(fmtDate(deadline.toISOString()))}</b>.</p>
+      <p class="gst-hint">One PDF with the ticked red flags for <b>${esc(d.period)}</b> (party-wise, only items not marked Done / Ignored) goes to each ticked person on WhatsApp, with a note that <b>you</b> sent it and that everything is to be cleared by <b>${esc(fmtDate(deadline.toISOString()))}</b>.</p>
       <p class="gst-drawer-sub">Red flags to include</p>
       <div class="gst-pick">${BUCKETS.map(b => `<label><input type="checkbox" data-kind="${b.id}" ${kinds.includes(b.id) ? 'checked' : ''} /> ${esc(b.label)} <small>· ${d.counts[b.id] || 0} item${(d.counts[b.id] || 0) === 1 ? '' : 's'}</small></label>`).join('')}</div>
       <p class="gst-drawer-sub">Send to</p>
@@ -360,11 +370,11 @@ export async function renderGstRecon(container) {
       if (!pickedKinds.length) return flash('Tick at least one red flag.')
       if (!pickedIds.length) return flash('Tick at least one person.')
       const items = pickedKinds.reduce((s, k) => s + (d.counts[k] || 0), 0)
-      if (!window.confirm(`Send the ${monthName(d.month)} summary (${items} item${items === 1 ? '' : 's'}) to ${pickedIds.length} ${pickedIds.length === 1 ? 'person' : 'people'} on WhatsApp?`)) return
+      if (!window.confirm(`Send the ${d.period} summary (${items} item${items === 1 ? '' : 's'}) to ${pickedIds.length} ${pickedIds.length === 1 ? 'person' : 'people'} on WhatsApp?`)) return
       try { localStorage.setItem('gst-staff-picks', JSON.stringify({ kinds: pickedKinds, ids: pickedIds })) } catch { /* fine */ }
       btn.disabled = true
       try {
-        const r = await call({ action: 'send-staff', month: d.month, kinds: pickedKinds, user_ids: pickedIds })
+        const r = await call({ action: 'send-staff', from: d.from, to: d.to, kinds: pickedKinds, user_ids: pickedIds })
         if (r.error) { flash(r.error); return }
         const ok = r.results.filter(x => x.status === 'sent').length
         flash(ok === r.results.length ? `Sent to ${ok} ${ok === 1 ? 'person' : 'people'}.` : r.results.map(x => `${x.name}: ${STATUS_WORD[x.status] || x.status}${x.status === 'failed' && x.detail ? ' (' + x.detail + ')' : ''}`).join(' · '))
@@ -384,22 +394,22 @@ export async function renderGstRecon(container) {
     const box = $('gstLog')
     box.innerHTML = '<div class="loading-state">Loading…</div>'
     try {
-      const { rows } = await call({ action: 'log', month: state.month })
+      const { rows } = await call({ action: 'log', from: state.from, to: state.to })
       box.innerHTML = rows.length
         ? `<table class="gst-table gst-logtable"><thead><tr><th>When</th><th>What</th><th>To</th><th>Result</th><th>By</th></tr></thead><tbody>${rows.map(r => `<tr><td>${esc(fmtWhen(r.sent_at))}</td><td>${esc(r.kind === 'party_reminder' ? `Supplier reminder (${r.gstin || ''})` : r.kind === 'staff_summary' ? 'PDF summary to staff' : `Admin list by ${r.channel}`)}<br><small>${esc(r.detail || '')}</small></td><td>${esc(r.recipient || '—')}</td><td><span class="gst-flag gst-flag-${r.status === 'sent' ? 'ok' : 'bad'}">${esc(STATUS_WORD[r.status] || r.status)}</span></td><td>${esc(r.by_name || '')}</td></tr>`).join('')}</tbody></table>`
-        : '<div class="empty-state">Nothing sent for this month yet.</div>'
+        : '<div class="empty-state">Nothing sent for this period yet.</div>'
     } catch (err) { box.innerHTML = `<div class="empty-state">${esc(err.message)}</div>` }
   }
 
   // ---- Excel: one sheet per red-flag type, only mismatches
   function downloadExcel() {
     const d = state.data
-    if (!d || !d.month) return
+    if (!d || !d.from) return
     const wb = XLSX.utils.book_new()
     const summary = BUCKETS.map(b => ({ 'Red flag': b.label, Count: d.counts[b.id] || 0, Amount: d.totals[b.id] || 0, What: b.hint }))
     summary.push({ 'Red flag': 'Matched OK', Count: d.matchedOk, Amount: '', What: 'Invoices found on both sides with matching amounts' })
     const ws0 = XLSX.utils.json_to_sheet(summary)
-    XLSX.utils.sheet_add_aoa(ws0, [[`GSTR-2A reconciliation — ${monthName(d.month)}`], [`Busy data synced ${fmtWhen(d.lastSyncAt)} · 2A downloaded in Busy ${d.pulledAt ? fmtWhen(d.pulledAt) : 'never'}`], []], { origin: 'A1' })
+    XLSX.utils.sheet_add_aoa(ws0, [[`GSTR-2A reconciliation — ${d.period}`], [`Busy data synced ${fmtWhen(d.lastSyncAt)} · 2A downloaded in Busy ${d.pulledAt ? fmtWhen(d.pulledAt) : 'never'}`], []], { origin: 'A1' })
     XLSX.utils.sheet_add_json(ws0, summary, { origin: 'A4' })
     ws0['!cols'] = [{ wch: 18 }, { wch: 8 }, { wch: 14 }, { wch: 90 }]
     XLSX.utils.book_append_sheet(wb, ws0, 'Summary')
@@ -409,10 +419,10 @@ export async function renderGstRecon(container) {
       ws['!cols'] = Object.keys(rows[0] || { Party: 1 }).map(k => ({ wch: /GSTIN/.test(k) ? 17 : /Party|Issue|Note/.test(k) ? 36 : 14 }))
       XLSX.utils.book_append_sheet(wb, ws, b.short.replace(/[^\w ₹.]/g, '').slice(0, 30))
     }
-    XLSX.writeFile(wb, `GSTR2A_Recon_${d.month}.xlsx`)
+    XLSX.writeFile(wb, `GSTR2A_Recon_${d.from}${d.to !== d.from ? '_to_' + d.to : ''}.xlsx`)
   }
   function sheetRow(tab, r) {
-    const base = { Party: r.party || '', GSTIN: r.gstin || '' }
+    const base = { Party: r.party || '', GSTIN: r.gstin || '', Month: r.month ? monthName(r.month) : '' }
     const mark = r.mark ? `${r.mark.state}${r.mark.note ? ': ' + r.mark.note : ''}` : ''
     if (tab === 'missing_busy') return { ...base, Party: r.party || (r.new_party ? '(not in Busy party master)' : r.gstin), 'Invoice (2A)': r.p_no, Date: r.p_date, Taxable: r.p_taxable, Tax: r.p_tax, Total: r.p_total, 'Filed in': r.filed_period || '', 'Supplier filed on': r.supplier_filed_on || '', Status: mark }
     if (tab === 'not_in_2a') return { ...base, 'Bill (Busy)': r.b_no, Date: r.b_date, Taxable: r.b_taxable, Tax: r.b_tax, Total: r.b_total, 'Entered by': r.entered_by || '', Status: mark }

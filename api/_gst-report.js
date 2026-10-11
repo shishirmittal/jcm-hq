@@ -25,6 +25,12 @@ const BUCKET_HINT = {
 }
 
 const monthName = m => new Date(`${m}-01T00:00:00+05:30`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' })
+function periodLabel(from, to) {
+  if (!to || to === from) return monthName(from)
+  const a = new Date(`${from}-01T00:00:00+05:30`), b = new Date(`${to}-01T00:00:00+05:30`)
+  if (from.slice(0, 4) === to.slice(0, 4)) return `${a.toLocaleDateString('en-IN', { month: 'short', timeZone: 'Asia/Kolkata' })} – ${b.toLocaleDateString('en-IN', { month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}`
+  return `${a.toLocaleDateString('en-IN', { month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })} – ${b.toLocaleDateString('en-IN', { month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}`
+}
 const inr = n => {
   const v = Math.round(Number(n || 0) * 100) / 100
   return v.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -44,7 +50,8 @@ function fonts() {
   GlobalFonts.register(Buffer.from(FONT_REG, 'base64'), 'JCMReg')
   fontsReady = true
 }
-export async function bannerPng(month) {
+export async function bannerPng(month, to = null) {
+  const period = periodLabel(month, to).toUpperCase()
   fonts()
   const W = 1200, H = 628
   const canvas = createCanvas(W, H)
@@ -65,16 +72,16 @@ export async function bannerPng(month) {
   const fit = (text, size, maxW) => { do { ctx.font = `${size}px JCMBold`; size -= 2 } while (ctx.measureText(text).width > maxW && size > 20) }
   const X = 500, MAXW = W - X - 50
   fit('GST MISMATCH', 86, MAXW); ctx.fillText('GST MISMATCH', X, 262)
-  fit(monthName(month).toUpperCase(), 66, MAXW); ctx.fillText(monthName(month).toUpperCase(), X, 350)
+  fit(period, 66, MAXW); ctx.fillText(period, X, 350)
   fit('J.C. MITTAL AND SONS, RATLAM', 32, MAXW); ctx.fillText('J.C. MITTAL AND SONS, RATLAM', X, 420)
   return canvas.toBuffer('image/png')
 }
 
 // ---------- staff summary PDF ----------
 // rows: the reconcile() rows (unmarked) for the chosen kinds; counts/totals: per kind.
-export function buildMismatchPdf({ month, kinds, rows, counts, totals, sender, deadline, contacts = {} }) {
+export function buildMismatchPdf({ period, kinds, rows, counts, totals, sender, deadline, contacts = {} }) {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'A4', margin: 36, bufferPages: true, info: { Title: `GSTR-2A mismatch ${month}`, Author: 'JCM HQ' } })
+    const doc = new PDFDocument({ size: 'A4', margin: 36, bufferPages: true, info: { Title: `GSTR-2A mismatch ${period}`, Author: 'JCM HQ' } })
     const chunks = []
     doc.on('data', c => chunks.push(c)); doc.on('end', () => resolve(Buffer.concat(chunks))); doc.on('error', reject)
     doc.registerFont('R', Buffer.from(FONT_REG, 'base64'))
@@ -88,7 +95,7 @@ export function buildMismatchPdf({ month, kinds, rows, counts, totals, sender, d
     doc.fillColor('#ffffff').font('B').fontSize(17).text('J.C. MITTAL AND SONS', L + 70, 24)
     doc.fillColor(GOLD).font('R').fontSize(10).text('JCM Retails  ·  87-88 Freeganj Road, Ratlam, Madhya Pradesh', L + 70, 48)
     doc.fillColor('#ffffff').font('B').fontSize(12).text('GSTR-2A MISMATCH SUMMARY', R - 230, 30, { width: 230, align: 'right' })
-    doc.fillColor(GOLD).font('B').fontSize(14).text(monthName(month).toUpperCase(), R - 230, 50, { width: 230, align: 'right' })
+    doc.fillColor(GOLD).font('B').fontSize(13).text(period.toUpperCase(), R - 260, 50, { width: 260, align: 'right' })
 
     // ---- cover block
     let y = 112
@@ -186,7 +193,7 @@ export function buildMismatchPdf({ month, kinds, rows, counts, totals, sender, d
     for (let i = 0; i < pages.count; i++) {
       doc.switchToPage(i)
       doc.fillColor(GREY).font('R').fontSize(8)
-        .text(`JCM HQ · GSTR-2A mismatch summary · ${monthName(month)} · page ${i + 1} of ${pages.count}`, L, doc.page.height - 30, { width: FULL, align: 'center', lineBreak: false })
+        .text(`JCM HQ · GSTR-2A mismatch summary · ${period} · page ${i + 1} of ${pages.count}`, L, doc.page.height - 30, { width: FULL, align: 'center', lineBreak: false })
     }
     doc.end()
   })
