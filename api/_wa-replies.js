@@ -72,6 +72,32 @@ export async function ledgerNameByCode(busy, code) {
 
 export { busyClient }
 
+const PORTAL = 'https://invoice.jcmretails.com'
+const pick = (cols, names) => names.find(n => cols.includes(n)) || null
+const rupees = n => '₹' + new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(Math.round(Number(n) || 0))
+const niceDate = v => {
+  const d = new Date(v)
+  return Number.isNaN(+d) ? String(v || '').slice(0, 10) : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
+}
+
+// The customer's latest bills (invoices table, by Busy code) as a WhatsApp message.
+export async function lastInvoicesText(busy, code, name) {
+  const probe = await busy.from('invoices').select('*').limit(1)
+  const cols = Object.keys(probe.data?.[0] || {})
+  const dateCol = pick(cols, ['vch_date', 'invoice_date', 'date']) || 'vch_date'
+  const noCol = pick(cols, ['vch_no', 'voucher_no', 'invoice_no', 'bill_no', 'vch_number'])
+  const amtCol = pick(cols, ['total_amount', 'amount', 'net_amount', 'invoice_value'])
+  const r = await busy.from('invoices').select('*').eq('party_code', Number(code)).order(dateCol, { ascending: false }).limit(3)
+  if (r.error) throw new Error(r.error.message)
+  const rows = r.data || []
+  const link = `${PORTAL}`
+  if (!rows.length) {
+    return `*${name}*\nWe could not find recent bills on your account here. Our team will share them with you shortly.\n\nInvoice portal: ${link}`
+  }
+  const lines = rows.map((x, i) => `${i + 1}. ${niceDate(x[dateCol])}  •  ${noCol ? x[noCol] : x.vch_code}${amtCol ? `  •  *${rupees(x[amtCol])}*` : ''}`)
+  return `*Your last ${rows.length === 1 ? 'invoice' : rows.length + ' invoices'}*\n${name}\n\n${lines.join('\n')}\n\nView and download all your invoices:\n${link}\n\n*आपके पिछले बिल ऊपर दिए गए हैं। सभी बिल देखने और डाउनलोड करने के लिए ऊपर का लिंक खोलें।*`
+}
+
 const WHICH = [
   [/qr/i, 'qr'],
   [/ledger/i, 'ledger'],
@@ -119,6 +145,8 @@ export async function handleIncoming(value) {
             caption: '*Your ledger statement is attached.*\n*आपका लेजर विवरण संलग्न है।*',
           })
         }
+      } else if (parsed.kind === 'invoices') {
+        await sendText(from, await lastInvoicesText(busy, parsed.code, name))
       } else {
         await sendText(from, 'Thank you. Our team will send this to you here shortly.')
       }
