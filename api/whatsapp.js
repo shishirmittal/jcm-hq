@@ -137,10 +137,10 @@ export default async function handler(req, res) {
     const k = auth.startsWith('Bearer ') ? auth.slice(7) : ''
     // The key JCM-Server holds may be written differently from Vercel's copy, so prove it by
     // reading a closed table with it (RLS on, no policies) — same trick as api/collections.js.
-    let busyKeyOk = false
-    if (k && !k.includes('.ey')) {
+    let busyKeyOk = !!k && k === process.env.SUPABASE_BUSY_SERVICE_ROLE_KEY
+    if (k && !busyKeyOk) {
       try { const c = createClient('https://jlkjjqnmhsgefpluemyz.supabase.co', k, { auth: { autoRefreshToken: false, persistSession: false } }); const r = await c.from('wa_settings').select('key').limit(1); busyKeyOk = !r.error } catch { busyKeyOk = false }
-    } else if (k && k === process.env.SUPABASE_BUSY_SERVICE_ROLE_KEY) busyKeyOk = true
+    }
     if (busyKeyOk) {
       try { return send(res, 200, { ok: true, ...(await tick(busyClient())) }) }
       catch (err) { console.error('wa tick failed:', err); return send(res, 500, { error: String(err.message || err).slice(0, 300) }) }
