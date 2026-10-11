@@ -68,3 +68,34 @@ notify pgrst, 'reload schema';
 select 'wa_log' as made, count(*) from wa_log
 union all select 'wa_settings', count(*) from wa_settings
 union all select 'wa_outbox', count(*) from wa_outbox;
+
+-- Inbox (2026-10-12): every message in / out through the number, and delivery statuses on the log.
+create table if not exists wa_messages (
+  id            bigserial primary key,
+  number        text not null,
+  direction     text not null,
+  kind          text,
+  text          text,
+  payload       text,
+  media_id      text,
+  meta_id       text unique,
+  profile_name  text,
+  sent_by       text,
+  status        text,
+  error         text,
+  delivered_at  timestamptz,
+  read_at       timestamptz,
+  seen_at       timestamptz,
+  created_at    timestamptz not null default now()
+);
+create index if not exists wa_messages_number_idx on wa_messages (number, created_at desc);
+create index if not exists wa_messages_unseen_idx on wa_messages (direction, seen_at);
+alter table wa_log add column if not exists delivered_at timestamptz;
+alter table wa_log add column if not exists read_at timestamptz;
+create index if not exists wa_log_meta_idx on wa_log (meta_id);
+create index if not exists wa_log_to_idx on wa_log (to_number, created_at desc);
+alter table wa_messages enable row level security;
+revoke all on table wa_messages from anon, authenticated;
+grant all on table wa_messages to service_role;
+grant usage, select on sequence wa_messages_id_seq to service_role;
+notify pgrst, 'reload schema';

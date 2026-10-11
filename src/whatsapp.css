@@ -13,3 +13,48 @@
 .wa-table th, .wa-table td { text-align: left; padding: 6px 8px; border-top: 1px solid var(--line, #eee); vertical-align: top; white-space: nowrap; }
 .wa-table th { font-size: 12px; color: var(--muted, #6b7280); }
 .wa-table td:nth-child(2) { white-space: normal; min-width: 160px; }
+/* Tabs page */
+.wa-tabs { margin-bottom: 12px; }
+.wa-inbox { display: grid; grid-template-columns: 320px 1fr; gap: 12px; min-height: 60vh; }
+.wa-conv-list { border: 1px solid var(--line, #e3e3e3); border-radius: 12px; overflow: auto; max-height: 78vh; background: var(--surface, #fff); }
+.wa-conv { display: block; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--line, #eee); background: transparent; padding: 10px 12px; cursor: pointer; color: inherit; font: inherit; }
+.wa-conv:hover { background: var(--hover, #f6f8fb); }
+.wa-conv.active { background: #eef3ff; }
+.wa-conv.unread .wa-conv-name { font-weight: 700; }
+.wa-conv-top { display: flex; justify-content: space-between; gap: 8px; }
+.wa-conv-name { font-weight: 600; font-size: 14px; }
+.wa-conv-time { font-size: 11px; color: var(--muted, #6b7280); white-space: nowrap; }
+.wa-conv-sub { font-size: 13px; color: var(--muted, #6b7280); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wa-conv-flags { display: flex; gap: 6px; margin-top: 4px; align-items: center; }
+.wa-unread { background: var(--blue, #2563eb); color: #fff; font-size: 11px; font-weight: 700; border-radius: 10px; padding: 1px 7px; }
+.wa-thread { border: 1px solid var(--line, #e3e3e3); border-radius: 12px; display: flex; flex-direction: column; max-height: 78vh; background: var(--surface, #fff); }
+.wa-thread-head { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--line, #eee); }
+.wa-thread-head > div { flex: 1; }
+.wa-back { display: none; }
+.wa-msgs { flex: 1; overflow: auto; padding: 12px; background: #efeae2; display: flex; flex-direction: column; gap: 6px; }
+.wa-day { align-self: center; background: #fff; color: #555; font-size: 11px; padding: 3px 10px; border-radius: 10px; margin: 6px 0; }
+.wa-msg { display: flex; }
+.wa-msg.wa-out { justify-content: flex-end; }
+.wa-bubble { max-width: 78%; padding: 7px 10px; border-radius: 10px; background: #fff; font-size: 14px; white-space: pre-wrap; word-break: break-word; box-shadow: 0 1px 1px rgba(0,0,0,.08); }
+.wa-out .wa-bubble { background: #d9fdd3; }
+.wa-tpl .wa-bubble { background: #fff8e1; }
+.wa-template { font-weight: 600; }
+.wa-tap { color: #065f46; }
+.wa-meta { font-size: 10.5px; color: #667; text-align: right; margin-top: 3px; }
+.wa-msg-status { margin-left: 4px; }
+.wa-st-read { color: #2563eb; font-weight: 700; }
+.wa-st-failed, .wa-st-no_number, .wa-st-off { color: #b91c1c; }
+.wa-err { color: #b91c1c; font-size: 12px; margin-top: 3px; }
+.wa-reply { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--line, #eee); align-items: flex-end; flex-wrap: wrap; }
+.wa-reply textarea { flex: 1 1 200px; padding: 8px 10px; border: 1px solid #ccc; border-radius: 8px; font: inherit; resize: vertical; }
+.wa-sum { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px 14px; font-size: 13px; }
+.wa-ok { color: #15803d; } .wa-bad { color: #b91c1c; font-weight: 600; }
+.wa-body-cell { white-space: pre-wrap !important; min-width: 260px; max-width: 420px; font-size: 12px; }
+@media (max-width: 800px) {
+  .wa-inbox { grid-template-columns: 1fr; }
+  .wa-show-thread .wa-conv-list { display: none; }
+  :not(.wa-show-thread) > .wa-inbox > .wa-thread { display: none; }
+  .wa-back { display: inline-block; }
+  .wa-thread, .wa-conv-list { max-height: none; }
+  .wa-msgs { min-height: 50vh; }
+}

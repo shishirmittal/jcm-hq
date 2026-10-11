@@ -19,7 +19,7 @@ import { renderExplain } from './explain.js'
 import { renderPaymentFollowup } from './payment-followup.js'
 import { renderCustomers } from './customers.js'
 import { renderSyncStatus, unmountSyncStatus } from './sync-status.js'
-import { renderWhatsappTest } from './whatsapp-test.js'
+import { renderWhatsapp } from './whatsapp.js'
 import './whatsapp.css'
 import { renderPurchases } from './purchases.js'
 import { renderGstRecon } from './gst-recon.js'
@@ -235,7 +235,10 @@ function route() {
   } else if (hash === '#sync-status') {
     renderSyncStatus(app)
   } else if (hash === '#whatsapp-test') {
-    renderWhatsappTest(app)
+    renderWhatsapp(app, 'settings')
+  } else if (hash === '#whatsapp' || hash.startsWith('#whatsapp/')) {
+    const parts = hash.split('/')
+    renderWhatsapp(app, parts[1] || 'inbox', parts[2] || null)
   } else if (hash === '#customers' || hash.startsWith('#customers/')) {
     renderCustomers(app, decodeURIComponent(hash.split('/')[1] || '') || null)
   } else if (hash === '#explain') {

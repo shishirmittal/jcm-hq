@@ -1,8 +1,9 @@
 import { applyCors } from './_cors.js'
 import { createClient } from '@supabase/supabase-js'
-import { waConfigured, sendTemplate, wabaSubscription, toWaNumber, waSwitches, sendLogged, BANNER, niceDate } from './_wa-cloud.js'
+import { waConfigured, sendTemplate, wabaSubscription, toWaNumber, waSwitches, sendLogged, BANNER, niceDate, listTemplates } from './_wa-cloud.js'
 import { handleIncoming, busyClient, ledgerNameByCode } from './_wa-replies.js'
 import { runOutbox, TXN } from './_wa-outbox.js'
+import { listConversations, loadThread, replyText, unreadCount } from './_wa-inbox.js'
 import { db as ordersDb } from './_orders/lib/db.js'
 import { materialOverview } from './_orders/lib/material.js'
 
@@ -65,6 +66,24 @@ async function sendOrdersDaily(busy, switches) {
   }
   return { toOrder, late, waiting: parties.length, sent }
 }
+
+// Every template HQ uses — the Templates tab compares this with what WhatsApp Manager has.
+const EXPECTED = [
+  { name: 'payment_reminder_20d', used: 'Payment reminder — Dealer, amber (over 20 days)' },
+  { name: 'payment_reminder_40d', used: 'Payment reminder — Dealer, red (over 40 days)' },
+  { name: 'retail_reminder_20d', used: 'Payment reminder — Retail, amber' },
+  { name: 'retail_reminder_40d', used: 'Payment reminder — Retail, red' },
+  { name: 'txn_invoice', used: 'Invoice generated (customer, 20:30)' }, { name: 'txn_receipt', used: 'Payment received (customer)' },
+  { name: 'txn_credit_note', used: 'Credit note (customer)' }, { name: 'txn_debit_note', used: 'Debit note (customer)' },
+  { name: 'txn_payment', used: 'Payment made (supplier)' }, { name: 'txn_purchase', used: 'Purchase bill entered (supplier)' },
+  { name: 'txn_order', used: 'Order booked (customer)' }, { name: 'quotation_sent', used: 'Quotation (customer)' },
+  { name: 'order_dispatched_photo', used: 'Dispatched with LR photo (Orders)' }, { name: 'order_dispatched', used: 'Dispatched, no LR (Orders)' },
+  { name: 'gstr1_filing_reminder', used: 'GSTR-1 reminder to supplier (GST page)' }, { name: 'invoice_portal_otp', used: 'Invoice-portal login code' },
+  { name: 'staff_followup_morning', used: 'Staff: morning follow-up list' }, { name: 'staff_followup_evening', used: 'Admins: evening collections summary' },
+  { name: 'staff_red_alert', used: 'Staff: Red Alert explanation' }, { name: 'staff_purchase_bill', used: 'Staff: purchase bill entered' },
+  { name: 'staff_purchase_summary', used: 'Staff: purchases evening summary' }, { name: 'gst_mismatch_summary', used: 'Staff: GST mismatch report (PDF)' },
+  { name: 'staff_orders_pending', used: 'Admins: orders / material 17:30' }, { name: 'hello_world', used: 'Connection test' },
+]
 
 // Sample sends for the WhatsApp page — one entry per template in docs/whatsapp-templates.md.
 const HQ = 'https://hq.jcmretails.com'
@@ -131,10 +150,12 @@ export default async function handler(req, res) {
   const { data: u, error: uErr } = await hq.auth.getUser(token)
   if (uErr || !u?.user) return send(res, 401, { error: 'Please sign in again.' })
   const { data: profile } = await hq.from('profiles')
-    .select('id, role, is_admin, active').eq('id', u.user.id).maybeSingle()
+    .select('id, name, email, role, is_admin, active, allowed_tabs').eq('id', u.user.id).maybeSingle()
   if (!profile || profile.active === false) return send(res, 403, { error: 'Your account is not active.' })
   const isAdmin = profile.is_admin === true || profile.role === 'admin'
-  if (!isAdmin) return send(res, 403, { error: 'Only admins can use this page.' })
+  const granted = Array.isArray(profile.allowed_tabs) && profile.allowed_tabs.includes('whatsapp')
+  if (!isAdmin && !granted) return send(res, 403, { error: 'You do not have access to WhatsApp.' })
+  const me = { id: profile.id, name: profile.name || profile.email || 'Someone', isAdmin }
 
   const body = req.body || {}
   try {
@@ -173,6 +194,43 @@ export default async function handler(req, res) {
     const busy = busyClient()
     if (!busy) return send(res, 500, { error: 'SUPABASE_BUSY_SERVICE_ROLE_KEY missing in Vercel.' })
     if (body.action === 'tick') return send(res, 200, { ok: true, ...(await tick(busy, body.force)) })
+    if (body.action === 'count') return send(res, 200, { unread: await unreadCount(busy) })
+    if (body.action === 'inbox') {
+      try { return send(res, 200, { conversations: await listConversations(busy) }) }
+      catch (err) { if (err.message === 'SETUP') return send(res, 200, { conversations: [], setup: true }); throw err }
+    }
+    if (body.action === 'thread') {
+      try { return send(res, 200, await loadThread(busy, String(body.number || ''))) }
+      catch (err) { if (err.message === 'SETUP') return send(res, 200, { items: [], setup: true }); throw err }
+    }
+    if (body.action === 'reply') {
+      const number = toWaNumber(body.number)
+      const text = String(body.text || '').trim().slice(0, 4000)
+      if (!number) return send(res, 400, { error: 'Bad number.' })
+      if (!text) return send(res, 400, { error: 'Type a message first.' })
+      const t = await loadThread(busy, number, { markSeen: false })
+      if (!t.windowOpen) return send(res, 400, { error: 'This person has not written in the last 24 hours, so WhatsApp only allows an approved template now. Send one from Samples, or wait for their reply.' })
+      try { const id = await replyText(busy, number, text, me.name); return send(res, 200, { ok: true, messageId: id }) }
+      catch (err) { return send(res, 502, { error: err.message }) }
+    }
+    if (body.action === 'templates') {
+      const live = await listTemplates()
+      const byName = new Map(live.map(t => [t.name, t]))
+      const rows = EXPECTED.map(e => {
+        const t = byName.get(e.name)
+        return { ...e, found: !!t, status: t?.status || 'MISSING', category: t?.category || null, language: t?.language || null, rejected_reason: t?.rejected_reason || null, quality: t?.quality_score?.score || null,
+          body: t ? (t.components || []).find(c => c.type === 'BODY')?.text || '' : '', buttons: t ? ((t.components || []).find(c => c.type === 'BUTTONS')?.buttons || []).map(b => `${b.type === 'QUICK_REPLY' ? '↩' : b.type === 'URL' ? '🔗' : b.type === 'PHONE_NUMBER' ? '📞' : ''} ${b.text}`) : [] }
+      })
+      const extra = live.filter(t => !EXPECTED.some(e => e.name === t.name)).map(t => ({ name: t.name, used: '(not used by HQ)', found: true, status: t.status, category: t.category, language: t.language, rejected_reason: t.rejected_reason || null, body: (t.components || []).find(c => c.type === 'BODY')?.text || '', buttons: ((t.components || []).find(c => c.type === 'BUTTONS')?.buttons || []).map(b => b.text) }))
+      return send(res, 200, { templates: [...rows, ...extra] })
+    }
+    if (body.action === 'log-summary') {
+      const since = new Date(Date.now() - 7 * 86400e3).toISOString()
+      const r = await busy.from('wa_log').select('kind, status').gte('created_at', since).limit(5000)
+      const sum = {}
+      for (const x of r.data || []) { const k = sum[x.kind] || (sum[x.kind] = { sent: 0, delivered: 0, read: 0, failed: 0, other: 0 }); k[['sent', 'delivered', 'read', 'failed'].includes(x.status) ? x.status : 'other']++ }
+      return send(res, 200, { days: 7, summary: sum })
+    }
     if (body.action === 'settings' || body.action === 'settings-save') {
       if (body.action === 'settings-save' && body.off && typeof body.off === 'object') {
         const rows = Object.entries(body.off).filter(([k]) => KINDS.includes(k)).map(([k, v]) => ({ key: `off:${k}`, value: v === true ? 'true' : 'false', updated_at: new Date().toISOString() }))

@@ -99,7 +99,8 @@ export const NAV_CONFIG = [
     { id: 'warehouse', label: 'Warehouse & Devices', icon: 'monitor', hash: '#warehouse', adminOnly: true },
     // JCM Sync on JCM-Server: every Busy → Supabase job, last run, failures, Run now.
     { id: 'sync-status', label: 'Sync status', icon: 'history', hash: '#sync-status', adminOnly: true },
-    // Direct Meta WhatsApp Cloud API: sends one test template message (api/whatsapp.js).
-    { id: 'whatsapp-test', label: 'WhatsApp', icon: 'monitor', hash: '#whatsapp-test', adminOnly: true },
+    // WhatsApp: inbox (customer replies, 24 h free replies), templates from WhatsApp Manager, send log,
+    // outbox, switches and samples (src/whatsapp.js, api/whatsapp.js). Badge = unread replies.
+    { id: 'whatsapp', label: 'WhatsApp', icon: 'monitor', hash: '#whatsapp', adminOnly: true, badge: 'waUnread' },
   ] },
 ]

@@ -3,7 +3,7 @@ import QRCode from 'qrcode'
 import { createCanvas, loadImage, GlobalFonts } from '@napi-rs/canvas'
 import { FRAME_PNG, NAME_FONT } from './_qr-assets.js'
 import { loadStatement, buildLedgerPdf } from './_ledger-pdf.js'
-import { sendText, sendMedia } from './_wa-cloud.js'
+import { replyText, replyMedia, recordIncoming, recordStatuses } from './_wa-inbox.js'
 import { loadOrder, buildOrderPdf, loadInvoice, buildInvoicePdf } from './_doc-pdf.js'
 
 // Answers the quick-reply buttons on the payment-reminder templates (QR Code / Ledger / Last 3 Invoices).
@@ -124,13 +124,18 @@ const safeName = name => name.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '
 
 
 export async function handleIncoming(value) {
+  const busy = busyClient()
+  // Everything first goes into the inbox (wa_messages); statuses update the log. Never stops a reply.
+  try { if (busy) { await recordIncoming(busy, value); await recordStatuses(busy, value) } } catch (err) { console.error('wa inbox record failed:', err.message) }
+  const sendText = (to, text) => replyText(busy, to, text)
+  const sendMedia = (to, buf, opts) => replyMedia(busy, to, buf, opts)
   try {
-    const busy = busyClient()
     for (const m of value?.messages || []) {
       const payload = m.button?.payload || m.interactive?.button_reply?.id || ''
       const label = m.button?.text || m.interactive?.button_reply?.title || ''
       const parsed = parsePayload(payload)
       const kindByLabel = (WHICH.find(([re]) => re.test(label)) || [])[1]
+      // A typed message (not a button) is for a person to answer from the Inbox page.
       if (!parsed && !kindByLabel) continue
       const from = m.from
       console.log(`wa reply: button="${label}" payload=${payload ? 'yes' : 'none'}`)

@@ -187,3 +187,21 @@ export async function sendLogged(busy, { kind, to, template, lang = 'en', params
   if (ins.error) console.error('wa_log insert failed:', ins.error.message)
   return out
 }
+
+// ---- Templates on the WhatsApp account (WhatsApp Manager) ----------------------------------
+export async function listTemplates() {
+  const token = process.env.WHATSAPP_TOKEN
+  const waba = process.env.WHATSAPP_WABA_ID
+  if (!token || !waba) throw new Error('WHATSAPP_TOKEN / WHATSAPP_WABA_ID missing in Vercel.')
+  const out = []
+  let url = `${GRAPH}/${encodeURIComponent(waba)}/message_templates?fields=name,status,category,language,components,rejected_reason,quality_score&limit=100`
+  for (let i = 0; i < 10 && url; i++) {
+    let res, data
+    try { res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } }); data = await res.json().catch(() => null) }
+    catch { throw new Error('Could not reach Meta. Try again in a minute.') }
+    if (!res.ok || data?.error) throw new Error(`Meta said: ${data?.error?.message || `HTTP ${res.status}`}`)
+    out.push(...(data.data || []))
+    url = data.paging?.next || null
+  }
+  return out
+}
