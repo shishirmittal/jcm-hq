@@ -27,7 +27,10 @@ export default async function handler(req, res) {
   }
   if (req.method === 'POST' && req.body?.object === 'whatsapp_business_account') {
     for (const e of req.body.entry || []) for (const c of e.changes || []) {
-      if (c.value?.metadata?.phone_number_id === process.env.WHATSAPP_PHONE_NUMBER_ID) await handleIncoming(c.value)
+      const v = c.value || {}
+      const n = (v.messages || []).length
+      console.log(`wa webhook: field=${c.field} messages=${n} statuses=${(v.statuses || []).length} types=${(v.messages || []).map(m => m.type).join(',')} phoneIdMatch=${v.metadata?.phone_number_id === process.env.WHATSAPP_PHONE_NUMBER_ID}`)
+      if (v.metadata?.phone_number_id === process.env.WHATSAPP_PHONE_NUMBER_ID) await handleIncoming(v)
     }
     return res.status(200).send('ok')
   }

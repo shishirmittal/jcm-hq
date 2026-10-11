@@ -59,6 +59,7 @@ export async function handleIncoming(value) {
       const kind = (WHICH.find(([re]) => re.test(label)) || [])[1]
       if (!kind) continue
       const from = m.from
+      console.log(`wa reply: button="${label}" kind=${kind}`)
       const cust = busy ? await findCustomer(busy, from) : null
       if (!cust) {
         await sendText(from, 'Thank you. We could not match this number to an account. Please call us on this number and our team will help you.')
@@ -76,5 +77,9 @@ export async function handleIncoming(value) {
     }
   } catch (err) {
     console.error('wa reply error:', err.message)
+    // Tell the customer something rather than staying silent (they just messaged us, so free text is allowed).
+    for (const m of value?.messages || []) {
+      try { await sendText(m.from, 'Thank you. Our team will send this to you here shortly.') } catch (e2) { console.error('wa fallback error:', e2.message) }
+    }
   }
 }
