@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import QRCode from 'qrcode'
 import { createCanvas, loadImage, GlobalFonts } from '@napi-rs/canvas'
 import { FRAME_PNG, NAME_FONT } from './_qr-assets.js'
+import { loadStatement, buildLedgerPdf } from './_ledger-pdf.js'
 import { sendText, sendMedia } from './_wa-cloud.js'
 
 // Answers the quick-reply buttons on the payment-reminder templates (QR Code / Ledger / Last 3 Invoices).
@@ -106,6 +107,18 @@ export async function handleIncoming(value) {
           kind: 'image', mime: 'image/png', filename: 'JCM-payment-QR.png',
           caption: '*Please share payment details with us after payment.*\n*भुगतान के बाद कृपया भुगतान की जानकारी हमें भेजें।*',
         })
+      } else if (parsed.kind === 'ledger') {
+        const stmt = await loadStatement(busy, parsed.code)
+        if (!stmt) {
+          await sendText(from, 'Thank you. Our team will send your ledger to you here shortly.')
+        } else {
+          const pdf = await buildLedgerPdf({ partyName: name, stmt })
+          const safe = name.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30) || 'Account'
+          await sendMedia(from, pdf, {
+            kind: 'document', mime: 'application/pdf', filename: `JCM-Ledger-${safe}.pdf`,
+            caption: '*Your ledger statement is attached.*\n*आपका लेजर विवरण संलग्न है।*',
+          })
+        }
       } else {
         await sendText(from, 'Thank you. Our team will send this to you here shortly.')
       }
