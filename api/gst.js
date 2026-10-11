@@ -189,7 +189,11 @@ async function loadRecon(busy, from, to) {
     busy.from('gst_settings').select('*').eq('id', 1).maybeSingle().then(r => check(r, 'settings')),
   ])
   const months = [...new Set([...rows2a, ...rowsPur].map(r => r.inv_month).filter(Boolean))].sort().reverse()
-  if (!from) { from = months[0] || null; to = from }
+  if (!from) {
+    // default = the last FULL month that has data (the current month is still being filed)
+    const thisMonth = new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 7)
+    from = months.find(m => m < thisMonth) || months[0] || null; to = from
+  }
   if (!to) to = from
   const marks = from ? check(await busy.from('gst_marks').select('*').gte('month', from).lte('month', to), 'marks') : []
   const result = from ? reconcile(rows2a, rowsPur, parties, marks, from, to) : emptyResult()

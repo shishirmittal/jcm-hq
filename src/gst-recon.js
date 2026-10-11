@@ -34,7 +34,10 @@ async function call(payload) {
 function fmtDate(s) {
   if (!s) return ''
   const d = new Date(String(s).length === 10 ? `${s}T00:00:00+05:30` : s)
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
+  if (Number.isNaN(d.getTime())) return ''
+  // "11 Sep 26" — short enough never to wrap in a table cell
+  const t = d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit', timeZone: 'Asia/Kolkata' })
+  return t.replace('Sept', 'Sep')
 }
 function fmtWhen(s) {
   const d = new Date(s)
@@ -82,20 +85,22 @@ export async function renderGstRecon(container) {
       <header class="app-header">
         <div style="display:flex;align-items:center;gap:10px">
           <button class="btn-ghost btn-hamburger" id="gstHamburgerBtn" aria-label="Menu">☰</button>
-          <span class="logo-small gst-title">${icon('file', 18)} GSTR-2A Reconciliation</span>
+          <span class="logo-small gst-title">${icon('file', 18)} <span class="gst-title-long">GSTR-2A Reconciliation</span><span class="gst-title-short">GSTR-2A</span></span>
         </div>
         <div class="gst-header-actions">
-          <button class="btn-ghost btn-small" id="gstExcelBtn">${icon('clipboard', 14)} Download Excel</button>
-          <button class="btn-ghost btn-small" id="gstStaffBtn">${icon('send', 14)} Send to staff</button>
-          <button class="btn-ghost btn-small" id="gstRefreshBtn">Refresh</button>
+          <button class="btn-ghost btn-small" id="gstExcelBtn" title="Download Excel">${icon('clipboard', 14)}<span class="gst-btn-label">Download Excel</span></button>
+          <button class="btn-ghost btn-small" id="gstStaffBtn" title="Send to staff">${icon('send', 14)}<span class="gst-btn-label">Send to staff</span></button>
+          <button class="btn-ghost btn-small" id="gstRefreshBtn" title="Refresh">${icon('history', 14)}<span class="gst-btn-label">Refresh</span></button>
         </div>
       </header>
       <main class="app-main">
         <div class="gst-toolbar">
-          <label class="gst-month"><span>From</span><input type="month" id="gstFrom" class="gst-select" min="2026-04" /></label>
-          <label class="gst-month"><span>To</span><input type="month" id="gstTo" class="gst-select" min="2026-04" /></label>
+          <div class="gst-range">
+            <label class="gst-month"><span>From</span><input type="month" id="gstFrom" class="gst-select" min="2026-04" /></label>
+            <label class="gst-month"><span>To</span><input type="month" id="gstTo" class="gst-select" min="2026-04" /></label>
+            <label class="gst-check"><input type="checkbox" id="gstShowMarked" /> Show done / ignored</label>
+          </div>
           <span class="gst-sync" id="gstSync"></span>
-          <label class="gst-check"><input type="checkbox" id="gstShowMarked" /> Show done / ignored</label>
         </div>
         <div class="gst-warn" id="gstWarn" hidden></div>
         <div class="gst-tiles" id="gstTiles"></div>
@@ -166,7 +171,11 @@ export async function renderGstRecon(container) {
       : 'Nothing synced yet — run sync-gst.js on JCM-Server'
     // Warn when the newest 2A download in Busy is older than the end of the chosen month.
     const warn = $('gstWarn')
-    if (d.to && d.pulledAt) {
+    const thisMonth = new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 7)
+    if (d.to && d.to >= thisMonth) {
+      warn.hidden = false
+      warn.textContent = `${monthName(d.to)} is still running — suppliers file their GSTR-1 by the 11th of the next month, so "Not in 2A" will be long until then. Use it for entry checks only.`
+    } else if (d.to && d.pulledAt) {
       const [y, mo] = d.to.split('-').map(Number)
       const monthEnd = new Date(Date.UTC(y, mo, 1) - 5.5 * 3600e3) // first instant of the month after "To", IST
       if (new Date(d.pulledAt) < monthEnd) {
@@ -229,7 +238,7 @@ export async function renderGstRecon(container) {
       <section class="gst-party tone-${BUCKETS.find(x => x.id === tab).tone}">
         <div class="gst-party-head">
           <div class="gst-party-main">
-            <div class="gst-party-name">${esc(r0.party || r0.gstin)}${r0.new_party ? ' <span class="gst-flag gst-flag-bad">Not in Busy party master</span>' : ''}</div>
+            <div class="gst-party-name">${esc(r0.party || 'Unknown supplier')}${r0.new_party ? ' <span class="gst-flag gst-flag-bad">Not in Busy party master</span>' : ''}</div>
             <div class="gst-party-sub">${esc(r0.gstin)}${contact?.station ? ` · ${esc(contact.station)}` : ''}${number ? ` · ${esc(String(number))}` : ''}</div>
           </div>
           <div class="gst-party-side">
@@ -243,6 +252,7 @@ export async function renderGstRecon(container) {
 
   const th = (t, r) => `<th${r ? ' class="gst-r"' : ''}>${t}</th>`
   const td = (t, r) => `<td${r ? ' class="gst-r"' : ''}>${t}</td>`
+  const tdn = t => `<td class="gst-nw">${t}</td>`
   function markCell(r) {
     const m = r.mark
     if (m) return td(`<span class="gst-flag gst-flag-${m.state === 'done' ? 'ok' : 'quiet'}" title="${esc(m.note || '')} — ${esc(m.by || '')}, ${esc(fmtDate(m.at))}">${m.state === 'done' ? 'Done' : 'Ignored'}</span> <button class="gst-link" data-mark="" data-key="${esc(r.row_key)}">undo</button>`)
@@ -252,22 +262,22 @@ export async function renderGstRecon(container) {
     let head = '', body = ''
     if (tab === 'missing_busy') {
       head = th('Invoice (2A)') + th('Date') + th('Taxable', 1) + th('Tax', 1) + th('Total', 1) + th('Filed in') + th('')
-      body = list.map(r => `<tr${r.mark ? ' class="is-marked"' : ''}>${td(esc(r.p_no))}${td(esc(fmtDate(r.p_date)))}${td(money(r.p_taxable), 1)}${td(money(r.p_tax), 1)}${td(`<b>${money(r.p_total)}</b>`, 1)}${td(esc(r.filed_period || ''))}${markCell(r)}</tr>`).join('')
+      body = list.map(r => `<tr${r.mark ? ' class="is-marked"' : ''}>${tdn(esc(r.p_no))}${tdn(esc(fmtDate(r.p_date)))}${td(money(r.p_taxable), 1)}${td(money(r.p_tax), 1)}${td(`<b>${money(r.p_total)}</b>`, 1)}${td(esc(r.filed_period || ''))}${markCell(r)}</tr>`).join('')
     } else if (tab === 'not_in_2a') {
       head = th('Bill (Busy)') + th('Date') + th('Taxable', 1) + th('Tax', 1) + th('Total', 1) + th('Entered by') + th('')
-      body = list.map(r => `<tr${r.mark ? ' class="is-marked"' : ''}>${td(esc(r.b_no))}${td(esc(fmtDate(r.b_date)))}${td(money(r.b_taxable), 1)}${td(money(r.b_tax), 1)}${td(`<b>${money(r.b_total)}</b>`, 1)}${td(esc(r.entered_by || ''))}${markCell(r)}</tr>`).join('')
+      body = list.map(r => `<tr${r.mark ? ' class="is-marked"' : ''}>${tdn(esc(r.b_no))}${tdn(esc(fmtDate(r.b_date)))}${td(money(r.b_taxable), 1)}${td(money(r.b_tax), 1)}${td(`<b>${money(r.b_total)}</b>`, 1)}${td(esc(r.entered_by || ''))}${markCell(r)}</tr>`).join('')
     } else if (tab === 'amount') {
       head = th('Invoice') + th('Date') + th('2A taxable', 1) + th('Busy taxable', 1) + th('Diff', 1) + th('2A tax', 1) + th('Busy tax', 1) + th('Diff', 1) + th('')
-      body = list.map(r => `<tr${r.mark ? ' class="is-marked"' : ''}>${td(esc(r.p_no) + (r.note ? `<br><small>${esc(r.note)}</small>` : ''))}${td(esc(fmtDate(r.p_date || r.b_date)))}${td(money(r.p_taxable), 1)}${td(money(r.b_taxable), 1)}${td(`<b class="${Math.abs(r.diff_taxable) > 1 ? 'gst-bad' : ''}">${signed(r.diff_taxable)}</b>`, 1)}${td(money(r.p_tax), 1)}${td(money(r.b_tax), 1)}${td(`<b class="${Math.abs(r.diff_tax) > 1 ? 'gst-bad' : ''}">${signed(r.diff_tax)}</b>`, 1)}${markCell(r)}</tr>`).join('')
+      body = list.map(r => `<tr${r.mark ? ' class="is-marked"' : ''}>${td(esc(r.p_no) + (r.note ? `<br><small>${esc(r.note)}</small>` : ''))}${tdn(esc(fmtDate(r.p_date || r.b_date)))}${td(money(r.p_taxable), 1)}${td(money(r.b_taxable), 1)}${td(`<b class="${Math.abs(r.diff_taxable) > 1 ? 'gst-bad' : ''}">${signed(r.diff_taxable)}</b>`, 1)}${td(money(r.p_tax), 1)}${td(money(r.b_tax), 1)}${td(`<b class="${Math.abs(r.diff_tax) > 1 ? 'gst-bad' : ''}">${signed(r.diff_tax)}</b>`, 1)}${markCell(r)}</tr>`).join('')
     } else if (tab === 'docno') {
       head = th('In 2A') + th('In Busy') + th('Date') + th('Taxable', 1) + th('Tax', 1) + th('Note') + th('')
-      body = list.map(r => `<tr${r.mark ? ' class="is-marked"' : ''}>${td(esc(r.p_no))}${td(esc(r.b_no))}${td(esc(fmtDate(r.p_date || r.b_date)))}${td(money(r.p_taxable), 1)}${td(money(r.p_tax), 1)}${td(`<small>${esc(r.note || '')}</small>`)}${markCell(r)}</tr>`).join('')
+      body = list.map(r => `<tr${r.mark ? ' class="is-marked"' : ''}>${tdn(esc(r.p_no))}${tdn(esc(r.b_no))}${tdn(esc(fmtDate(r.p_date || r.b_date)))}${td(money(r.p_taxable), 1)}${td(money(r.p_tax), 1)}${td(`<small>${esc(r.note || '')}</small>`)}${markCell(r)}</tr>`).join('')
     } else if (tab === 'sequence') {
       head = th('Bill (Busy)') + th('Date') + th('Total', 1) + th('Issue') + th('')
-      body = list.map(r => `<tr${r.mark ? ' class="is-marked"' : ''}>${td(esc(r.b_no))}${td(esc(fmtDate(r.b_date)))}${td(money(r.b_total), 1)}${td(`<span class="gst-flag gst-flag-bad">${esc(r.kind)}</span> <small>${esc(r.note || '')}</small>`)}${markCell(r)}</tr>`).join('')
+      body = list.map(r => `<tr${r.mark ? ' class="is-marked"' : ''}>${tdn(esc(r.b_no))}${tdn(esc(fmtDate(r.b_date)))}${td(money(r.b_total), 1)}${td(`<span class="gst-flag gst-flag-bad">${esc(r.kind)}</span> <small>${esc(r.note || '')}</small>`)}${markCell(r)}</tr>`).join('')
     } else {
       head = th('Bill (Busy)') + th('Date') + th('Series') + th('Entered by') + th('')
-      body = list.map(r => `<tr${r.mark ? ' class="is-marked"' : ''}>${td(esc(r.b_no))}${td(esc(fmtDate(r.b_date)))}${td(esc((r.note || '').replace(/^Series /, '')))}${td(esc(r.entered_by || ''))}${markCell(r)}</tr>`).join('')
+      body = list.map(r => `<tr${r.mark ? ' class="is-marked"' : ''}>${tdn(esc(r.b_no))}${tdn(esc(fmtDate(r.b_date)))}${td(esc((r.note || '').replace(/^Series /, '')))}${td(esc(r.entered_by || ''))}${markCell(r)}</tr>`).join('')
     }
     return `<table class="gst-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`
   }

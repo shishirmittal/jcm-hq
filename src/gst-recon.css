@@ -1,7 +1,11 @@
 /* ---------- GSTR-2A Reconciliation (#gst-recon, src/gst-recon.js) ---------- */
-.gst-title { display: inline-flex; align-items: center; gap: 8px; }
+.gst-title { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.gst-title-short { display: none; }
+.gst-page .app-header { gap: 8px; }
+.gst-page .app-main { overflow-x: hidden; }
 .gst-header-actions { display: flex; gap: 8px; }
 .gst-header-actions button { display: inline-flex; align-items: center; gap: 6px; }
+.gst-range { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
 .gst-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 12px; }
 .gst-month { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); font-weight: 600; }
 .gst-select { height: 36px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); padding: 0 10px; font-size: 13px; }
@@ -41,6 +45,9 @@
 .gst-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .gst-table th { text-align: left; font-size: 11.5px; color: var(--muted); font-weight: 600; padding: 6px; border-bottom: 1px solid var(--line-soft); white-space: nowrap; }
 .gst-table td { padding: 6px; border-bottom: 1px solid var(--line-soft); color: var(--body); vertical-align: top; }
+.gst-table .gst-nw { white-space: nowrap; }
+.gst-table-wrap { -webkit-overflow-scrolling: touch; }
+.gst-list, .gst-party, .gst-table-wrap { min-width: 0; max-width: 100%; }
 .gst-table tr:last-child td { border-bottom: none; }
 .gst-table small { font-weight: 500; color: var(--faint); }
 .gst-table .gst-r { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -75,9 +82,26 @@
 
 @media (max-width: 900px) { .gst-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (max-width: 640px) {
-  .gst-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .gst-header-actions .btn-ghost:last-child { display: none; }
-  .gst-table { font-size: 12.5px; }
-  .gst-party-head { flex-direction: column; align-items: flex-start; }
+  .gst-title-long { display: none; }
+  .gst-title-short { display: inline; }
+  .gst-btn-label { display: none; }
+  .gst-header-actions { gap: 6px; }
+  .gst-header-actions button { padding: 6px 9px; }
+  .gst-toolbar { gap: 8px; }
+  .gst-range { width: 100%; gap: 8px 10px; }
+  .gst-month { flex: 1 1 40%; }
+  .gst-month input { flex: 1; min-width: 0; width: 100%; }
+  .gst-check { flex-basis: 100%; }
+  .gst-sync { flex-basis: 100%; }
+  .gst-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .gst-tile { padding: 7px 9px; }
+  .gst-tile-value { font-size: 19px; }
+  .gst-tile-label { font-size: 11px; }
+  .gst-table { font-size: 12px; }
+  .gst-table th, .gst-table td { padding: 5px 4px; }
+  .gst-table-wrap { padding: 2px 8px 6px; }
+  .gst-party-head { flex-direction: column; align-items: flex-start; gap: 6px; padding: 9px 10px; }
   .gst-party-side { justify-content: flex-start; }
+  .gst-party-name { font-size: 14px; }
+  .gst-drawer { width: 100vw; }
 }
