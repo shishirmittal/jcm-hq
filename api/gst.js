@@ -462,7 +462,10 @@ async function remindParty(busy, { from, to, gstin, keys, who }) {
   const number = contact?.whatsapp || contact?.mobile
   const name = bills[0].party_name || contact?.party_name || 'Sir/Madam'
   const list = fitList(bills.map((b, i) => `${i + 1}. ${b.vch_no} dt ${niceDate(b.vch_date)} (${rupees(b.total)})`))
-  const r = await sendWhatsApp(number, TPL_SUPPLIER, [name, periodName(from, to), list], { headerImageUrl: `${HQ_URL}/api/gst?banner=${from}${to !== from ? `&to=${to}` : ''}` })
+  // The period named in the message = the month(s) the ticked bills fall in, not the page's range.
+  const months = [...new Set(bills.map(b => String(b.vch_date || '').slice(0, 7)).filter(isMonth))].sort()
+  const mFrom = months[0] || from, mTo = months[months.length - 1] || to
+  const r = await sendWhatsApp(number, TPL_SUPPLIER, [name, periodName(mFrom, mTo), list], { headerImageUrl: `${HQ_URL}/api/gst?banner=${mFrom}${mTo !== mFrom ? `&to=${mTo}` : ''}` })
   check(await busy.from('gst_log').insert({ month, kind: 'party_reminder', channel: 'whatsapp', gstin, recipient: number ? String(number) : null, status: r.status, detail: `${bills.length} bill(s): ${bills.map(b => b.vch_no).join(', ')}${r.detail ? ` — ${r.detail}` : ''}`.slice(0, 500), by_name: who }), 'log')
   return { status: r.status, detail: r.detail, number: number || null, name, count: bills.length }
 }

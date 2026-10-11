@@ -322,7 +322,9 @@ export async function renderGstRecon(container) {
     const preview = () => {
       const picked = rows.filter(r => $('gstDrawerBody').querySelector(`input[data-key="${CSS.escape(r.row_key)}"]`)?.checked)
       const list = picked.map((r, i) => `${i + 1}. ${r.b_no} dt ${fmtDate(r.b_date)} (${money(r.b_total)})`).join('; ')
-      $('gstPreview').textContent = `Namaste, ${name},\n\nThis is J.C. Mittal & Sons, Ratlam (GSTIN 23AAPFJ0607D1ZT).\nOur GSTR-2A for ${state.data.period} does not show the following invoice(s) of yours:\n\n${list || '—'}\n\nPlease check your GSTR-1 and file or amend it so that we can claim the input tax credit. Thank you.\n\nAwaiting your reply in the next 3 working days on this.`
+      const ms = [...new Set(picked.map(r => String(r.b_date || '').slice(0, 7)))].sort()
+      const period = ms.length ? (ms[0] === ms[ms.length - 1] ? monthName(ms[0]) : `${monthName(ms[0]).replace(/ \d{4}$/, '')} – ${monthName(ms[ms.length - 1])}`) : state.data.period
+      $('gstPreview').textContent = `Namaste, ${name},\n\nThis is J.C. Mittal & Sons, Ratlam (GSTIN 23AAPFJ0607D1ZT).\nOur GSTR-2A for ${period} does not show the following invoice(s) of yours:\n\n${list || '—'}\n\nPlease check your GSTR-1 and file or amend it so that we can claim the input tax credit. Thank you.\n\nAwaiting your reply in the next 3 working days on this.`
     }
     preview()
     $('gstDrawerBody').querySelectorAll('input[data-key]').forEach(i => i.addEventListener('change', preview))
