@@ -22,6 +22,7 @@
     "@capacitor/core": "^8.5.2",
     "@capacitor/filesystem": "^8.1.4",
     "@capacitor/share": "^8.0.3",
+    "@napi-rs/canvas": "^1.0.11",
     "@supabase/supabase-js": "^2.112.3",
     "qrcode": "^1.5.4",
     "react": "^19.2.8",

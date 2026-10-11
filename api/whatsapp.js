@@ -1,7 +1,7 @@
 import { applyCors } from './_cors.js'
 import { createClient } from '@supabase/supabase-js'
-import { waConfigured, sendTemplate, wabaSubscription } from './_wa-cloud.js'
-import { handleIncoming } from './_wa-replies.js'
+import { waConfigured, sendTemplate, wabaSubscription, toWaNumber } from './_wa-cloud.js'
+import { handleIncoming, findCustomerRow, busyClient, billedName } from './_wa-replies.js'
 
 // WhatsApp via Meta's Cloud API (page src/whatsapp-test.js at #whatsapp-test).
 // Admins only. Existing Whatshub360 sending (collections, purchases, red-alerts, orders)
@@ -63,6 +63,16 @@ export default async function handler(req, res) {
       const d = await wabaSubscription('get')
       const apps = (d?.data || []).map(a => a.whatsapp_business_api_data?.name || a.name || 'app')
       return send(res, 200, { subscribed: apps.length > 0, apps })
+    }
+    if (body.action === 'customer-peek') {
+      // Admin helper: which customers row does this mobile match, and what name would the QR note use?
+      const busy = busyClient()
+      if (!busy) return send(res, 500, { error: 'Busy data is not configured.' })
+      const row = await findCustomerRow(busy, toWaNumber(body.phone) || String(body.phone || ''))
+      if (!row) return send(res, 200, { found: false })
+      const shown = {}
+      for (const [k, v] of Object.entries(row)) if (v !== null && v !== '' && !/password|pin|token/i.test(k)) shown[k] = v
+      return send(res, 200, { found: true, noteUses: billedName(row), row: shown })
     }
     if (body.action === 'reminder-test') {
       // Sends one payment-reminder template with sample numbers, to check look + buttons.
