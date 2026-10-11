@@ -1,5 +1,6 @@
 import { applyCors } from './_cors.js'
 import { createClient } from '@supabase/supabase-js'
+import { sendTemplate, waConfigured } from './_wa-cloud.js'
 
 // Payment Follow-up (JCM HQ → Collections) — page src/payment-followup.js.
 //
@@ -35,6 +36,9 @@ import { createClient } from '@supabase/supabase-js'
 //   daily-now { which: 'morning' | 'evening' } (admins)  the same, right now, from the Today tab
 //   owners / owners-save (admins)   who follows up which account group (collection_group_owners,
 //           collection_settings.default_owner for groups nobody was given)
+//   send-template { party_code }   ONE party, from the row's WhatsApp button, through Meta's own API with the
+//           approved template: Dealer groups payment_reminder_20d/40d, Retail groups retail_reminder_20d/40d
+//           (amber / red by days overdue). Same skip rules as below; logged as channel 'reminder'.
 //   send-reminders { party_codes[], template }   WhatsApp through Whatshub360, at most 25 per call.
 //           The server re-checks every party: the DND group, "check balance"
 //           parties, nothing due, no number and anyone reminded in the last
@@ -138,6 +142,7 @@ export default async function handler(req, res) {
     if (action === 'owners-save') return await handleOwnersSave(busy, me, body, res)
     if (action === 'history') return await handleHistory(busy, body, res)
     if (action === 'save') return await handleSave(busy, hq, body, me, res)
+    if (action === 'send-template') return await handleSendTemplate(busy, body, me, res)
     if (action === 'send-reminders') return await handleSendReminders(busy, body, me, res)
     return send(res, 400, { error: 'Unknown request.' })
   } catch (err) {
@@ -749,6 +754,84 @@ async function handleSendReminders(busy, body, me, res) {
   }
   const sentAt = new Date().toISOString()
   return send(res, 200, { results, sentAt })
+}
+
+// ---------------------------------------------------------------------------
+// One WhatsApp reminder through Meta (the row's WhatsApp button)
+// ---------------------------------------------------------------------------
+const HQ_SITE = 'https://hq.jcmretails.com'
+const inr = n => Math.round(Number(n) || 0).toLocaleString('en-IN')
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const niceDate = iso => { const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number); return `${d} ${MONTHS[m - 1]} ${y}` }
+const daysSince = iso => Math.max(0, Math.round((Date.parse(todayIST()) - Date.parse(String(iso).slice(0, 10))) / 86400000))
+const fyStartIST = () => { const t = todayIST(); const y = Number(t.slice(0, 4)); return `${Number(t.slice(5, 7)) >= 4 ? y : y - 1}-04-01` }
+
+async function handleSendTemplate(busy, body, me, res) {
+  if (!waConfigured()) return send(res, 400, { error: 'WhatsApp (Meta) is not set up yet in Vercel.' })
+  const code = String(body.party_code || '').slice(0, 40)
+  if (!/^\d{1,9}$/.test(code)) return send(res, 400, { error: 'No party chosen.' })
+  const since = new Date(Date.now() - REMINDER_GAP_HOURS * 3600 * 1000).toISOString()
+  const [seg, pd, cu, recent, fresh, ag20, ag40, kr] = await Promise.all([
+    busy.from('dues_segmented').select('party_code, party_name, outstanding_balance, group_name, group_path, due_type, phone_primary').eq('party_code', code),
+    busy.from('party_dues').select('party_code, phone_primary, phone_all, needs_review').eq('party_code', code),
+    busy.from('customers').select('party_code, mobile, whatsapp_no').eq('party_code', Number(code)),
+    busy.from('collection_followups').select('created_at').eq('party_code', code).eq('channel', 'reminder').eq('outcome', 'sent')
+      .gte('created_at', since).order('created_at', { ascending: false }).limit(1),
+    dueFreshness(busy),
+    ageingFor(busy, [code]),
+    ageingFor(busy, [code], 40),
+    busy.from('collection_group_owners').select('group_name, kind'),
+  ])
+  const s = check(seg, 'dues')[0]
+  const p = check(pd, 'party_dues')[0] || {}
+  const c = check(cu, 'customers')[0] || {}
+  if (!s || s.due_type !== 'Receivable') return send(res, 400, { error: 'This party has no dues in Busy.' })
+  const balance = Number(s.outstanding_balance) || 0
+  if (isDnd(s)) return send(res, 400, { error: 'This group is "JCM Due DND" — reminders are never sent to it.' })
+  if (p.needs_review === true) return send(res, 400, { error: 'This balance is flagged "Check balance" — sort that out before reminding.' })
+  if (balance <= 0 || fresh.stale.has(code)) return send(res, 400, { error: 'Nothing is due from this party right now.' })
+  const last = check(recent, 'recent')[0]
+  if (last) {
+    const hrs = Math.max(1, Math.round((Date.now() - Date.parse(last.created_at)) / 3600000))
+    return send(res, 400, { error: `A reminder was already sent ${hrs} hour${hrs === 1 ? '' : 's'} ago. Wait until tomorrow.` })
+  }
+  const mobile = cleanPhone(c.whatsapp_no) || phonesFrom(c.mobile, s.phone_primary, p.phone_primary, p.phone_all)[0] || null
+  if (!mobile) return send(res, 400, { error: 'No WhatsApp number for this party in Busy.' })
+
+  const overdue = Math.min(overdueOf(ag20[0]), balance)
+  const overdue40 = Math.min(overdueOf(ag40[0]), balance)
+  if (overdue <= 0) return send(res, 400, { error: 'Nothing is over 20 days yet — only recent credit.' })
+  const red = overdue40 > 0
+  const ag = ag20[0] || {}
+  const oldest = ag.oldest_unpaid_date || (Number(ag.older) > 0 ? fyStartIST() : ag.last_bill_date)
+  if (!oldest) return send(res, 400, { error: 'Bill dates are not available for this party yet.' })
+
+  const kinds = new Map((kr.error ? [] : kr.data || []).map(r => [r.group_name, r.kind]))
+  const retail = kinds.get(s.group_name) === 'retail'
+  const name = String(s.party_name || '').trim()
+  const days = String(daysSince(oldest))
+  const when = niceDate(oldest)
+  const params = retail ? [name, inr(balance), days, when] : [name, inr(balance), inr(overdue), days, when]
+  const template = `${retail ? 'retail_reminder' : 'payment_reminder'}_${red ? '40d' : '20d'}`
+  const detail = `${template}: ${params.join(' | ')}`
+  const row = {
+    party_code: code, party_name: name, group_name: s.group_name, channel: 'reminder', mobile, message: detail,
+    balance_at_time: balance, created_by: me.id, created_by_name: me.name,
+  }
+  try {
+    await sendTemplate(mobile, template, 'en', params, {
+      headerImageUrl: `${HQ_SITE}/wa/${red ? 'reminder-red-40d' : 'reminder-amber-20d'}.png`,
+      buttonPayloads: [`qr:${code}`, `ledger:${code}`, `${retail ? 'portal' : 'inv'}:${code}`],
+    })
+  } catch (err) {
+    console.error('collections send-template failed:', err)
+    const ins = await busy.from('collection_followups').insert({ ...row, outcome: 'failed' })
+    if (ins.error) console.error('collections reminder log failed:', ins.error)
+    return send(res, 502, { error: String(err.message || err).slice(0, 300) })
+  }
+  const ins = await busy.from('collection_followups').insert({ ...row, outcome: 'sent' })
+  if (ins.error) console.error('collections reminder log failed:', ins.error)
+  return send(res, 200, { ok: true, template, tone: red ? 'red' : 'amber', kind: retail ? 'retail' : 'dealer', mobile, name })
 }
 
 // ---------------------------------------------------------------------------

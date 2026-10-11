@@ -359,10 +359,64 @@ export function renderPaymentFollowup(container, sub) {
     if (!party) return
     const act = btn.dataset.act
     if (act === 'call') setTimeout(() => openModal(party, 'call'), 400)
-    else if (act === 'whatsapp') setTimeout(() => openModal(party, 'whatsapp'), 400)
+    else if (act === 'send-wa') confirmWhatsApp(party)
     else if (act === 'log') openModal(party, 'call')
     else if (act === 'history') openModal(party, 'call', true)
   })
+
+  $('pfModalContact').addEventListener('click', e => {
+    if (e.target.closest('[data-modal-wa]') && state.modal) confirmWhatsApp(state.modal.party)
+  })
+
+  // ---- WhatsApp reminder: ask first, send the approved template, then the outcome form ----
+  function confirmWhatsApp(party) {
+    if (document.getElementById('pfWaConfirm')) return
+    const ov = document.createElement('div')
+    ov.className = 'modal-overlay pf-overlay'
+    ov.id = 'pfWaConfirm'
+    ov.innerHTML = `
+      <div class="modal pf-modal pf-wa-confirm" role="alertdialog" aria-modal="true">
+        <div class="modal-header"><div>
+          <h2>Send WhatsApp reminder?</h2>
+          <div class="pf-modal-sub">${esc(party.party_name)}</div>
+        </div></div>
+        <div class="pf-wa-lines">
+          <div>To: <strong>${esc(String(party.whatsapp).replace(/(\d{5})(\d{5})/, '+91 $1 $2'))}</strong></div>
+          <div>Amount due: <strong>${esc(rupees(party.balance))}</strong></div>
+          <div class="pf-muted">The approved JCM message goes out at once, with the QR Code, Ledger and Invoices buttons. It cannot be taken back.</div>
+        </div>
+        <div class="pf-error" id="pfWaErr" hidden></div>
+        <div class="pf-modal-actions">
+          <button type="button" class="btn-ghost btn-small" id="pfWaNo">Cancel</button>
+          <button type="button" class="btn-primary btn-small" id="pfWaYes">Yes, send WhatsApp</button>
+        </div>
+      </div>`
+    document.body.appendChild(ov)
+    document.body.classList.add('pf-modal-open')
+    const close = () => { ov.remove(); if (!state.modal && $('pfOwners').hidden) document.body.classList.remove('pf-modal-open') }
+    ov.querySelector('#pfWaNo').addEventListener('click', close)
+    ov.addEventListener('click', e => { if (e.target === ov) close() })
+    ov.querySelector('#pfWaYes').addEventListener('click', async () => {
+      const yes = ov.querySelector('#pfWaYes')
+      yes.disabled = true; yes.textContent = 'Sending…'
+      ov.querySelector('#pfWaNo').disabled = true
+      try {
+        const r = await call({ action: 'send-template', party_code: party.party_code })
+        ov.remove()
+        if (state.modal?.party === party) { state.modal.channel = 'whatsapp'; state.modal.outcome = 'message_sent'; drawModalChoices() }
+        else openModal(party, 'whatsapp')
+        $('pfModalContact').insertAdjacentHTML('afterbegin',
+          `<div class="pf-wa-sent">✓ Reminder sent to ${esc(r.mobile)} (${r.tone === 'red' ? 'red' : 'amber'} · ${r.kind}). Now save what happened below.</div>`)
+        $('pfModal').scrollTop = 0
+        if (state.mode === 'today') loadList(true)
+      } catch (err) {
+        const el = ov.querySelector('#pfWaErr')
+        el.textContent = err.message; el.hidden = false
+        yes.hidden = true
+        const no = ov.querySelector('#pfWaNo'); no.disabled = false; no.textContent = 'Close'
+      }
+    })
+  }
 
   // ---- Modal ----
   $('pfModalClose').addEventListener('click', closeModal)
@@ -782,7 +836,6 @@ export function renderPaymentFollowup(container, sub) {
     const code = esc(p.party_code)
     const phone = p.phones[0]
     const wa = p.whatsapp
-    const waHref = wa ? `https://wa.me/91${wa}?text=${encodeURIComponent(manualMessage(p))}` : null
     const tags = [
       state.view !== 'group' && p.group_name ? `<span class="pf-tag">${esc(p.group_name)}</span>` : '',
       p.dnd ? '<span class="pf-tag pf-tag-dnd" title="This group never gets automatic WhatsApp reminders">DND</span>' : '',
@@ -807,7 +860,7 @@ export function renderPaymentFollowup(container, sub) {
           ${reasonHtml(p)}
           <div class="pf-actions">
             ${phone ? `<a class="btn-contact btn-call" href="tel:+91${phone}" data-act="call" data-code="${code}">${PHONE_SVG} Call</a>` : ''}
-            ${waHref ? `<a class="btn-contact btn-whatsapp" href="${esc(waHref)}" target="_blank" rel="noopener" data-act="whatsapp" data-code="${code}">${WA_SVG} WhatsApp</a>` : ''}
+            ${wa ? `<button type="button" class="btn-contact btn-whatsapp" data-act="send-wa" data-code="${code}">${WA_SVG} WhatsApp</button>` : ''}
             <button type="button" class="btn-ghost btn-small" data-act="log" data-code="${code}">Save outcome</button>
             <button type="button" class="pf-link" data-act="history" data-code="${code}">History</button>
           </div>
@@ -822,7 +875,7 @@ export function renderPaymentFollowup(container, sub) {
     $('pfModalSub').innerHTML = `${esc(party.group_name || '')}${party.balance > 0 ? ` · Due <strong>${esc(rupees(party.balance))}</strong>` : ''}`
     $('pfModalContact').innerHTML = [
       ...party.phones.map(ph => `<a class="btn-contact btn-call" href="tel:+91${ph}">${PHONE_SVG} ${esc(ph)}</a>`),
-      party.whatsapp ? `<a class="btn-contact btn-whatsapp" target="_blank" rel="noopener" href="https://wa.me/91${party.whatsapp}?text=${encodeURIComponent(manualMessage(party))}">${WA_SVG} WhatsApp</a>` : '',
+      party.whatsapp ? `<button type="button" class="btn-contact btn-whatsapp" data-modal-wa>${WA_SVG} WhatsApp</button>` : '',
     ].join('')
     $('pfPromisedAmount').value = ''
     $('pfPromisedDate').value = ''
