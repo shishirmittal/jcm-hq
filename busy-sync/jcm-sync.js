@@ -41,6 +41,9 @@ const JOBS = [
   { id: 'purchases', name: 'Purchase Summary (+ WhatsApps)', args: ['sync-purchases.js'], every: 15, timeout: 14 },
   { id: 'dues', name: 'Dues (Payment Follow-up)', args: ['-r', './dues-env.js', 'sync-dues-final.js'], every: 30, timeout: 25, logFile: 'dues.log' },
   { id: 'ledger', name: 'Customer ledger', args: ['sync-ledger.js'], every: 30, timeout: 25 },
+  // Payment Follow-up: 10:00 WhatsApp + Task Board task per person, 19:00 summary to admins.
+  // HQ decides what is due; this only asks every 15 minutes (see followup-notify.js).
+  { id: 'followup-notify', name: 'Payment follow-up WhatsApps + tasks', args: ['followup-notify.js'], every: 15, timeout: 5 },
   { id: 'nightly', name: 'Nightly full sync (items, sales, invoices, customers)', args: ['sync.js'], dailyAt: '22:54', timeout: 120, logFile: 'task-scheduler.log' },
 ];
 

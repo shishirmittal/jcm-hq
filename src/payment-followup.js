@@ -337,6 +337,8 @@ export function renderPaymentFollowup(container, sub) {
   // ---- Today tab: whose list, and who follows up which group ----
   $('pfPeople').addEventListener('click', e => {
     if (e.target.closest('#pfAssign')) return openOwners()
+    const sendBtn = e.target.closest('#pfSendMorning, #pfSendEvening')
+    if (sendBtn) return sendDaily(sendBtn.id === 'pfSendMorning' ? 'morning' : 'evening', sendBtn)
     const b = e.target.closest('[data-person]')
     if (!b || b.dataset.person === state.person) return
     state.person = b.dataset.person
@@ -512,7 +514,12 @@ export function renderPaymentFollowup(container, sub) {
       ${chip('all', 'Everyone', all)}
       ${others.join('')}
       ${nobody && nobody.due ? `<span class="pf-person-warn" title="These groups have nobody assigned">${nobody.due} in groups with nobody assigned</span>` : ''}
-      ${isAdmin ? `<button type="button" class="btn-ghost btn-small pf-assign" id="pfAssign">Assign groups</button>` : ''}
+      ${isAdmin ? `<span class="pf-admin-btns">
+        <button type="button" class="btn-ghost btn-small" id="pfSendMorning" title="Each person's WhatsApp + Task Board task (normally at 10:00)">Send today's lists now</button>
+        <button type="button" class="btn-ghost btn-small" id="pfSendEvening" title="Summary WhatsApp to admins (normally at 19:00)">Send evening summary now</button>
+        <button type="button" class="btn-ghost btn-small" id="pfAssign">Assign groups</button>
+      </span>` : ''}
+      <div class="pf-send-result" id="pfSendResult" hidden></div>
     `
     const tab = document.getElementById('pfTabToday')
     if (tab) tab.textContent = mine.due ? ` ${mine.due}` : ''
@@ -536,6 +543,34 @@ export function renderPaymentFollowup(container, sub) {
           ${d.remarks ? `<div class="pf-remark">“${esc(d.remarks)}”</div>` : ''}
         </div>`
       }).join('')}`
+  }
+
+  // Admins: run the 10:00 / 19:00 messages now (they also run by themselves).
+  async function sendDaily(which, btn) {
+    const ask = which === 'morning'
+      ? "Send each person their WhatsApp list now and make today's Task Board tasks (tasks are made only once a day)?"
+      : 'Send the evening summary WhatsApp to admins now?'
+    if (!window.confirm(ask)) return
+    btn.disabled = true
+    const out = $('pfSendResult')
+    out.hidden = false
+    out.textContent = 'Sending…'
+    try {
+      const r = await call({ action: 'daily-now', which })
+      if (which === 'morning') {
+        const ppl = r.morning?.people || []
+        out.textContent = ppl.length
+          ? ppl.map(p => `${p.person}: ${p.due} due · task ${p.task} · WhatsApp ${p.whatsapp}`).join('   |   ') + (r.morning.unassigned ? `   |   ${r.morning.unassigned} with nobody assigned` : '')
+          : 'Nobody has follow-ups due today.'
+      } else {
+        out.textContent = `${r.evening?.done ?? 0} done, ${r.evening?.left ?? 0} left · ` + (r.evening?.sent || []).map(x => `${x.to}: ${x.whatsapp}`).join(', ')
+      }
+      refreshNavBadges?.()
+    } catch (err) {
+      out.textContent = err.message
+    } finally {
+      btn.disabled = false
+    }
   }
 
   // ---- Assign groups (admins) ----------------------------------------------

@@ -28,6 +28,11 @@ import { createClient } from '@supabase/supabase-js'
 //   save    { party_code, channel, outcome, remarks?, promised_amount?, promised_date?, next_followup? }
 //   list { view: 'due', person: 'me' | 'all' | <uuid> }   Today's follow-ups: due parties of that
 //           person (owner of the party's account group), plus doneToday and a per-person summary
+//   daily-run  (JCM-Server only — sent with the Busy service key by busy-sync/followup-notify.js,
+//           every 15 min from JCM Sync)  after collection_settings.morning_at (10:00): one Task Board
+//           task + one WhatsApp per person with their follow-ups for the day; after evening_at
+//           (19:00): a summary WhatsApp to admins. Each runs once a day (last_morning / last_evening).
+//   daily-now { which: 'morning' | 'evening' } (admins)  the same, right now, from the Today tab
 //   owners / owners-save (admins)   who follows up which account group (collection_group_owners,
 //           collection_settings.default_owner for groups nobody was given)
 //   send-reminders { party_codes[], template }   WhatsApp through Whatshub360, at most 25 per call.
@@ -88,6 +93,18 @@ export default async function handler(req, res) {
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null
   if (!token) return send(res, 401, { error: 'Please sign in again.' })
 
+  // ---- JCM-Server's timer. Only the Busy project's service key can read
+  // collection_settings (RLS on, no policies), so a read with the key it sent proves who it is.
+  if ((req.body || {}).action === 'daily-run') {
+    if (!(await isBusyServiceKey(token))) return send(res, 401, { error: 'Not allowed.' })
+    try {
+      return send(res, 200, { ok: true, ...(await runDaily(busy, hq, null)) })
+    } catch (err) {
+      console.error('collections daily-run failed:', err)
+      return send(res, 500, { error: String(err.message || err).slice(0, 300) })
+    }
+  }
+
   const { data: userData, error: userErr } = await hq.auth.getUser(token)
   if (userErr || !userData?.user) return send(res, 401, { error: 'Please sign in again.' })
 
@@ -113,9 +130,14 @@ export default async function handler(req, res) {
     if (action === 'meta') return await handleMeta(busy, me, res)
     if (action === 'list') return await handleList(busy, hq, me, body, res)
     if (action === 'owners') return await handleOwners(busy, hq, me, res)
+    if (action === 'daily-now') {
+      if (!me.isAdmin) return send(res, 403, { error: 'Only admins can send these.' })
+      const which = body.which === 'evening' ? 'evening' : 'morning'
+      return send(res, 200, { ok: true, ...(await runDaily(busy, hq, which)) })
+    }
     if (action === 'owners-save') return await handleOwnersSave(busy, me, body, res)
     if (action === 'history') return await handleHistory(busy, body, res)
-    if (action === 'save') return await handleSave(busy, body, me, res)
+    if (action === 'save') return await handleSave(busy, hq, body, me, res)
     if (action === 'send-reminders') return await handleSendReminders(busy, body, me, res)
     return send(res, 400, { error: 'Unknown request.' })
   } catch (err) {
@@ -552,7 +574,7 @@ async function handleHistory(busy, body, res) {
   return send(res, 200, { history: rows })
 }
 
-async function handleSave(busy, body, me, res) {
+async function handleSave(busy, hq, body, me, res) {
   const code = String(body.party_code || '').slice(0, 40)
   const channel = String(body.channel || 'call')
   const outcome = String(body.outcome || '')
@@ -597,6 +619,8 @@ async function handleSave(busy, body, me, res) {
     created_by_name: me.name,
   }
   const saved = check(await busy.from('collection_followups').insert(row).select('*'), 'save')
+  // The owner's daily task is done once nothing is left on their list.
+  try { await closeDailyTaskIfDone(busy, hq, party.group_name, me) } catch (err) { console.error('daily task check failed:', err) }
   return send(res, 200, { ok: true, followup: saved[0] || null })
 }
 
@@ -716,4 +740,201 @@ async function handleSendReminders(busy, body, me, res) {
   }
   const sentAt = new Date().toISOString()
   return send(res, 200, { results, sentAt })
+}
+
+// ---------------------------------------------------------------------------
+// Daily WhatsApps + Task Board tasks (JCM-Server timer, or admins from the Today tab)
+// ---------------------------------------------------------------------------
+const HQ_URL = 'https://hq.jcmretails.com'
+
+async function isBusyServiceKey(key) {
+  try {
+    const c = createClient(SUPABASE_BUSY_URL, key, { auth: { autoRefreshToken: false, persistSession: false } })
+    const { data, error } = await c.from('collection_settings').select('id').eq('id', 1)
+    return !error && Array.isArray(data) && data.length === 1
+  } catch {
+    return false
+  }
+}
+
+const nowISTClock = () => new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(11, 16)
+
+// Claim today's run so two timers can never both send: the update only goes
+// through if last_<which> still holds the value we read (compare-and-set).
+async function claimRun(busy, which, today, previous) {
+  const col = which === 'morning' ? 'last_morning' : 'last_evening'
+  let q = busy.from('collection_settings').update({ [col]: today }).eq('id', 1)
+  q = previous ? q.eq(col, previous) : q.is(col, null)
+  const r = await q.select('id')
+  if (r.error) console.error('collections claimRun failed:', r.error)
+  return !r.error && (r.data || []).length === 1
+}
+
+async function runDaily(busy, hq, force) {
+  const today = todayIST()
+  const clock = nowISTClock()
+  const settings = check(await busy.from('collection_settings').select('*').eq('id', 1), 'settings')[0] || {}
+  const morningAt = settings.morning_at || '10:00'
+  const eveningAt = settings.evening_at || '19:00'
+  const out = { today, clock }
+  if (force === 'morning' || (!force && clock >= morningAt && clock < eveningAt && settings.last_morning !== today)) {
+    if (force || await claimRun(busy, 'morning', today, settings.last_morning)) out.morning = await runMorning(busy, hq, today)
+  }
+  if (force === 'evening' || (!force && clock >= eveningAt && settings.last_evening !== today)) {
+    if (force || await claimRun(busy, 'evening', today, settings.last_evening)) out.evening = await runEvening(busy, hq, today)
+  }
+  if (!out.morning && !out.evening) out.note = `nothing to do (morning ${morningAt}, evening ${eveningAt}, last ${settings.last_morning || '-'} / ${settings.last_evening || '-'})`
+  return out
+}
+
+// Due parties grouped by the person who follows up their group.
+async function dueByPerson(busy, hq) {
+  const [due, owners, people] = await Promise.all([computeDue(busy), loadOwners(busy), loadPeople(hq)])
+  const codes = [...due.keys()]
+  const rows = await inChunks(codes, 200, part => busy.from('dues_segmented')
+    .select('party_code, party_name, outstanding_balance').in('party_code', part).then(r => check(r, 'dues')))
+  const info = new Map(rows.map(r => [String(r.party_code), r]))
+  const byPerson = new Map()
+  for (const [code, reason] of due) {
+    const owner = owners.ownerOf(reason.group) || 'none'
+    const r = info.get(code) || {}
+    const list = byPerson.get(owner) || []
+    list.push({ code, name: r.party_name || code, balance: Number(r.outstanding_balance) || 0, reason })
+    byPerson.set(owner, list)
+  }
+  for (const list of byPerson.values()) {
+    const rank = x => x.reason.kind === 'date' ? 0 : x.reason.over >= 40 ? 1 : 2
+    list.sort((a, b) => rank(a) - rank(b) || b.balance - a.balance)
+  }
+  return { byPerson, people, owners }
+}
+
+const reasonText = r => r.kind === 'date' ? 'date set'
+  : `${r.every === 7 ? 'weekly' : 'fortnightly'}, ${r.days === null ? 'never called' : `last ${r.days} d ago`}`
+
+async function runMorning(busy, hq, today) {
+  const { byPerson, people } = await dueByPerson(busy, hq)
+  const filer = people.find(p => p.isAdmin) || null
+  const existing = check(await busy.from('collection_daily_tasks').select('*').eq('day', today), 'daily tasks')
+  const hasTask = new Set(existing.map(t => t.hq_user_id))
+  const results = []
+  for (const person of people) {
+    const list = byPerson.get(person.id) || []
+    if (!list.length) continue
+    const total = list.reduce((s, x) => s + x.balance, 0)
+    const top = list.slice(0, 10).map((x, i) => `${i + 1}. ${x.name} — ${rupeesText(x.balance)} (${reasonText(x.reason)})`)
+    let taskId = null
+    if (!hasTask.has(person.id)) {
+      const taskBody = [
+        `Payment follow-ups for today: ${list.length} part${list.length === 1 ? 'y' : 'ies'}, ${rupeesText(total)} due.`,
+        ...top,
+        list.length > 10 ? `…and ${list.length - 10} more.` : null,
+        `Call them from HQ → Payment Follow-up → Today's follow-ups (${HQ_URL}/#payment-followup/today). This task ticks itself done when your list is empty.`,
+      ].filter(Boolean).join('\n')
+      const t = await hq.from('team_tasks').insert({
+        task_type: 'payment_followup', body: taskBody, created_by: (filer || person).id,
+        assigned_to: person.id, due_date: today, status: 'open',
+      }).select('id').single()
+      if (t.error) console.error('daily task insert failed:', t.error)
+      else {
+        taskId = String(t.data.id)
+        const h = await hq.from('team_task_history').insert({ task_id: t.data.id, actor: (filer || person).id, action: 'filed', to_user: person.id })
+        if (h.error) console.error('daily task history failed:', h.error)
+      }
+    }
+    const text = [
+      `Good morning ${person.name.split(' ')[0]} 🙏`,
+      `Payment follow-ups for today: *${list.length}* part${list.length === 1 ? 'y' : 'ies'}, ${rupeesText(total)} due.`,
+      '',
+      ...top,
+      list.length > 10 ? `…and ${list.length - 10} more.` : null,
+      '',
+      `Open your list: ${HQ_URL}/#payment-followup/today`,
+    ].filter(x => x !== null).join('\n')
+    const wa = person.whatsapp ? await sendWhatsApp(person.whatsapp, text) : 'no_number'
+    const up = await busy.from('collection_daily_tasks').upsert({
+      day: today, hq_user_id: person.id, due_count: list.length, whatsapp: wa,
+      ...(taskId ? { task_id: taskId } : {}),
+    }, { onConflict: 'day,hq_user_id' })
+    if (up.error) console.error('daily task record failed:', up.error)
+    results.push({ person: person.name, due: list.length, task: taskId ? 'made' : hasTask.has(person.id) ? 'already' : 'failed', whatsapp: wa })
+  }
+  const unassigned = (byPerson.get('none') || []).length
+  return { people: results, unassigned }
+}
+
+async function runEvening(busy, hq, today) {
+  const { byPerson, people, owners } = await dueByPerson(busy, hq)
+  const startIST = new Date(`${today}T00:00:00+05:30`).toISOString()
+  const [done, morning, promisedToday] = await Promise.all([
+    fetchAll(() => busy.from('collection_followups').select('party_code, group_name, outcome, promised_amount, created_by')
+      .neq('channel', 'reminder').gte('created_at', startIST), 'done today'),
+    busy.from('collection_daily_tasks').select('hq_user_id, due_count').eq('day', today),
+    fetchAll(() => busy.from('collection_latest').select('party_code, party_name, promised_amount')
+      .eq('outcome', 'promised').eq('promised_date', today), 'promises today'),
+  ])
+  const morningCount = new Map((morning.data || []).map(r => [r.hq_user_id, r.due_count]))
+  const stats = new Map()
+  const stat = id => stats.get(id) || stats.set(id, { done: 0, promised: 0, promisedAmt: 0, noAnswer: 0 }).get(id)
+  const seen = new Set()
+  for (const d of done) {
+    if (seen.has(d.party_code)) continue
+    seen.add(d.party_code)
+    const s = stat(owners.ownerOf(d.group_name) || 'none')
+    s.done += 1
+    if (d.outcome === 'promised') { s.promised += 1; s.promisedAmt += Number(d.promised_amount) || 0 }
+    if (d.outcome === 'no_answer' || d.outcome === 'wrong_number') s.noAnswer += 1
+  }
+  // Close daily tasks whose list is now empty (in case the last save missed it).
+  const tasks = check(await busy.from('collection_daily_tasks').select('hq_user_id, task_id').eq('day', today), 'daily tasks')
+  for (const t of tasks) if (t.task_id && !(byPerson.get(t.hq_user_id) || []).length) await markTaskDone(hq, t.task_id, t.hq_user_id)
+
+  const lines = []
+  let tDone = 0
+  let tLeft = 0
+  for (const person of people) {
+    const s = stats.get(person.id) || { done: 0, promised: 0, promisedAmt: 0, noAnswer: 0 }
+    const left = (byPerson.get(person.id) || []).length
+    if (!s.done && !left && !morningCount.get(person.id)) continue
+    tDone += s.done
+    tLeft += left
+    lines.push(`• ${person.name}: ${s.done} done${morningCount.has(person.id) ? ` of ${morningCount.get(person.id)}` : ''}, ${left} left` +
+      `${s.promised ? ` · ${s.promised} promised ${rupeesText(s.promisedAmt)}` : ''}${s.noAnswer ? ` · ${s.noAnswer} no answer` : ''}`)
+  }
+  const none = (byPerson.get('none') || []).length
+  if (none) lines.push(`• Nobody assigned: ${none} parties due — set them in Assign groups.`)
+  const promiseTotal = promisedToday.reduce((s, p) => s + (Number(p.promised_amount) || 0), 0)
+  const text = [
+    `Payment follow-up — ${new Date(`${today}T00:00:00+05:30`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', timeZone: 'Asia/Kolkata' })}`,
+    `${tDone} parties followed up, ${tLeft} still due.`,
+    '',
+    ...lines,
+    promisedToday.length ? `\nPromised for today: ${promisedToday.length} part${promisedToday.length === 1 ? 'y' : 'ies'}, ${rupeesText(promiseTotal)} — check they came in.` : null,
+    `\n${HQ_URL}/#payment-followup/today`,
+  ].filter(x => x !== null).join('\n')
+  const sent = []
+  for (const admin of people.filter(p => p.isAdmin)) {
+    sent.push({ to: admin.name, whatsapp: admin.whatsapp ? await sendWhatsApp(admin.whatsapp, text) : 'no_number' })
+  }
+  return { done: tDone, left: tLeft, sent }
+}
+
+async function markTaskDone(hq, taskId, actor) {
+  const { data } = await hq.from('team_tasks').update({ status: 'done', done_at: new Date().toISOString() })
+    .eq('id', taskId).eq('status', 'open').select('id')
+  if (data?.length) {
+    const h = await hq.from('team_task_history').insert({ task_id: taskId, actor, action: 'done' })
+    if (h.error) console.error('daily task done history failed:', h.error)
+  }
+}
+
+async function closeDailyTaskIfDone(busy, hq, groupName, me) {
+  const owners = await loadOwners(busy)
+  const owner = owners.ownerOf(groupName)
+  if (!owner) return
+  const t = await busy.from('collection_daily_tasks').select('task_id').eq('day', todayIST()).eq('hq_user_id', owner).maybeSingle()
+  if (t.error || !t.data?.task_id) return
+  const due = await computeDue(busy)
+  const left = [...due.values()].some(r => owners.ownerOf(r.group) === owner)
+  if (!left) await markTaskDone(hq, t.data.task_id, me.id)
 }
