@@ -169,11 +169,12 @@ export function renderPaymentFollowup(container, sub) {
     today: todayIST(),
     loading: false,
     modal: null, // { party, channel, outcome, history }
-    // 'overdue' = only parties with something unpaid on bills older than
-    // graceDays (so nobody is chased for credit given last week). Not
+    // 20 / 40 = only parties with something unpaid on bills older than that
+    // many days (so nobody is chased for credit given last week). Not
     // remembered: every visit starts there on purpose.
-    scope: 'overdue',
+    scope: 20,          // 20 / 40 (days) or 'all'
     graceDays: 20,
+    graceSteps: [20, 40],
   }
 
   container.innerHTML = `
@@ -198,7 +199,8 @@ export function renderPaymentFollowup(container, sub) {
         </div>
         <div class="pf-scope-row">
           <div class="pf-scope" id="pfScope" role="group" aria-label="Which dues">
-            <button type="button" data-scope="overdue" class="active">Due over <span class="pf-grace">20</span> days</button>
+            <button type="button" data-scope="20" class="active">Over 20 days</button>
+            <button type="button" data-scope="40">Over 40 days</button>
             <button type="button" data-scope="all">All dues</button>
           </div>
           <span class="pf-muted" id="pfScopeNote"></span>
@@ -238,7 +240,7 @@ export function renderPaymentFollowup(container, sub) {
           <label class="pf-field"><span>Remarks</span>
             <textarea id="pfRemarks" rows="2" maxlength="1000" placeholder="What did they say?"></textarea>
           </label>
-          <div class="pf-field"><span>Next follow-up</span>
+          <div class="pf-field"><span>Next follow-up <em class="pf-hint">— leave empty to follow the rhythm: over 40 days weekly, over 20 days every 2 weeks</em></span>
             <div class="pf-next">
               <input id="pfNext" type="date">
               <div class="pf-quick" id="pfQuick">
@@ -284,8 +286,9 @@ export function renderPaymentFollowup(container, sub) {
   $('pfSort').addEventListener('change', e => { state.sort = e.target.value; store('pf.sort', state.sort); drawList() })
   $('pfScope').addEventListener('click', e => {
     const b = e.target.closest('[data-scope]')
-    if (!b || b.dataset.scope === state.scope) return
-    state.scope = b.dataset.scope
+    const next = b && (b.dataset.scope === 'all' ? 'all' : Number(b.dataset.scope))
+    if (!b || next === state.scope) return
+    state.scope = next
     drawScope(); drawGroupSelect(); drawTiles(); drawList()
   })
 
@@ -365,6 +368,7 @@ export function renderPaymentFollowup(container, sub) {
       state.meta = await call({ action: 'meta' })
       state.today = state.meta.today || state.today
       state.graceDays = state.meta.graceDays || state.graceDays
+      state.graceSteps = state.meta.graceSteps || state.graceSteps
       drawScope()
       // The remembered group may have no dues any more — ask again.
       if (state.view === 'group' && state.group && !state.meta.groups.some(g => g.group_name === state.group)) {
@@ -382,9 +386,10 @@ export function renderPaymentFollowup(container, sub) {
   function drawGroupSelect() {
     const m = state.meta
     if (!m) return
-    const od = state.scope === 'overdue'
+    const od = state.scope !== 'all'
+    const stepOf = x => x.byStep?.[state.scope] || (state.scope === state.graceDays ? { parties: x.overdueParties ?? x.parties, total: x.overdue ?? x.total } : { parties: x.parties, total: x.total })
     const opt = g => `<option value="${esc(g.group_name)}">${esc(g.group_name)} — ${od
-      ? `${g.overdueParties ?? g.parties} · ${esc(shortRupees(g.overdue ?? g.total))} over ${state.graceDays} d`
+      ? `${stepOf(g).parties} · ${esc(shortRupees(stepOf(g).total))} over ${state.scope} d`
       : `${g.parties} · ${esc(shortRupees(g.total))}`}${g.dnd ? ' · DND' : ''}</option>`
     const bySeg = seg => m.groups.filter(g => g.segment === seg)
     const others = m.groups.filter(g => !['Retail', 'Distribution'].includes(g.segment))
@@ -392,7 +397,7 @@ export function renderPaymentFollowup(container, sub) {
       ${state.view === 'group' && !state.group ? '<option value="" selected disabled>Pick an account group…</option>' : ''}
       <option value="__due">Follow-ups due today${m.dueFollowups ? ` (${m.dueFollowups})` : ''}</option>
       <option value="__all">All groups — ${od
-        ? `${m.overdueParties ?? m.totalParties} · ${esc(shortRupees(m.overdueTotal ?? m.totalDue))} over ${state.graceDays} d`
+        ? `${stepOf({ byStep: m.byStep, overdueParties: m.overdueParties, overdue: m.overdueTotal, parties: m.totalParties, total: m.totalDue }).parties} · ${esc(shortRupees(stepOf({ byStep: m.byStep, overdueParties: m.overdueParties, overdue: m.overdueTotal, parties: m.totalParties, total: m.totalDue }).total))} over ${state.scope} d`
         : `${m.totalParties} · ${esc(shortRupees(m.totalDue))}`}</option>
       ${bySeg('Retail').length ? `<optgroup label="Retail">${bySeg('Retail').map(opt).join('')}</optgroup>` : ''}
       ${bySeg('Distribution').length ? `<optgroup label="Distribution">${bySeg('Distribution').map(opt).join('')}</optgroup>` : ''}
@@ -404,30 +409,36 @@ export function renderPaymentFollowup(container, sub) {
   // Parties on screen for the chosen scope (the due-today view always shows everyone it has).
   function visible() {
     if (state.scope === 'all' || state.view === 'due') return state.parties
-    return state.parties.filter(p => (p.overdue ?? p.balance) >= 1)
+    return state.parties.filter(p => overdueOf(p) >= 1)
   }
-  const amountOf = p => (state.scope === 'overdue' && state.view !== 'due' ? (p.overdue ?? p.balance) : p.balance)
+  // What the party owes on bills older than the chosen number of days.
+  function overdueOf(p, days = state.scope === 'all' ? state.graceDays : state.scope) {
+    const v = p.overdueBy?.[days] ?? (days === state.graceDays ? p.overdue : undefined) ?? p.balance
+    return Math.min(v, p.balance)
+  }
+  const amountOf = p => (state.scope !== 'all' && state.view !== 'due' ? overdueOf(p) : p.balance)
 
   function drawScope() {
-    $('pfScope').querySelectorAll('[data-scope]').forEach(b => b.classList.toggle('active', b.dataset.scope === state.scope))
-    $('pfScope').querySelector('.pf-grace').textContent = state.graceDays
+    $('pfScope').querySelectorAll('[data-scope]').forEach(b => b.classList.toggle('active', b.dataset.scope === String(state.scope)))
+    $('pfScope').hidden = state.view === 'due'
     $('pfScopeNote').textContent = state.view === 'due'
-      ? 'Follow-ups due today are always shown.'
-      : state.scope === 'overdue' ? `Credit given in the last ${state.graceDays} days is left out.` : 'Showing every party with dues, including recent credit.'
+      ? 'Due today: dates set by staff, plus over 40 days every week and over 20 days every 2 weeks since the last call.'
+      : state.scope !== 'all' ? `Credit given in the last ${state.scope} days is left out.` : 'Showing every party with dues, including recent credit.'
   }
 
   function drawTiles() {
     const ps = visible()
     const total = ps.reduce((s, p) => s + p.balance, 0)
-    const overdueSum = ps.reduce((s, p) => s + (p.overdue ?? p.balance), 0)
+    const overdueSum = ps.reduce((s, p) => s + overdueOf(p, state.view === 'due' ? state.graceDays : undefined), 0)
+    const days = state.scope === 'all' || state.view === 'due' ? state.graceDays : state.scope
     const over90 = ps.reduce((s, p) => s + (p.ageing ? p.ageing.d90_plus + p.ageing.older : 0), 0)
     const due = state.meta?.dueFollowups ?? 0
     const viewLabel = state.view === 'all' ? 'All groups' : state.view === 'due' ? 'Due today' : (state.group || '—')
     $('pfTiles').innerHTML = `
       <div class="pf-tile"><span class="pf-tile-label">${esc(viewLabel)}</span><span class="pf-tile-value">${ps.length}</span><span class="pf-tile-sub">parties</span></div>
-      ${state.scope === 'overdue' && state.view !== 'due'
-        ? `<div class="pf-tile"><span class="pf-tile-label">Due over ${state.graceDays} days</span><span class="pf-tile-value">${esc(shortRupees(overdueSum))}</span><span class="pf-tile-sub">of ${esc(shortRupees(total))} total due</span></div>`
-        : `<div class="pf-tile"><span class="pf-tile-label">Total due</span><span class="pf-tile-value">${esc(shortRupees(total))}</span><span class="pf-tile-sub">${esc(shortRupees(overdueSum))} over ${state.graceDays} days</span></div>`}
+      ${state.scope !== 'all' && state.view !== 'due'
+        ? `<div class="pf-tile"><span class="pf-tile-label">Due over ${days} days</span><span class="pf-tile-value">${esc(shortRupees(overdueSum))}</span><span class="pf-tile-sub">of ${esc(shortRupees(total))} total due</span></div>`
+        : `<div class="pf-tile"><span class="pf-tile-label">Total due</span><span class="pf-tile-value">${esc(shortRupees(total))}</span><span class="pf-tile-sub">${esc(shortRupees(overdueSum))} over ${days} days</span></div>`}
       <div class="pf-tile pf-tile-red"><span class="pf-tile-label">Over 90 days</span><span class="pf-tile-value">${esc(shortRupees(over90))}</span><span class="pf-tile-sub">${total ? Math.round(over90 / total * 100) : 0}% of the dues</span></div>
       <button type="button" class="pf-tile pf-tile-amb" data-goto="due"><span class="pf-tile-label">Follow-ups due</span><span class="pf-tile-value">${due}</span><span class="pf-tile-sub">today or overdue →</span></button>
     `
@@ -467,7 +478,10 @@ export function renderPaymentFollowup(container, sub) {
     const by = state.sort
     const oldestKey = p => p.ageing?.older > 0 ? '0000-00-00' : (p.ageing?.oldest_unpaid_date || '9999-99-99')
     const nextKey = p => p.latest?.next_followup || '9999-99-99'
+    // Due today: typed dates first, then over-40 (weekly), then over-20, biggest first within each.
+    const rank = p => !p.due_reason ? 3 : p.due_reason.kind === 'date' ? 0 : p.due_reason.over >= 40 ? 1 : 2
     return [...list].sort((a, b) => {
+      if (state.view === 'due' && by === 'amount' && rank(a) !== rank(b)) return rank(a) - rank(b)
       if (by === 'name') return String(a.party_name).localeCompare(String(b.party_name))
       if (by === 'oldest') return oldestKey(a).localeCompare(oldestKey(b)) || amountOf(b) - amountOf(a)
       if (by === 'next') return nextKey(a).localeCompare(nextKey(b)) || amountOf(b) - amountOf(a)
@@ -485,10 +499,10 @@ export function renderPaymentFollowup(container, sub) {
         (qDigits.length >= 4 && p.phones.some(ph => ph.includes(qDigits))))
     }
     if (!list.length) {
-      const hiddenRecent = state.scope === 'overdue' && state.view !== 'due' ? state.parties.length : 0
+      const hiddenRecent = state.scope !== 'all' && state.view !== 'due' ? state.parties.length : 0
       listEl.innerHTML = `<div class="empty-state">${q ? 'No party matches that search.'
         : state.view === 'due' ? 'No follow-ups due today. 🎉'
-        : hiddenRecent ? `Nobody here has dues older than ${state.graceDays} days. ${hiddenRecent} part${hiddenRecent === 1 ? 'y has' : 'ies have'} only recent credit — tap “All dues” to see them.`
+        : hiddenRecent ? `Nobody here has dues older than ${state.scope} days. ${hiddenRecent} part${hiddenRecent === 1 ? 'y has' : 'ies have'} only recent credit — tap “All dues” to see them.`
         : 'Nobody in this group owes money.'}</div>`
       return
     }
@@ -550,15 +564,24 @@ export function renderPaymentFollowup(container, sub) {
   // the line under it splits the rest out so recent credit is plain to see.
   function balanceHtml(p) {
     if (p.balance <= 0) return '<div class="pf-balance pf-balance-clear">Nothing due</div>'
-    const od = Math.min(p.overdue ?? p.balance, p.balance)
+    const g = state.view === 'due' ? (p.due_reason?.over || state.graceDays) : state.scope === 'all' ? state.graceDays : state.scope
+    const od = overdueOf(p, g)
     const recent = p.balance - od
-    const g = state.graceDays
-    if (state.scope === 'overdue' && state.view !== 'due') {
+    if (state.scope !== 'all' && state.view !== 'due') {
       return `<div class="pf-balance">${esc(rupees(od))}</div>
         <div class="pf-balance-sub">over ${g} days${recent >= 1 ? ` · total ${esc(rupees(p.balance))} (${esc(rupees(recent))} recent)` : ''}</div>`
     }
     return `<div class="pf-balance">${esc(rupees(p.balance))}</div>
       <div class="pf-balance-sub">${od < 1 ? `<span class="pf-pill pf-tone-grn">All within ${g} days</span>` : recent >= 1 ? `${esc(rupees(od))} over ${g} days · ${esc(rupees(recent))} recent` : `all over ${g} days`}</div>`
+  }
+
+  // Why a party is on the due-today list.
+  function reasonHtml(p) {
+    const r = p.due_reason
+    if (!r || state.view !== 'due' || r.kind === 'date') return ''
+    const rhythm = r.every === 7 ? 'Weekly' : `Every ${r.every} days`
+    const since = r.days === null ? 'never called' : `last contact ${r.days} days ago`
+    return `<span class="pf-pill ${r.over >= 40 ? 'pf-tone-red' : 'pf-tone-amb'}" title="Over ${r.over} days: follow up every ${r.every} days">${esc(rhythm)} · over ${r.over} d · ${esc(since)}</span>`
   }
 
   function rowHtml(p) {
@@ -586,6 +609,7 @@ export function renderPaymentFollowup(container, sub) {
         <div class="pf-row-side">
           ${balanceHtml(p)}
           ${nextHtml(p)}
+          ${reasonHtml(p)}
           <div class="pf-actions">
             ${phone ? `<a class="btn-contact btn-call" href="tel:+91${phone}" data-act="call" data-code="${code}">${PHONE_SVG} Call</a>` : ''}
             ${waHref ? `<a class="btn-contact btn-whatsapp" href="${esc(waHref)}" target="_blank" rel="noopener" data-act="whatsapp" data-code="${code}">${WA_SVG} WhatsApp</a>` : ''}

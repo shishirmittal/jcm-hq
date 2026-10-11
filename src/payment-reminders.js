@@ -52,7 +52,7 @@ export function renderPaymentReminders(container) {
     template: store('pfr.template') || DEFAULT_TEMPLATE,
     sending: false,
     today: todayIST(),
-    onlyOverdue: true,   // not remembered: always starts on
+    overDays: 20,        // 20 / 40, or 0 = any dues; not remembered: always starts at 20
     graceDays: 20,
   }
 
@@ -77,7 +77,11 @@ export function renderPaymentReminders(container) {
             </div>
             <div class="pfr-filters">
               <label>Due at least ₹ <input id="pfrMin" type="number" min="0" step="100" inputmode="numeric"></label>
-              <label><input type="checkbox" id="pfrOverdue" checked> Only dues over <span class="pfr-grace">20</span> days</label>
+              <label>Only dues over
+                <select id="pfrOverdue">
+                  <option value="20" selected>20 days</option><option value="40">40 days</option><option value="0">— (any dues)</option>
+                </select>
+              </label>
               <label>Skip if reminded in the last
                 <select id="pfrSkip">
                   <option value="0">— (don't skip)</option><option value="3">3 days</option>
@@ -130,7 +134,7 @@ export function renderPaymentReminders(container) {
     resetSelection(); draw()
   })
   $('pfrOverdue').addEventListener('change', e => {
-    state.onlyOverdue = e.target.checked
+    state.overDays = Number(e.target.value) || 0
     resetSelection(); draw()
   })
   $('pfrTemplate').addEventListener('input', e => {
@@ -170,7 +174,6 @@ export function renderPaymentReminders(container) {
       state.meta = await call({ action: 'meta' })
       state.today = state.meta.today || state.today
       state.graceDays = state.meta.graceDays || state.graceDays
-      $('pfrOverdue').closest('label').querySelector('.pfr-grace').textContent = state.graceDays
       const m = state.meta
       const sendable = m.groups.filter(g => !g.dnd)
       if (state.group && state.group !== '__all' && !sendable.some(g => g.group_name === state.group)) {
@@ -239,8 +242,13 @@ export function renderPaymentReminders(container) {
     }
     return null
   }
+  function overdueOf(p, days) {
+    const v = p.overdueBy?.[days] ?? (days === state.graceDays ? p.overdue : undefined) ?? p.balance
+    return Math.min(v, p.balance)
+  }
+
   function shown() {
-    return state.parties.filter(p => p.balance >= state.minAmount && (!state.onlyOverdue || (p.overdue ?? p.balance) >= 1))
+    return state.parties.filter(p => p.balance >= state.minAmount && (!state.overDays || overdueOf(p, state.overDays) >= 1))
   }
   function eligible() { return shown().filter(p => !blockReason(p) && state.results[p.party_code] !== 'sent') }
 
@@ -267,7 +275,7 @@ export function renderPaymentReminders(container) {
           </span>
           <span class="pfr-row-side">
             <span class="pfr-amount">${esc(rupees(p.balance))}</span>
-            ${(p.overdue ?? p.balance) < p.balance ? `<span class="pf-muted">${esc(rupees(p.overdue ?? 0))} over ${state.graceDays} d</span>` : ''}
+            ${overdueOf(p, state.overDays || state.graceDays) < p.balance ? `<span class="pf-muted">${esc(rupees(overdueOf(p, state.overDays || state.graceDays)))} over ${state.overDays || state.graceDays} d</span>` : ''}
             ${result ? `<span class="pf-pill pf-tone-${resultTone}">${esc(STATUS_TEXT[result] || result)}</span>` : reason ? `<span class="pf-pill pf-tone-grey">${esc(reason)}</span>` : ''}
           </span>
         </label>`

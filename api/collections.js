@@ -41,6 +41,13 @@ const DND_GROUP = 'JCM Due DND'
 // something unpaid on bills older than this, unless "All dues" is picked.
 // The number lives in the SQL function's default (p_grace 20); this is only for labels.
 const GRACE_DAYS = 20
+// The "Due over N days" buttons on the page. Each step is one extra call to
+// collections_ageing with p_grace = N; overdueBy[N] on every party.
+const GRACE_STEPS = [20, 40]
+// Follow-up rhythm (Shishir, 2026-10-11): anything over 40 days → every week,
+// over 20 days → every two weeks, counted from the last call / note saved.
+// A next follow-up date that staff typed always wins over the rhythm.
+const CADENCE = [{ over: 40, every: 7 }, { over: 20, every: 14 }]
 
 const CHANNELS = new Set(['call', 'whatsapp', 'visit', 'note'])
 const OUTCOMES = new Set([
@@ -175,8 +182,18 @@ function overdueOf(ag) {
   if (ag.overdue !== undefined && ag.overdue !== null) return Number(ag.overdue) || 0
   return (Number(ag.d31_60) || 0) + (Number(ag.d61_90) || 0) + (Number(ag.d90_plus) || 0) + (Number(ag.older) || 0)
 }
-const ageingFor = (busy, codes) =>
-  inChunks(codes, 400, part => busy.rpc('collections_ageing', { p_codes: part }).then(r => check(r, 'ageing')))
+const ageingFor = (busy, codes, grace) =>
+  inChunks(codes, 400, part => busy.rpc('collections_ageing', grace ? { p_codes: part, p_grace: grace } : { p_codes: part })
+    .then(r => check(r, 'ageing')))
+// { 20: Map(code -> overdue), 40: … } — the first step reuses `base` (default p_grace = 20).
+async function overdueSteps(busy, codes, base) {
+  const out = {}
+  await Promise.all(GRACE_STEPS.map(async g => {
+    const rows = g === GRACE_DAYS && base ? base : await ageingFor(busy, codes, g)
+    out[g] = new Map(rows.map(a => [String(a.party_code), overdueOf(a)]))
+  }))
+  return out
+}
 
 // party_dues is written by sync-dues-final.js on JCM-Server, which only
 // updates parties that still owe money: someone who has paid in full keeps
@@ -193,14 +210,49 @@ async function dueFreshness(busy) {
   return { lastSync, stale: new Set(rows.map(r => String(r.party_code))) }
 }
 
+// Who needs a follow-up today, and why. Map party_code -> reason.
+//   { kind: 'date', date }                     next follow-up date typed, today or earlier
+//   { kind: 'cadence', over, every, days }     rhythm reached (days = since last contact, null = never)
+// `pre` = { live, steps } when the caller already has them (meta).
+async function computeDue(busy, pre = null) {
+  const today = todayIST()
+  const [fresh, rows, latest] = await Promise.all([
+    pre ? null : dueFreshness(busy),
+    pre ? null : fetchAll(receivables(busy, 'party_code'), 'dues'),
+    fetchAll(() => busy.from('collection_latest').select('party_code, next_followup, created_at'), 'latest'),
+  ])
+  const live = pre ? pre.live : rows.map(r => String(r.party_code)).filter(c => !fresh.stale.has(c))
+  const steps = pre ? pre.steps : await overdueSteps(busy, live)
+  const latestMap = new Map(latest.map(l => [String(l.party_code), l]))
+  const due = new Map()
+  // Dates staff typed — even for a party who has paid since (shown as nothing due).
+  for (const l of latest) {
+    if (l.next_followup && l.next_followup <= today) due.set(String(l.party_code), { kind: 'date', date: l.next_followup })
+  }
+  for (const code of live) {
+    if (due.has(code)) continue
+    const l = latestMap.get(code)
+    if (l?.next_followup) continue // a future date was typed: wait for it
+    const rule = CADENCE.find(c => (steps[c.over]?.get(code) || 0) >= 1)
+    if (!rule) continue
+    const lastDay = l?.created_at ? new Date(new Date(l.created_at).getTime() + 5.5 * 3600e3).toISOString().slice(0, 10) : null
+    const days = lastDay ? Math.round((Date.parse(today) - Date.parse(lastDay)) / 86400000) : null
+    if (days === null || days >= rule.every) due.set(code, { kind: 'cadence', over: rule.over, every: rule.every, days })
+  }
+  return due
+}
+
 // ---------------------------------------------------------------------------
 // count / meta
 // ---------------------------------------------------------------------------
 async function handleCount(busy, res) {
-  const r = await busy.from('collection_latest').select('party_code', { count: 'exact', head: true })
-    .lte('next_followup', todayIST())
-  if (r.error) return send(res, 200, { due: 0 })
-  return send(res, 200, { due: r.count || 0 })
+  try {
+    const due = await computeDue(busy)
+    return send(res, 200, { due: due.size })
+  } catch (err) {
+    console.error('collections count failed:', err)
+    return send(res, 200, { due: 0 })
+  }
 }
 
 async function handleMeta(busy, res) {
@@ -209,23 +261,32 @@ async function handleMeta(busy, res) {
     fetchAll(receivables(busy, 'party_code, group_name, segment, outstanding_balance'), 'groups'),
   ])
   const rows = allRows.filter(r => !fresh.stale.has(String(r.party_code)))
-  const ageing = await ageingFor(busy, rows.map(r => String(r.party_code)))
-  const overdueMap = new Map(ageing.map(a => [String(a.party_code), overdueOf(a)]))
+  const steps = await overdueSteps(busy, rows.map(r => String(r.party_code)))
+  const overdueMap = steps[GRACE_DAYS]
   const map = new Map()
   let overdueParties = 0
   let overdueTotal = 0
+  const byStep = Object.fromEntries(GRACE_STEPS.map(n => [n, { parties: 0, total: 0 }]))
   for (const r of rows) {
     const name = r.group_name || '(No group)'
-    const g = map.get(name) || { group_name: name, segment: r.segment || 'Unassigned', parties: 0, total: 0, overdueParties: 0, overdue: 0, dnd: isDnd(r) }
+    const g = map.get(name) || {
+      group_name: name, segment: r.segment || 'Unassigned', parties: 0, total: 0, overdueParties: 0, overdue: 0, dnd: isDnd(r),
+      byStep: Object.fromEntries(GRACE_STEPS.map(n => [n, { parties: 0, total: 0 }])),
+    }
     g.parties += 1
     g.total += Number(r.outstanding_balance) || 0
     const od = overdueMap.get(String(r.party_code)) || 0
     if (od >= 1) { g.overdueParties += 1; g.overdue += od; overdueParties += 1; overdueTotal += od }
+    for (const n of GRACE_STEPS) {
+      const v = steps[n].get(String(r.party_code)) || 0
+      if (v >= 1) { g.byStep[n].parties += 1; g.byStep[n].total += v; byStep[n].parties += 1; byStep[n].total += v }
+    }
     map.set(name, g)
   }
   const groups = [...map.values()].sort((a, b) => b.total - a.total)
-  const due = await busy.from('collection_latest').select('party_code', { count: 'exact', head: true })
-    .lte('next_followup', todayIST())
+  let dueCount = 0
+  let setupNeeded = false
+  try { dueCount = (await computeDue(busy, { live: rows.map(r => String(r.party_code)), steps })).size } catch (err) { setupNeeded = true; console.error('collections due failed:', err) }
   return send(res, 200, {
     groups,
     totalParties: rows.length,
@@ -233,8 +294,11 @@ async function handleMeta(busy, res) {
     overdueParties,
     overdueTotal,
     graceDays: GRACE_DAYS,
-    dueFollowups: due.error ? 0 : (due.count || 0),
-    setupNeeded: !!due.error,
+    graceSteps: GRACE_STEPS,
+    byStep,
+    dueFollowups: dueCount,
+    cadence: CADENCE,
+    setupNeeded,
     dndGroup: DND_GROUP,
     whatsappReady: !!process.env.WHATSHUB_SEND_URL,
     today: todayIST(),
@@ -254,14 +318,18 @@ async function handleList(busy, body, res) {
   const fresh = await dueFreshness(busy)
   let parties
   let latestRows = null
+  let dueMap = null
   if (view === 'due') {
-    latestRows = await fetchAll(() => busy.from('collection_latest').select('*').lte('next_followup', today), 'due follow-ups')
-    const codes = latestRows.map(r => r.party_code)
+    dueMap = await computeDue(busy)
+    const codes = [...dueMap.keys()]
     parties = await inChunks(codes, 200, part => busy.from('dues_segmented').select(cols).in('party_code', part).then(r => check(r, 'dues')))
     // Someone set a follow-up date for a party who has since paid up: still show them.
-    const seen = new Set(parties.map(p => p.party_code))
-    for (const l of latestRows) {
-      if (!seen.has(l.party_code)) parties.push({ party_code: l.party_code, party_name: l.party_name, group_name: l.group_name, outstanding_balance: 0 })
+    const seen = new Set(parties.map(p => String(p.party_code)))
+    const missing = codes.filter(c => !seen.has(c))
+    if (missing.length) {
+      latestRows = await inChunks(missing, 200, part => busy.from('collection_latest').select('*').in('party_code', part).then(r => check(r, 'latest')))
+      for (const l of latestRows) parties.push({ party_code: l.party_code, party_name: l.party_name, group_name: l.group_name, outstanding_balance: 0 })
+      latestRows = null
     }
   } else if (view === 'all') {
     parties = await fetchAll(receivables(busy, cols), 'dues')
@@ -297,6 +365,7 @@ async function handleList(busy, body, res) {
     return m
   }
   const ageMap = byCode(ageing)
+  const steps = await overdueSteps(busy, codes, ageing)
   const pdMap = byCode(partyDues)
   const custMap = byCode(customers)
   const latestMap = byCode(latest)
@@ -321,6 +390,8 @@ async function handleList(busy, body, res) {
       phones,
       whatsapp,
       overdue: fresh.stale.has(code) ? 0 : Math.min(overdueOf(ag), Number(p.outstanding_balance) || 0),
+      overdueBy: Object.fromEntries(GRACE_STEPS.map(n => [n,
+        fresh.stale.has(code) ? 0 : Math.min(steps[n].get(code) || 0, Number(p.outstanding_balance) || 0)])),
       ageing: ag && !fresh.stale.has(code) && {
         last_bill_date: ag.last_bill_date,
         oldest_unpaid_date: ag.oldest_unpaid_date,
@@ -333,10 +404,11 @@ async function handleList(busy, body, res) {
       },
       latest: latestMap.get(code) || null,
       last_reminder: lastReminder.get(code) || null,
+      due_reason: dueMap ? dueMap.get(code) || null : null,
     }
   })
 
-  return send(res, 200, { parties: out, view, group, today, lastSync: fresh.lastSync, graceDays: GRACE_DAYS })
+  return send(res, 200, { parties: out, view, group, today, lastSync: fresh.lastSync, graceDays: GRACE_DAYS, graceSteps: GRACE_STEPS })
 }
 
 // ---------------------------------------------------------------------------
