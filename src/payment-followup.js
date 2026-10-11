@@ -169,6 +169,11 @@ export function renderPaymentFollowup(container, sub) {
     today: todayIST(),
     loading: false,
     modal: null, // { party, channel, outcome, history }
+    // 'overdue' = only parties with something unpaid on bills older than
+    // graceDays (so nobody is chased for credit given last week). Not
+    // remembered: every visit starts there on purpose.
+    scope: 'overdue',
+    graceDays: 20,
   }
 
   container.innerHTML = `
@@ -190,6 +195,13 @@ export function renderPaymentFollowup(container, sub) {
           <select id="pfSort" class="pf-select pf-sort" aria-label="Sort">
             ${SORTS.map(s => `<option value="${s.id}">${esc(s.label)}</option>`).join('')}
           </select>
+        </div>
+        <div class="pf-scope-row">
+          <div class="pf-scope" id="pfScope" role="group" aria-label="Which dues">
+            <button type="button" data-scope="overdue" class="active">Due over <span class="pf-grace">20</span> days</button>
+            <button type="button" data-scope="all">All dues</button>
+          </div>
+          <span class="pf-muted" id="pfScopeNote"></span>
         </div>
         <div id="pfList" class="pf-list"><div class="loading-state">Loading…</div></div>
       </main>
@@ -270,6 +282,20 @@ export function renderPaymentFollowup(container, sub) {
     searchTimer = setTimeout(() => { state.q = e.target.value.trim().toLowerCase(); drawList() }, 150)
   })
   $('pfSort').addEventListener('change', e => { state.sort = e.target.value; store('pf.sort', state.sort); drawList() })
+  $('pfScope').addEventListener('click', e => {
+    const b = e.target.closest('[data-scope]')
+    if (!b || b.dataset.scope === state.scope) return
+    state.scope = b.dataset.scope
+    drawScope(); drawGroupSelect(); drawTiles(); drawList()
+  })
+
+  // Dues sync every 30 minutes on JCM-Server; refresh quietly every 5 so a
+  // payment entered in Busy drops off without anyone pressing Refresh.
+  const autoRefresh = setInterval(() => {
+    if (!container.isConnected) { clearInterval(autoRefresh); return }
+    if (document.hidden || state.modal || state.loading) return
+    loadMeta(); loadList(true)
+  }, 5 * 60 * 1000)
 
   $('pfTiles').addEventListener('click', e => {
     const t = e.target.closest('[data-goto]')
@@ -338,6 +364,8 @@ export function renderPaymentFollowup(container, sub) {
     try {
       state.meta = await call({ action: 'meta' })
       state.today = state.meta.today || state.today
+      state.graceDays = state.meta.graceDays || state.graceDays
+      drawScope()
       // The remembered group may have no dues any more — ask again.
       if (state.view === 'group' && state.group && !state.meta.groups.some(g => g.group_name === state.group)) {
         state.group = ''
@@ -354,13 +382,18 @@ export function renderPaymentFollowup(container, sub) {
   function drawGroupSelect() {
     const m = state.meta
     if (!m) return
-    const opt = g => `<option value="${esc(g.group_name)}">${esc(g.group_name)} — ${g.parties} · ${esc(shortRupees(g.total))}${g.dnd ? ' · DND' : ''}</option>`
+    const od = state.scope === 'overdue'
+    const opt = g => `<option value="${esc(g.group_name)}">${esc(g.group_name)} — ${od
+      ? `${g.overdueParties ?? g.parties} · ${esc(shortRupees(g.overdue ?? g.total))} over ${state.graceDays} d`
+      : `${g.parties} · ${esc(shortRupees(g.total))}`}${g.dnd ? ' · DND' : ''}</option>`
     const bySeg = seg => m.groups.filter(g => g.segment === seg)
     const others = m.groups.filter(g => !['Retail', 'Distribution'].includes(g.segment))
     $('pfGroup').innerHTML = `
       ${state.view === 'group' && !state.group ? '<option value="" selected disabled>Pick an account group…</option>' : ''}
       <option value="__due">Follow-ups due today${m.dueFollowups ? ` (${m.dueFollowups})` : ''}</option>
-      <option value="__all">All groups — ${m.totalParties} · ${esc(shortRupees(m.totalDue))}</option>
+      <option value="__all">All groups — ${od
+        ? `${m.overdueParties ?? m.totalParties} · ${esc(shortRupees(m.overdueTotal ?? m.totalDue))} over ${state.graceDays} d`
+        : `${m.totalParties} · ${esc(shortRupees(m.totalDue))}`}</option>
       ${bySeg('Retail').length ? `<optgroup label="Retail">${bySeg('Retail').map(opt).join('')}</optgroup>` : ''}
       ${bySeg('Distribution').length ? `<optgroup label="Distribution">${bySeg('Distribution').map(opt).join('')}</optgroup>` : ''}
       ${others.length ? `<optgroup label="Other">${others.map(opt).join('')}</optgroup>` : ''}
@@ -368,21 +401,39 @@ export function renderPaymentFollowup(container, sub) {
     $('pfGroup').value = state.view === 'all' ? '__all' : state.view === 'due' ? '__due' : state.group
   }
 
+  // Parties on screen for the chosen scope (the due-today view always shows everyone it has).
+  function visible() {
+    if (state.scope === 'all' || state.view === 'due') return state.parties
+    return state.parties.filter(p => (p.overdue ?? p.balance) >= 1)
+  }
+  const amountOf = p => (state.scope === 'overdue' && state.view !== 'due' ? (p.overdue ?? p.balance) : p.balance)
+
+  function drawScope() {
+    $('pfScope').querySelectorAll('[data-scope]').forEach(b => b.classList.toggle('active', b.dataset.scope === state.scope))
+    $('pfScope').querySelector('.pf-grace').textContent = state.graceDays
+    $('pfScopeNote').textContent = state.view === 'due'
+      ? 'Follow-ups due today are always shown.'
+      : state.scope === 'overdue' ? `Credit given in the last ${state.graceDays} days is left out.` : 'Showing every party with dues, including recent credit.'
+  }
+
   function drawTiles() {
-    const ps = state.parties
+    const ps = visible()
     const total = ps.reduce((s, p) => s + p.balance, 0)
+    const overdueSum = ps.reduce((s, p) => s + (p.overdue ?? p.balance), 0)
     const over90 = ps.reduce((s, p) => s + (p.ageing ? p.ageing.d90_plus + p.ageing.older : 0), 0)
     const due = state.meta?.dueFollowups ?? 0
     const viewLabel = state.view === 'all' ? 'All groups' : state.view === 'due' ? 'Due today' : (state.group || '—')
     $('pfTiles').innerHTML = `
       <div class="pf-tile"><span class="pf-tile-label">${esc(viewLabel)}</span><span class="pf-tile-value">${ps.length}</span><span class="pf-tile-sub">parties</span></div>
-      <div class="pf-tile"><span class="pf-tile-label">Total due</span><span class="pf-tile-value">${esc(shortRupees(total))}</span><span class="pf-tile-sub">in this list</span></div>
+      ${state.scope === 'overdue' && state.view !== 'due'
+        ? `<div class="pf-tile"><span class="pf-tile-label">Due over ${state.graceDays} days</span><span class="pf-tile-value">${esc(shortRupees(overdueSum))}</span><span class="pf-tile-sub">of ${esc(shortRupees(total))} total due</span></div>`
+        : `<div class="pf-tile"><span class="pf-tile-label">Total due</span><span class="pf-tile-value">${esc(shortRupees(total))}</span><span class="pf-tile-sub">${esc(shortRupees(overdueSum))} over ${state.graceDays} days</span></div>`}
       <div class="pf-tile pf-tile-red"><span class="pf-tile-label">Over 90 days</span><span class="pf-tile-value">${esc(shortRupees(over90))}</span><span class="pf-tile-sub">${total ? Math.round(over90 / total * 100) : 0}% of the dues</span></div>
       <button type="button" class="pf-tile pf-tile-amb" data-goto="due"><span class="pf-tile-label">Follow-ups due</span><span class="pf-tile-value">${due}</span><span class="pf-tile-sub">today or overdue →</span></button>
     `
   }
 
-  async function loadList() {
+  async function loadList(silent = false) {
     const listEl = $('pfList')
     if (state.view === 'group' && !state.group) {
       state.parties = []
@@ -392,17 +443,23 @@ export function renderPaymentFollowup(container, sub) {
     }
     const ticket = Symbol('load')
     state.ticket = ticket
-    listEl.innerHTML = '<div class="loading-state">Loading parties…</div>'
+    if (!silent) listEl.innerHTML = '<div class="loading-state">Loading parties…</div>'
+    state.loading = true
     try {
       const data = await call({ action: 'list', view: state.view, group: state.group })
       if (state.ticket !== ticket || !container.isConnected) return
       state.parties = data.parties || []
       state.today = data.today || state.today
+      state.graceDays = data.graceDays || state.graceDays
+      drawScope()
       drawTiles()
       drawList()
+      if (data.lastSync) $('pfSync').innerHTML = syncNoteHtml(data.lastSync)
     } catch (err) {
       if (state.ticket !== ticket || !container.isConnected) return
-      listEl.innerHTML = `<div class="empty-state">${esc(err.message)}</div>`
+      if (!silent) listEl.innerHTML = `<div class="empty-state">${esc(err.message)}</div>`
+    } finally {
+      if (state.ticket === ticket) state.loading = false
     }
   }
 
@@ -412,9 +469,9 @@ export function renderPaymentFollowup(container, sub) {
     const nextKey = p => p.latest?.next_followup || '9999-99-99'
     return [...list].sort((a, b) => {
       if (by === 'name') return String(a.party_name).localeCompare(String(b.party_name))
-      if (by === 'oldest') return oldestKey(a).localeCompare(oldestKey(b)) || b.balance - a.balance
-      if (by === 'next') return nextKey(a).localeCompare(nextKey(b)) || b.balance - a.balance
-      return b.balance - a.balance
+      if (by === 'oldest') return oldestKey(a).localeCompare(oldestKey(b)) || amountOf(b) - amountOf(a)
+      if (by === 'next') return nextKey(a).localeCompare(nextKey(b)) || amountOf(b) - amountOf(a)
+      return amountOf(b) - amountOf(a)
     })
   }
 
@@ -422,13 +479,17 @@ export function renderPaymentFollowup(container, sub) {
     const listEl = $('pfList')
     const q = state.q
     const qDigits = q.replace(/\D/g, '')
-    let list = state.parties
+    let list = visible()
     if (q) {
       list = list.filter(p => String(p.party_name || '').toLowerCase().includes(q) ||
         (qDigits.length >= 4 && p.phones.some(ph => ph.includes(qDigits))))
     }
     if (!list.length) {
-      listEl.innerHTML = `<div class="empty-state">${q ? 'No party matches that search.' : state.view === 'due' ? 'No follow-ups due today. 🎉' : 'Nobody in this group owes money.'}</div>`
+      const hiddenRecent = state.scope === 'overdue' && state.view !== 'due' ? state.parties.length : 0
+      listEl.innerHTML = `<div class="empty-state">${q ? 'No party matches that search.'
+        : state.view === 'due' ? 'No follow-ups due today. 🎉'
+        : hiddenRecent ? `Nobody here has dues older than ${state.graceDays} days. ${hiddenRecent} part${hiddenRecent === 1 ? 'y has' : 'ies have'} only recent credit — tap “All dues” to see them.`
+        : 'Nobody in this group owes money.'}</div>`
       return
     }
     listEl.innerHTML = sorted(list).map(rowHtml).join('')
@@ -485,6 +546,21 @@ export function renderPaymentFollowup(container, sub) {
     return `<span class="pf-next-chip">Next follow-up ${esc(fmtDate(n))}</span>`
   }
 
+  // Big number = what this list is about (overdue, or total under "All dues");
+  // the line under it splits the rest out so recent credit is plain to see.
+  function balanceHtml(p) {
+    if (p.balance <= 0) return '<div class="pf-balance pf-balance-clear">Nothing due</div>'
+    const od = Math.min(p.overdue ?? p.balance, p.balance)
+    const recent = p.balance - od
+    const g = state.graceDays
+    if (state.scope === 'overdue' && state.view !== 'due') {
+      return `<div class="pf-balance">${esc(rupees(od))}</div>
+        <div class="pf-balance-sub">over ${g} days${recent >= 1 ? ` · total ${esc(rupees(p.balance))} (${esc(rupees(recent))} recent)` : ''}</div>`
+    }
+    return `<div class="pf-balance">${esc(rupees(p.balance))}</div>
+      <div class="pf-balance-sub">${od < 1 ? `<span class="pf-pill pf-tone-grn">All within ${g} days</span>` : recent >= 1 ? `${esc(rupees(od))} over ${g} days · ${esc(rupees(recent))} recent` : `all over ${g} days`}</div>`
+  }
+
   function rowHtml(p) {
     const code = esc(p.party_code)
     const phone = p.phones[0]
@@ -508,7 +584,7 @@ export function renderPaymentFollowup(container, sub) {
           ${latestHtml(p)}
         </div>
         <div class="pf-row-side">
-          <div class="pf-balance ${p.balance <= 0 ? 'pf-balance-clear' : ''}">${p.balance > 0 ? esc(rupees(p.balance)) : 'Nothing due'}</div>
+          ${balanceHtml(p)}
           ${nextHtml(p)}
           <div class="pf-actions">
             ${phone ? `<a class="btn-contact btn-call" href="tel:+91${phone}" data-act="call" data-code="${code}">${PHONE_SVG} Call</a>` : ''}

@@ -11,7 +11,10 @@ import { createClient } from '@supabase/supabase-js'
 // and writes its own history there (supabase/collections-setup.sql):
 //   collection_followups   every call / WhatsApp / visit / note / reminder
 //   collection_latest      view: each party's latest call or note
-//   collections_ageing()   balance split into 0-30 / 31-60 / 61-90 / 90+ days
+//   collections_ageing()   balance split into 0-30 / 31-60 / 61-90 / 90+ days, and
+//                          overdue = unpaid on debits older than GRACE_DAYS (v2,
+//                          collections-ageing-v2.sql; v1 has no overdue column —
+//                          then 31+ days is used so nothing breaks before the update)
 // The new table, view and function are closed to the browser; everything goes
 // through here with the Busy service key after the HQ login is checked.
 //
@@ -34,6 +37,10 @@ const SUPABASE_BUSY_URL = 'https://jlkjjqnmhsgefpluemyz.supabase.co' // Busy-dat
 
 const TAB_ID = 'payment-followup'
 const DND_GROUP = 'JCM Due DND'
+// Credit younger than this is not chased: the page shows only parties with
+// something unpaid on bills older than this, unless "All dues" is picked.
+// The number lives in the SQL function's default (p_grace 20); this is only for labels.
+const GRACE_DAYS = 20
 
 const CHANNELS = new Set(['call', 'whatsapp', 'visit', 'note'])
 const OUTCOMES = new Set([
@@ -163,6 +170,14 @@ function phonesFrom(...values) {
   return out
 }
 
+function overdueOf(ag) {
+  if (!ag) return 0
+  if (ag.overdue !== undefined && ag.overdue !== null) return Number(ag.overdue) || 0
+  return (Number(ag.d31_60) || 0) + (Number(ag.d61_90) || 0) + (Number(ag.d90_plus) || 0) + (Number(ag.older) || 0)
+}
+const ageingFor = (busy, codes) =>
+  inChunks(codes, 400, part => busy.rpc('collections_ageing', { p_codes: part }).then(r => check(r, 'ageing')))
+
 // party_dues is written by sync-dues-final.js on JCM-Server, which only
 // updates parties that still owe money: someone who has paid in full keeps
 // their last balance in the table. So a row the latest run did not touch
@@ -194,12 +209,18 @@ async function handleMeta(busy, res) {
     fetchAll(receivables(busy, 'party_code, group_name, segment, outstanding_balance'), 'groups'),
   ])
   const rows = allRows.filter(r => !fresh.stale.has(String(r.party_code)))
+  const ageing = await ageingFor(busy, rows.map(r => String(r.party_code)))
+  const overdueMap = new Map(ageing.map(a => [String(a.party_code), overdueOf(a)]))
   const map = new Map()
+  let overdueParties = 0
+  let overdueTotal = 0
   for (const r of rows) {
     const name = r.group_name || '(No group)'
-    const g = map.get(name) || { group_name: name, segment: r.segment || 'Unassigned', parties: 0, total: 0, dnd: isDnd(r) }
+    const g = map.get(name) || { group_name: name, segment: r.segment || 'Unassigned', parties: 0, total: 0, overdueParties: 0, overdue: 0, dnd: isDnd(r) }
     g.parties += 1
     g.total += Number(r.outstanding_balance) || 0
+    const od = overdueMap.get(String(r.party_code)) || 0
+    if (od >= 1) { g.overdueParties += 1; g.overdue += od; overdueParties += 1; overdueTotal += od }
     map.set(name, g)
   }
   const groups = [...map.values()].sort((a, b) => b.total - a.total)
@@ -209,6 +230,9 @@ async function handleMeta(busy, res) {
     groups,
     totalParties: rows.length,
     totalDue: rows.reduce((s, r) => s + (Number(r.outstanding_balance) || 0), 0),
+    overdueParties,
+    overdueTotal,
+    graceDays: GRACE_DAYS,
     dueFollowups: due.error ? 0 : (due.count || 0),
     setupNeeded: !!due.error,
     dndGroup: DND_GROUP,
@@ -256,7 +280,7 @@ async function handleList(busy, body, res) {
   const intCodes = codes.filter(c => /^\d+$/.test(c)).map(Number)
 
   const [ageing, partyDues, customers, latest, reminders] = await Promise.all([
-    inChunks(codes, 400, part => busy.rpc('collections_ageing', { p_codes: part }).then(r => check(r, 'ageing'))),
+    ageingFor(busy, codes),
     inChunks(codes, 200, part => busy.from('party_dues').select('party_code, phone_primary, phone_all, needs_review').in('party_code', part).then(r => check(r, 'party_dues'))),
     inChunks(intCodes, 200, part => busy.from('customers').select('party_code, mobile, whatsapp_no').in('party_code', part).then(r => check(r, 'customers'))),
     latestRows
@@ -296,6 +320,7 @@ async function handleList(busy, body, res) {
       needs_review: pd.needs_review === true,
       phones,
       whatsapp,
+      overdue: fresh.stale.has(code) ? 0 : Math.min(overdueOf(ag), Number(p.outstanding_balance) || 0),
       ageing: ag && !fresh.stale.has(code) && {
         last_bill_date: ag.last_bill_date,
         oldest_unpaid_date: ag.oldest_unpaid_date,
@@ -304,13 +329,14 @@ async function handleList(busy, body, res) {
         d61_90: Number(ag.d61_90) || 0,
         d90_plus: Number(ag.d90_plus) || 0,
         older: Number(ag.older) || 0,
+        source: ag.source || 'invoices',
       },
       latest: latestMap.get(code) || null,
       last_reminder: lastReminder.get(code) || null,
     }
   })
 
-  return send(res, 200, { parties: out, view, group, today, lastSync: fresh.lastSync })
+  return send(res, 200, { parties: out, view, group, today, lastSync: fresh.lastSync, graceDays: GRACE_DAYS })
 }
 
 // ---------------------------------------------------------------------------
@@ -409,6 +435,7 @@ function fillTemplate(template, party) {
   return template
     .replace(/\{name\}/gi, party.party_name || '')
     .replace(/\{amount\}/gi, rupeesText(party.balance))
+    .replace(/\{overdue\}/gi, rupeesText(party.overdue))
     .trim()
 }
 
@@ -426,14 +453,16 @@ async function handleSendReminders(busy, body, me, res) {
 
   const intCodes = codes.filter(c => /^\d+$/.test(c)).map(Number)
   const since = new Date(Date.now() - REMINDER_GAP_HOURS * 3600 * 1000).toISOString()
-  const [seg, pd, cu, recent, fresh] = await Promise.all([
+  const [seg, pd, cu, recent, fresh, ageing] = await Promise.all([
     busy.from('dues_segmented').select('party_code, party_name, outstanding_balance, group_name, group_path, due_type').in('party_code', codes),
     busy.from('party_dues').select('party_code, phone_primary, phone_all, needs_review').in('party_code', codes),
     intCodes.length ? busy.from('customers').select('party_code, mobile, whatsapp_no').in('party_code', intCodes) : Promise.resolve({ data: [] }),
     busy.from('collection_followups').select('party_code').eq('channel', 'reminder').eq('outcome', 'sent')
       .in('party_code', codes).gte('created_at', since),
     dueFreshness(busy),
+    /\{overdue\}/i.test(template) ? ageingFor(busy, codes) : Promise.resolve([]),
   ])
+  const ageMap = new Map(ageing.map(a => [String(a.party_code), a]))
   const segMap = new Map(check(seg, 'dues').map(r => [String(r.party_code), r]))
   const pdMap = new Map(check(pd, 'party_dues').map(r => [String(r.party_code), r]))
   const cuMap = new Map(check(cu, 'customers').map(r => [String(r.party_code), r]))
@@ -445,7 +474,11 @@ async function handleSendReminders(busy, body, me, res) {
     const s = segMap.get(code)
     const p = pdMap.get(code) || {}
     const c = cuMap.get(code) || {}
-    const party = s && { party_code: code, party_name: s.party_name, group_name: s.group_name, balance: Number(s.outstanding_balance) || 0 }
+    const party = s && {
+      party_code: code, party_name: s.party_name, group_name: s.group_name,
+      balance: Number(s.outstanding_balance) || 0,
+      overdue: Math.min(overdueOf(ageMap.get(code)), Number(s.outstanding_balance) || 0),
+    }
     let skip = null
     if (!s || s.due_type !== 'Receivable') skip = 'not_found'
     else if (isDnd(s)) skip = 'dnd'

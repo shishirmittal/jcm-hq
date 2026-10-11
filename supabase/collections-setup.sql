@@ -9,9 +9,10 @@
 --                          reads and writes it with the service key after
 --                          checking the HQ login.
 --   collection_latest      view: each party's latest call / note (next follow-up date).
---   collections_ageing()   splits each party's balance over their newest bills
---                          (newest bills are taken as unpaid first) into
---                          0-30 / 31-60 / 61-90 / 90+ days.
+--   collections_ageing()   splits each party's balance over their newest debits
+--                          (party_ledger; invoices if no ledger yet; newest taken
+--                          as unpaid first) into 0-30 / 31-60 / 61-90 / 90+ days,
+--                          plus overdue = unpaid on debits older than 20 days.
 --   invoices_party_code_idx  speeds up the ageing lookup.
 
 create table if not exists collection_followups (
@@ -39,7 +40,27 @@ alter table collection_followups enable row level security;
 
 create index if not exists invoices_party_code_idx on invoices (party_code, vch_date desc);
 
-create or replace function collections_ageing(p_codes text[])
+-- party_ledger is created by supabase/ledger-setup.sql; the same definition is
+-- repeated here only so this file runs even if that one has not been run yet.
+create table if not exists party_ledger (
+  party_code     text    not null,
+  vch_code       integer not null,
+  sr_no          integer not null default 0,
+  vch_type       integer,
+  vch_type_name  text,
+  vch_no         text,
+  vch_date       date,
+  debit          numeric not null default 0,
+  credit         numeric not null default 0,
+  synced_at      timestamptz not null default now(),
+  primary key (party_code, vch_code, sr_no)
+);
+alter table party_ledger enable row level security;
+
+drop function if exists collections_ageing(text[]);
+drop function if exists collections_ageing(text[], integer);
+
+create function collections_ageing(p_codes text[], p_grace integer default 20)
 returns table (
   party_code text,
   balance numeric,
@@ -49,7 +70,9 @@ returns table (
   d31_60 numeric,
   d61_90 numeric,
   d90_plus numeric,
-  older numeric
+  older numeric,
+  overdue numeric,
+  source text
 )
 language sql
 stable
@@ -62,46 +85,57 @@ as $$
   bal as (
     select pd.party_code,
            greatest(coalesce(max(pd.outstanding_balance), 0), 0) as balance,
-           case when pd.party_code ~ '^\d+$' then pd.party_code::integer end as code_int
+           case when pd.party_code ~ '^\d+$' then pd.party_code::integer end as code_int,
+           exists (select 1 from party_ledger l where l.party_code = pd.party_code) as has_ledger
     from party_dues pd
     where pd.party_code = any(p_codes)
     group by pd.party_code
   ),
-  inv as (
-    select b.party_code, b.balance, i.vch_date, i.total_amount,
-           sum(i.total_amount) over (
-             partition by b.party_code
-             order by i.vch_date desc, i.vch_code desc
-             rows between unbounded preceding and current row
-           ) as running
+  debits as (
+    select b.party_code, l.vch_date, l.vch_code, l.sr_no, l.debit as amount
+    from bal b
+    join party_ledger l on l.party_code = b.party_code
+    where b.has_ledger and l.debit > 0 and l.vch_date is not null
+    union all
+    select b.party_code, i.vch_date, i.vch_code, 0, i.total_amount
     from bal b
     join invoices i on i.party_code = b.code_int
-    where i.total_amount > 0
+    where not b.has_ledger and i.total_amount > 0
+  ),
+  running as (
+    select d.party_code, d.vch_date, d.amount, b.balance,
+           sum(d.amount) over (
+             partition by d.party_code
+             order by d.vch_date desc, d.vch_code desc, d.sr_no desc
+             rows between unbounded preceding and current row
+           ) as run
+    from debits d join bal b on b.party_code = d.party_code
   ),
   alloc as (
     select party_code, vch_date,
-           greatest(0, least(total_amount, balance - (running - total_amount))) as unpaid
-    from inv
+           greatest(0, least(amount, balance - (run - amount))) as unpaid
+    from running
   ),
-  last_bill as (
-    select b.party_code, max(i.vch_date) as last_bill_date
-    from bal b join invoices i on i.party_code = b.code_int
-    group by b.party_code
+  last_debit as (
+    select party_code, max(vch_date) as last_bill_date from debits group by party_code
   )
   select b.party_code,
          b.balance,
-         lb.last_bill_date,
+         ld.last_bill_date,
          min(a.vch_date) filter (where a.unpaid > 0),
          coalesce(sum(a.unpaid) filter (where t.d - a.vch_date <= 30), 0),
          coalesce(sum(a.unpaid) filter (where t.d - a.vch_date between 31 and 60), 0),
          coalesce(sum(a.unpaid) filter (where t.d - a.vch_date between 61 and 90), 0),
          coalesce(sum(a.unpaid) filter (where t.d - a.vch_date > 90), 0),
-         greatest(b.balance - coalesce(sum(a.unpaid), 0), 0)
+         greatest(b.balance - coalesce(sum(a.unpaid), 0), 0),
+         coalesce(sum(a.unpaid) filter (where t.d - a.vch_date > p_grace), 0)
+           + greatest(b.balance - coalesce(sum(a.unpaid), 0), 0),
+         case when b.has_ledger then 'ledger' else 'invoices' end
   from bal b
   cross join today t
   left join alloc a on a.party_code = b.party_code
-  left join last_bill lb on lb.party_code = b.party_code
-  group by b.party_code, b.balance, lb.last_bill_date;
+  left join last_debit ld on ld.party_code = b.party_code
+  group by b.party_code, b.balance, b.has_ledger, ld.last_bill_date;
 $$;
 
 -- Latest call / note per party (WhatsApp reminders left out, so a reminder
@@ -118,8 +152,9 @@ order by party_code, created_at desc, id desc;
 -- default. Take that back: only the server (service_role) may use these.
 revoke all on table collection_followups from anon, authenticated;
 revoke all on table collection_latest from anon, authenticated;
-revoke all on function collections_ageing(text[]) from public, anon, authenticated;
-grant execute on function collections_ageing(text[]) to service_role;
+revoke all on function collections_ageing(text[], integer) from public, anon, authenticated;
+grant execute on function collections_ageing(text[], integer) to service_role;
+revoke all on table party_ledger from anon, authenticated;
 grant all on table collection_followups to service_role;
 grant select on table collection_latest to service_role;
 grant usage, select on sequence collection_followups_id_seq to service_role;

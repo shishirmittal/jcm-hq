@@ -52,6 +52,8 @@ export function renderPaymentReminders(container) {
     template: store('pfr.template') || DEFAULT_TEMPLATE,
     sending: false,
     today: todayIST(),
+    onlyOverdue: true,   // not remembered: always starts on
+    graceDays: 20,
   }
 
   container.innerHTML = `
@@ -75,6 +77,7 @@ export function renderPaymentReminders(container) {
             </div>
             <div class="pfr-filters">
               <label>Due at least ₹ <input id="pfrMin" type="number" min="0" step="100" inputmode="numeric"></label>
+              <label><input type="checkbox" id="pfrOverdue" checked> Only dues over <span class="pfr-grace">20</span> days</label>
               <label>Skip if reminded in the last
                 <select id="pfrSkip">
                   <option value="0">— (don't skip)</option><option value="3">3 days</option>
@@ -90,7 +93,7 @@ export function renderPaymentReminders(container) {
             <label class="pf-field"><span>Message</span>
               <textarea id="pfrTemplate" rows="9" maxlength="1000"></textarea>
             </label>
-            <div class="pfr-help">{name} becomes the party name, {amount} the amount due. <button type="button" class="pf-link" id="pfrReset">Use the standard message</button></div>
+            <div class="pfr-help">{name} becomes the party name, {amount} the total due, {overdue} the part over 20 days. <button type="button" class="pf-link" id="pfrReset">Use the standard message</button></div>
             <div class="pfr-preview-label">Preview</div>
             <div class="pfr-preview" id="pfrPreview"></div>
             <p class="pf-error" id="pfrError" hidden></p>
@@ -124,6 +127,10 @@ export function renderPaymentReminders(container) {
   $('pfrSkip').addEventListener('change', e => {
     state.skipDays = Number(e.target.value) || 0
     store('pfr.skipDays', String(state.skipDays))
+    resetSelection(); draw()
+  })
+  $('pfrOverdue').addEventListener('change', e => {
+    state.onlyOverdue = e.target.checked
     resetSelection(); draw()
   })
   $('pfrTemplate').addEventListener('input', e => {
@@ -162,6 +169,8 @@ export function renderPaymentReminders(container) {
     try {
       state.meta = await call({ action: 'meta' })
       state.today = state.meta.today || state.today
+      state.graceDays = state.meta.graceDays || state.graceDays
+      $('pfrOverdue').closest('label').querySelector('.pfr-grace').textContent = state.graceDays
       const m = state.meta
       const sendable = m.groups.filter(g => !g.dnd)
       if (state.group && state.group !== '__all' && !sendable.some(g => g.group_name === state.group)) {
@@ -230,7 +239,9 @@ export function renderPaymentReminders(container) {
     }
     return null
   }
-  function shown() { return state.parties.filter(p => p.balance >= state.minAmount) }
+  function shown() {
+    return state.parties.filter(p => p.balance >= state.minAmount && (!state.onlyOverdue || (p.overdue ?? p.balance) >= 1))
+  }
   function eligible() { return shown().filter(p => !blockReason(p) && state.results[p.party_code] !== 'sent') }
 
   function draw() {
@@ -256,6 +267,7 @@ export function renderPaymentReminders(container) {
           </span>
           <span class="pfr-row-side">
             <span class="pfr-amount">${esc(rupees(p.balance))}</span>
+            ${(p.overdue ?? p.balance) < p.balance ? `<span class="pf-muted">${esc(rupees(p.overdue ?? 0))} over ${state.graceDays} d</span>` : ''}
             ${result ? `<span class="pf-pill pf-tone-${resultTone}">${esc(STATUS_TEXT[result] || result)}</span>` : reason ? `<span class="pf-pill pf-tone-grey">${esc(reason)}</span>` : ''}
           </span>
         </label>`
@@ -284,7 +296,8 @@ export function renderPaymentReminders(container) {
   }
 
   function fill(t, p) {
-    return t.replace(/\{name\}/gi, p.party_name || '').replace(/\{amount\}/gi, rupees(p.balance)).trim()
+    return t.replace(/\{name\}/gi, p.party_name || '').replace(/\{amount\}/gi, rupees(p.balance))
+      .replace(/\{overdue\}/gi, rupees(Math.min(p.overdue ?? p.balance, p.balance))).trim()
   }
 
   function drawPreview() {
