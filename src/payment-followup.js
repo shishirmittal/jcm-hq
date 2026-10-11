@@ -136,6 +136,7 @@ export function pfTabsHtml(active) {
   return `
     <nav class="pf-tabs" aria-label="Payment Follow-up">
       <a href="#payment-followup" class="pf-tab ${active === 'calls' ? 'active' : ''}">Follow-up calls</a>
+      <a href="#payment-followup/today" class="pf-tab ${active === 'today' ? 'active' : ''}">Today's follow-ups<span class="pf-tab-count" id="pfTabToday"></span></a>
       <a href="#payment-followup/reminders" class="pf-tab ${active === 'reminders' ? 'active' : ''}">WhatsApp reminders</a>
     </nav>`
 }
@@ -159,9 +160,17 @@ export function renderPaymentFollowup(container, sub) {
   }
   if (sub === 'reminders') return renderPaymentReminders(container)
 
+  const today = sub === 'today'   // Today's follow-ups tab: the due list, by person
+  const storedView = store('pf.view')
   const state = {
     meta: null,
-    view: store('pf.view') || 'group',
+    mode: today ? 'today' : 'calls',
+    view: today ? 'due' : (storedView === 'all' ? 'all' : 'group'),
+    person: 'me',       // Today tab: 'me', 'all' or a person's id
+    summary: [],
+    doneToday: [],
+    people: [],
+    me: null,
     group: store('pf.group') || '',
     q: '',
     sort: store('pf.sort') || 'amount',
@@ -187,11 +196,12 @@ export function renderPaymentFollowup(container, sub) {
         <button class="btn-ghost btn-small" id="pfRefresh">Refresh</button>
       </header>
       <main class="app-main">
-        ${pfTabsHtml('calls')}
+        ${pfTabsHtml(today ? 'today' : 'calls')}
         <div id="pfSync"></div>
         <div class="pf-tiles" id="pfTiles"></div>
+        <div class="pf-people" id="pfPeople" ${today ? '' : 'hidden'}></div>
         <div class="pf-toolbar">
-          <select id="pfGroup" class="pf-select" aria-label="Account group"><option>Loading groups…</option></select>
+          <select id="pfGroup" class="pf-select" aria-label="Account group" ${today ? 'hidden' : ''}><option>Loading groups…</option></select>
           <input id="pfSearch" class="pf-search" type="search" placeholder="Search party or phone" autocomplete="off">
           <select id="pfSort" class="pf-select pf-sort" aria-label="Sort">
             ${SORTS.map(s => `<option value="${s.id}">${esc(s.label)}</option>`).join('')}
@@ -206,7 +216,26 @@ export function renderPaymentFollowup(container, sub) {
           <span class="pf-muted" id="pfScopeNote"></span>
         </div>
         <div id="pfList" class="pf-list"><div class="loading-state">Loading…</div></div>
+        <section class="pf-done" id="pfDone" hidden></section>
       </main>
+
+      <div class="modal-overlay pf-overlay" id="pfOwners" hidden>
+        <div class="modal pf-modal pf-owners" role="dialog" aria-modal="true" aria-labelledby="pfOwnersTitle">
+          <div class="modal-header">
+            <div>
+              <h2 id="pfOwnersTitle">Who follows up which group</h2>
+              <div class="pf-modal-sub">Each Busy account group goes to one person. Their Today's follow-ups, morning WhatsApp and daily task come from these groups.</div>
+            </div>
+            <button class="btn-ghost btn-small" id="pfOwnersClose" aria-label="Close">${icon('x', 16)}</button>
+          </div>
+          <div id="pfOwnersBody"><div class="loading-state">Loading…</div></div>
+          <p class="pf-error" id="pfOwnersError" hidden></p>
+          <div class="pf-modal-actions">
+            <button class="btn-ghost btn-small" id="pfOwnersCancel">Cancel</button>
+            <button class="btn-primary btn-small" id="pfOwnersSave">Save</button>
+          </div>
+        </div>
+      </div>
 
       <div class="modal-overlay pf-overlay" id="pfModal" hidden>
         <div class="modal pf-modal" role="dialog" aria-modal="true" aria-labelledby="pfModalTitle">
@@ -273,7 +302,6 @@ export function renderPaymentFollowup(container, sub) {
   $('pfGroup').addEventListener('change', e => {
     const v = e.target.value
     if (v === '__all') { state.view = 'all'; state.group = '' }
-    else if (v === '__due') { state.view = 'due'; state.group = '' }
     else { state.view = 'group'; state.group = v }
     store('pf.view', state.view); store('pf.group', state.group)
     loadList()
@@ -303,12 +331,22 @@ export function renderPaymentFollowup(container, sub) {
   $('pfTiles').addEventListener('click', e => {
     const t = e.target.closest('[data-goto]')
     if (!t) return
-    state.view = t.dataset.goto
-    state.group = ''
-    store('pf.view', state.view); store('pf.group', '')
-    drawGroupSelect()
+    window.location.hash = '#payment-followup/today'
+  })
+
+  // ---- Today tab: whose list, and who follows up which group ----
+  $('pfPeople').addEventListener('click', e => {
+    if (e.target.closest('#pfAssign')) return openOwners()
+    const b = e.target.closest('[data-person]')
+    if (!b || b.dataset.person === state.person) return
+    state.person = b.dataset.person
+    drawPeople()
     loadList()
   })
+  $('pfOwnersClose').addEventListener('click', closeOwners)
+  $('pfOwnersCancel').addEventListener('click', closeOwners)
+  $('pfOwners').addEventListener('click', e => { if (e.target.id === 'pfOwners') closeOwners() })
+  $('pfOwnersSave').addEventListener('click', saveOwners)
 
   // Row buttons. Call / WhatsApp are real links (the phone dials / WhatsApp
   // opens); the follow-up form opens alongside so it is waiting on return.
@@ -378,6 +416,8 @@ export function renderPaymentFollowup(container, sub) {
       drawGroupSelect()
       drawTiles()
       $('pfSync').innerHTML = syncNoteHtml(state.meta.lastSync)
+      const tabCount = document.getElementById('pfTabToday')
+      if (tabCount && state.mode !== 'today') tabCount.textContent = state.meta.dueMine ? ` ${state.meta.dueMine}` : ''
     } catch (err) {
       $('pfGroup').innerHTML = `<option>${esc(err.message)}</option>`
     }
@@ -395,7 +435,6 @@ export function renderPaymentFollowup(container, sub) {
     const others = m.groups.filter(g => !['Retail', 'Distribution'].includes(g.segment))
     $('pfGroup').innerHTML = `
       ${state.view === 'group' && !state.group ? '<option value="" selected disabled>Pick an account group…</option>' : ''}
-      <option value="__due">Follow-ups due today${m.dueFollowups ? ` (${m.dueFollowups})` : ''}</option>
       <option value="__all">All groups — ${od
         ? `${stepOf({ byStep: m.byStep, overdueParties: m.overdueParties, overdue: m.overdueTotal, parties: m.totalParties, total: m.totalDue }).parties} · ${esc(shortRupees(stepOf({ byStep: m.byStep, overdueParties: m.overdueParties, overdue: m.overdueTotal, parties: m.totalParties, total: m.totalDue }).total))} over ${state.scope} d`
         : `${m.totalParties} · ${esc(shortRupees(m.totalDue))}`}</option>
@@ -427,12 +466,13 @@ export function renderPaymentFollowup(container, sub) {
   }
 
   function drawTiles() {
+    if (state.mode === 'today') return drawTodayTiles()
     const ps = visible()
     const total = ps.reduce((s, p) => s + p.balance, 0)
     const overdueSum = ps.reduce((s, p) => s + overdueOf(p, state.view === 'due' ? state.graceDays : undefined), 0)
     const days = state.scope === 'all' || state.view === 'due' ? state.graceDays : state.scope
     const over90 = ps.reduce((s, p) => s + (p.ageing ? p.ageing.d90_plus + p.ageing.older : 0), 0)
-    const due = state.meta?.dueFollowups ?? 0
+    const due = state.meta?.me?.isAdmin ? (state.meta?.dueFollowups ?? 0) : (state.meta?.dueMine ?? 0)
     const viewLabel = state.view === 'all' ? 'All groups' : state.view === 'due' ? 'Due today' : (state.group || '—')
     $('pfTiles').innerHTML = `
       <div class="pf-tile"><span class="pf-tile-label">${esc(viewLabel)}</span><span class="pf-tile-value">${ps.length}</span><span class="pf-tile-sub">parties</span></div>
@@ -440,8 +480,110 @@ export function renderPaymentFollowup(container, sub) {
         ? `<div class="pf-tile"><span class="pf-tile-label">Due over ${days} days</span><span class="pf-tile-value">${esc(shortRupees(overdueSum))}</span><span class="pf-tile-sub">of ${esc(shortRupees(total))} total due</span></div>`
         : `<div class="pf-tile"><span class="pf-tile-label">Total due</span><span class="pf-tile-value">${esc(shortRupees(total))}</span><span class="pf-tile-sub">${esc(shortRupees(overdueSum))} over ${days} days</span></div>`}
       <div class="pf-tile pf-tile-red"><span class="pf-tile-label">Over 90 days</span><span class="pf-tile-value">${esc(shortRupees(over90))}</span><span class="pf-tile-sub">${total ? Math.round(over90 / total * 100) : 0}% of the dues</span></div>
-      <button type="button" class="pf-tile pf-tile-amb" data-goto="due"><span class="pf-tile-label">Follow-ups due</span><span class="pf-tile-value">${due}</span><span class="pf-tile-sub">today or overdue →</span></button>
+      <button type="button" class="pf-tile pf-tile-amb" data-goto="due"><span class="pf-tile-label">Follow-ups due</span><span class="pf-tile-value">${due}</span><span class="pf-tile-sub">${state.meta?.me?.isAdmin ? 'everyone, today →' : 'yours, today →'}</span></button>
     `
+  }
+
+  // ---- Today's follow-ups ------------------------------------------------
+  function drawTodayTiles() {
+    const ps = state.parties
+    const done = state.doneToday
+    const total = ps.reduce((s, p) => s + p.balance, 0)
+    const weekly = ps.filter(p => p.due_reason?.kind === 'cadence' && p.due_reason.over >= 40).length
+    const promised = done.filter(d => d.outcome === 'promised').reduce((s, d) => s + (Number(d.promised_amount) || 0), 0)
+    $('pfTiles').innerHTML = `
+      <div class="pf-tile pf-tile-amb"><span class="pf-tile-label">To call now</span><span class="pf-tile-value">${ps.length}</span><span class="pf-tile-sub">${esc(shortRupees(total))} due · ${weekly} over 40 days</span></div>
+      <div class="pf-tile pf-tile-grn"><span class="pf-tile-label">Done today</span><span class="pf-tile-value">${done.length}</span><span class="pf-tile-sub">calls and notes saved</span></div>
+      <div class="pf-tile"><span class="pf-tile-label">Promised today</span><span class="pf-tile-value">${esc(shortRupees(promised))}</span><span class="pf-tile-sub">${(n => `${n} part${n === 1 ? 'y' : 'ies'} promised`)(done.filter(d => d.outcome === 'promised').length)}</span></div>
+      <div class="pf-tile pf-tile-red"><span class="pf-tile-label">Not reachable</span><span class="pf-tile-value">${done.filter(d => ['no_answer', 'wrong_number'].includes(d.outcome)).length}</span><span class="pf-tile-sub">no answer / wrong number today</span></div>
+    `
+  }
+
+  function drawPeople() {
+    const me = state.me || state.meta?.me
+    const isAdmin = !!me?.isAdmin
+    const mine = state.summary.find(x => x.id === me?.id) || { due: 0, done: 0 }
+    const all = state.summary.reduce((a, x) => ({ due: a.due + x.due, done: a.done + x.done }), { due: 0, done: 0 })
+    const chip = (id, label, c) => `<button type="button" class="pf-person ${state.person === id ? 'active' : ''}" data-person="${esc(id)}">${esc(label)} <span>${c.due} due · ${c.done} done</span></button>`
+    const others = isAdmin ? state.summary.filter(x => x.id && x.id !== me?.id).map(x => chip(x.id, x.name, x)) : []
+    const nobody = state.summary.find(x => !x.id)
+    $('pfPeople').innerHTML = `
+      ${chip('me', 'Mine', mine)}
+      ${chip('all', 'Everyone', all)}
+      ${others.join('')}
+      ${nobody && nobody.due ? `<span class="pf-person-warn" title="These groups have nobody assigned">${nobody.due} in groups with nobody assigned</span>` : ''}
+      ${isAdmin ? `<button type="button" class="btn-ghost btn-small pf-assign" id="pfAssign">Assign groups</button>` : ''}
+    `
+    const tab = document.getElementById('pfTabToday')
+    if (tab) tab.textContent = mine.due ? ` ${mine.due}` : ''
+  }
+
+  function drawDone() {
+    const el = $('pfDone')
+    const rows = state.doneToday
+    if (state.mode !== 'today' || !rows.length) { el.hidden = true; return }
+    el.hidden = false
+    el.innerHTML = `
+      <h3 class="pf-history-title">Done today (${rows.length})</h3>
+      ${rows.map(d => {
+        const o = OUTCOME[d.outcome]
+        return `<div class="pf-done-row">
+          <span class="pf-done-name">${esc(d.party_name || d.party_code)}</span>
+          ${o ? `<span class="pf-pill pf-tone-${o.tone}">${esc(o.label)}</span>` : ''}
+          ${d.promised_amount ? `<span class="pf-muted">${esc(rupees(d.promised_amount))}${d.promised_date ? ` by ${esc(fmtDate(d.promised_date))}` : ''}</span>` : ''}
+          ${d.next_followup ? `<span class="pf-muted">next ${esc(fmtDate(d.next_followup))}</span>` : ''}
+          <span class="pf-muted pf-done-by">${esc(d.created_by_name || '')} · ${esc(fmtDateTime(d.created_at).split(' · ')[1] || '')}</span>
+          ${d.remarks ? `<div class="pf-remark">“${esc(d.remarks)}”</div>` : ''}
+        </div>`
+      }).join('')}`
+  }
+
+  // ---- Assign groups (admins) ----------------------------------------------
+  let ownersData = null
+  async function openOwners() {
+    $('pfOwners').hidden = false
+    document.body.classList.add('pf-modal-open')
+    $('pfOwnersError').hidden = true
+    $('pfOwnersBody').innerHTML = '<div class="loading-state">Loading…</div>'
+    try {
+      ownersData = await call({ action: 'owners' })
+      const opts = sel => `<option value="">— nobody —</option>${ownersData.people.map(p => `<option value="${esc(p.id)}" ${p.id === sel ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}`
+      $('pfOwnersBody').innerHTML = `
+        <label class="pf-field pf-owner-default"><span>Groups not given to anyone go to</span>
+          <select id="pfOwnerDefault" class="pf-select">${opts(ownersData.defaultOwner)}</select>
+        </label>
+        <div class="pf-owner-list">
+          ${ownersData.groups.map((g, i) => `
+            <div class="pf-owner-row">
+              <div><div class="pf-owner-name">${esc(g.group_name || '(No group)')}${g.dnd ? ' <span class="pf-tag pf-tag-dnd">DND</span>' : ''}</div>
+                <div class="pf-muted">${g.parties} parties · ${esc(shortRupees(g.total))}${g.segment ? ` · ${esc(g.segment)}` : ''}</div></div>
+              <select class="pf-select" data-owner="${i}">${opts(g.hq_user_id)}</select>
+            </div>`).join('')}
+        </div>`
+    } catch (err) {
+      $('pfOwnersBody').innerHTML = `<div class="empty-state">${esc(err.message)}</div>`
+    }
+  }
+  function closeOwners() {
+    $('pfOwners').hidden = true
+    if (!state.modal) document.body.classList.remove('pf-modal-open')
+  }
+  async function saveOwners() {
+    if (!ownersData) return
+    const owners = ownersData.groups.map((g, i) => ({ group_name: g.group_name, hq_user_id: $('pfOwnersBody').querySelector(`[data-owner="${i}"]`).value || null }))
+      .filter((o, i) => o.hq_user_id !== (ownersData.groups[i].hq_user_id || null))
+    $('pfOwnersSave').disabled = true
+    try {
+      await call({ action: 'owners-save', owners, default_owner: $('pfOwnerDefault').value || null })
+      closeOwners()
+      loadMeta(); loadList()
+      refreshNavBadges?.()
+    } catch (err) {
+      $('pfOwnersError').textContent = err.message
+      $('pfOwnersError').hidden = false
+    } finally {
+      $('pfOwnersSave').disabled = false
+    }
   }
 
   async function loadList(silent = false) {
@@ -457,11 +599,19 @@ export function renderPaymentFollowup(container, sub) {
     if (!silent) listEl.innerHTML = '<div class="loading-state">Loading parties…</div>'
     state.loading = true
     try {
-      const data = await call({ action: 'list', view: state.view, group: state.group })
+      const data = await call({ action: 'list', view: state.view, group: state.group, person: state.person })
       if (state.ticket !== ticket || !container.isConnected) return
       state.parties = data.parties || []
       state.today = data.today || state.today
       state.graceDays = data.graceDays || state.graceDays
+      if (state.mode === 'today') {
+        state.summary = data.summary || []
+        state.doneToday = data.doneToday || []
+        state.people = data.people || []
+        state.me = data.me || state.me
+        drawPeople()
+        drawDone()
+      }
       drawScope()
       drawTiles()
       drawList()
@@ -501,7 +651,7 @@ export function renderPaymentFollowup(container, sub) {
     if (!list.length) {
       const hiddenRecent = state.scope !== 'all' && state.view !== 'due' ? state.parties.length : 0
       listEl.innerHTML = `<div class="empty-state">${q ? 'No party matches that search.'
-        : state.view === 'due' ? 'No follow-ups due today. 🎉'
+        : state.view === 'due' ? (state.doneToday.length ? 'Nothing left to call today. 🎉' : 'No follow-ups due today.')
         : hiddenRecent ? `Nobody here has dues older than ${state.scope} days. ${hiddenRecent} part${hiddenRecent === 1 ? 'y has' : 'ies have'} only recent credit — tap “All dues” to see them.`
         : 'Nobody in this group owes money.'}</div>`
       return
@@ -592,6 +742,7 @@ export function renderPaymentFollowup(container, sub) {
     const tags = [
       state.view !== 'group' && p.group_name ? `<span class="pf-tag">${esc(p.group_name)}</span>` : '',
       p.dnd ? '<span class="pf-tag pf-tag-dnd" title="This group never gets automatic WhatsApp reminders">DND</span>' : '',
+      p.owner_name && !(state.mode === 'today' && state.person !== 'all') ? `<span class="pf-tag pf-tag-owner" title="Follows up this group">${esc(p.owner_name)}</span>` : '',
       p.needs_review ? '<span class="pf-tag pf-tag-review" title="Balance flagged for checking in the dues sync">Check balance</span>' : '',
     ].join('')
     return `
@@ -726,6 +877,7 @@ export function renderPaymentFollowup(container, sub) {
       }
       closeModal()
       drawList()
+      if (state.mode === 'today') loadList(true)
       loadMeta()
       refreshNavBadges?.()
     } catch (e) {

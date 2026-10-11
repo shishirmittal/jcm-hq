@@ -26,6 +26,10 @@ import { createClient } from '@supabase/supabase-js'
 //   list    { view, group, q }     view = 'group' | 'all' | 'due'
 //   history { party_code }         every follow-up for one party
 //   save    { party_code, channel, outcome, remarks?, promised_amount?, promised_date?, next_followup? }
+//   list { view: 'due', person: 'me' | 'all' | <uuid> }   Today's follow-ups: due parties of that
+//           person (owner of the party's account group), plus doneToday and a per-person summary
+//   owners / owners-save (admins)   who follows up which account group (collection_group_owners,
+//           collection_settings.default_owner for groups nobody was given)
 //   send-reminders { party_codes[], template }   WhatsApp through Whatshub360, at most 25 per call.
 //           The server re-checks every party: the DND group, "check balance"
 //           parties, nothing due, no number and anyone reminded in the last
@@ -100,14 +104,16 @@ export default async function handler(req, res) {
   const isAdmin = profile.is_admin === true || profile.role === 'admin'
   const granted = Array.isArray(profile.allowed_tabs) && profile.allowed_tabs.includes(TAB_ID)
   if (!isAdmin && !granted) return send(res, 403, { error: 'You do not have access to Payment Follow-up.' })
-  const me = { id: profile.id, name: profile.name || profile.email || 'Someone' }
+  const me = { id: profile.id, name: profile.name || profile.email || 'Someone', isAdmin }
 
   const body = req.body || {}
   const action = String(body.action || '')
   try {
-    if (action === 'count') return await handleCount(busy, res)
-    if (action === 'meta') return await handleMeta(busy, res)
-    if (action === 'list') return await handleList(busy, body, res)
+    if (action === 'count') return await handleCount(busy, hq, me, res)
+    if (action === 'meta') return await handleMeta(busy, me, res)
+    if (action === 'list') return await handleList(busy, hq, me, body, res)
+    if (action === 'owners') return await handleOwners(busy, hq, me, res)
+    if (action === 'owners-save') return await handleOwnersSave(busy, me, body, res)
     if (action === 'history') return await handleHistory(busy, body, res)
     if (action === 'save') return await handleSave(busy, body, me, res)
     if (action === 'send-reminders') return await handleSendReminders(busy, body, me, res)
@@ -210,6 +216,34 @@ async function dueFreshness(busy) {
   return { lastSync, stale: new Set(rows.map(r => String(r.party_code))) }
 }
 
+// Who follows up which account group. Missing tables (setup not run yet) read as
+// "nobody assigned" so the rest of the page keeps working.
+async function loadOwners(busy) {
+  const [o, st] = await Promise.all([
+    busy.from('collection_group_owners').select('group_name, hq_user_id'),
+    busy.from('collection_settings').select('*').eq('id', 1).maybeSingle(),
+  ])
+  const byGroup = new Map()
+  for (const r of o.data || []) if (r.hq_user_id) byGroup.set(r.group_name, r.hq_user_id)
+  const settings = st.data || {}
+  return {
+    ready: !o.error && !st.error,
+    byGroup,
+    defaultOwner: settings.default_owner || null,
+    settings,
+    ownerOf: group => byGroup.get(group || '') || settings.default_owner || null,
+  }
+}
+
+// People who may be given follow-ups: active, and admin or with the page ticked.
+async function loadPeople(hq) {
+  const rows = check(await hq.from('profiles').select('id, name, email, role, is_admin, active, allowed_tabs, whatsapp'), 'people')
+  return rows
+    .filter(p => p.active !== false && (p.is_admin === true || p.role === 'admin' || (Array.isArray(p.allowed_tabs) && p.allowed_tabs.includes(TAB_ID))))
+    .map(p => ({ id: p.id, name: p.name || p.email || 'Someone', whatsapp: p.whatsapp || null, isAdmin: p.is_admin === true || p.role === 'admin' }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
+
 // Who needs a follow-up today, and why. Map party_code -> reason.
 //   { kind: 'date', date }                     next follow-up date typed, today or earlier
 //   { kind: 'cadence', over, every, days }     rhythm reached (days = since last contact, null = never)
@@ -218,16 +252,19 @@ async function computeDue(busy, pre = null) {
   const today = todayIST()
   const [fresh, rows, latest] = await Promise.all([
     pre ? null : dueFreshness(busy),
-    pre ? null : fetchAll(receivables(busy, 'party_code'), 'dues'),
-    fetchAll(() => busy.from('collection_latest').select('party_code, next_followup, created_at'), 'latest'),
+    pre ? null : fetchAll(receivables(busy, 'party_code, group_name'), 'dues'),
+    fetchAll(() => busy.from('collection_latest').select('party_code, group_name, next_followup, created_at'), 'latest'),
   ])
+  const groupOf = new Map()
+  for (const l of latest) groupOf.set(String(l.party_code), l.group_name)
+  for (const r of (pre ? pre.rows : rows) || []) groupOf.set(String(r.party_code), r.group_name)
   const live = pre ? pre.live : rows.map(r => String(r.party_code)).filter(c => !fresh.stale.has(c))
   const steps = pre ? pre.steps : await overdueSteps(busy, live)
   const latestMap = new Map(latest.map(l => [String(l.party_code), l]))
   const due = new Map()
   // Dates staff typed — even for a party who has paid since (shown as nothing due).
   for (const l of latest) {
-    if (l.next_followup && l.next_followup <= today) due.set(String(l.party_code), { kind: 'date', date: l.next_followup })
+    if (l.next_followup && l.next_followup <= today) due.set(String(l.party_code), { kind: 'date', date: l.next_followup, group: groupOf.get(String(l.party_code)) })
   }
   for (const code of live) {
     if (due.has(code)) continue
@@ -237,7 +274,7 @@ async function computeDue(busy, pre = null) {
     if (!rule) continue
     const lastDay = l?.created_at ? new Date(new Date(l.created_at).getTime() + 5.5 * 3600e3).toISOString().slice(0, 10) : null
     const days = lastDay ? Math.round((Date.parse(today) - Date.parse(lastDay)) / 86400000) : null
-    if (days === null || days >= rule.every) due.set(code, { kind: 'cadence', over: rule.over, every: rule.every, days })
+    if (days === null || days >= rule.every) due.set(code, { kind: 'cadence', over: rule.over, every: rule.every, days, group: groupOf.get(code) })
   }
   return due
 }
@@ -245,17 +282,19 @@ async function computeDue(busy, pre = null) {
 // ---------------------------------------------------------------------------
 // count / meta
 // ---------------------------------------------------------------------------
-async function handleCount(busy, res) {
+async function handleCount(busy, hq, me, res) {
   try {
-    const due = await computeDue(busy)
-    return send(res, 200, { due: due.size })
+    const [due, owners] = await Promise.all([computeDue(busy), loadOwners(busy)])
+    const mine = [...due.values()].filter(r => owners.ownerOf(r.group) === me.id).length
+    // Admins see everything due; everyone else sees what is theirs.
+    return send(res, 200, { due: me.isAdmin ? due.size : mine, mine, all: due.size })
   } catch (err) {
     console.error('collections count failed:', err)
     return send(res, 200, { due: 0 })
   }
 }
 
-async function handleMeta(busy, res) {
+async function handleMeta(busy, me, res) {
   const [fresh, allRows] = await Promise.all([
     dueFreshness(busy),
     fetchAll(receivables(busy, 'party_code, group_name, segment, outstanding_balance'), 'groups'),
@@ -286,7 +325,15 @@ async function handleMeta(busy, res) {
   const groups = [...map.values()].sort((a, b) => b.total - a.total)
   let dueCount = 0
   let setupNeeded = false
-  try { dueCount = (await computeDue(busy, { live: rows.map(r => String(r.party_code)), steps })).size } catch (err) { setupNeeded = true; console.error('collections due failed:', err) }
+  let dueMine = 0
+  try {
+    const [dueMap, owners] = await Promise.all([
+      computeDue(busy, { live: rows.map(r => String(r.party_code)), steps, rows }),
+      loadOwners(busy),
+    ])
+    dueCount = dueMap.size
+    dueMine = [...dueMap.values()].filter(r => owners.ownerOf(r.group) === me.id).length
+  } catch (err) { setupNeeded = true; console.error('collections due failed:', err) }
   return send(res, 200, {
     groups,
     totalParties: rows.length,
@@ -297,6 +344,8 @@ async function handleMeta(busy, res) {
     graceSteps: GRACE_STEPS,
     byStep,
     dueFollowups: dueCount,
+    dueMine,
+    me: { id: me.id, name: me.name, isAdmin: me.isAdmin },
     cadence: CADENCE,
     setupNeeded,
     dndGroup: DND_GROUP,
@@ -309,18 +358,54 @@ async function handleMeta(busy, res) {
 // ---------------------------------------------------------------------------
 // list — parties with dues, ageing, phones and their latest follow-up
 // ---------------------------------------------------------------------------
-async function handleList(busy, body, res) {
+async function handleList(busy, hq, me, body, res) {
   const view = ['group', 'all', 'due'].includes(body.view) ? body.view : 'group'
   const group = String(body.group || '').slice(0, 200)
   const today = todayIST()
   const cols = 'party_code, party_name, phone_primary, outstanding_balance, group_name, group_path, segment'
 
-  const fresh = await dueFreshness(busy)
+  const [fresh, owners, people] = await Promise.all([dueFreshness(busy), loadOwners(busy), loadPeople(hq)])
+  const nameOf = new Map(people.map(p => [p.id, p.name]))
   let parties
   let latestRows = null
   let dueMap = null
+  let summary = null
+  let doneToday = null
+  // Today's follow-ups: whose list? 'me' (default), 'all', or one person's id.
+  const person = view === 'due' ? (body.person === 'all' ? 'all' : body.person && body.person !== 'me' ? String(body.person) : me.id) : null
   if (view === 'due') {
-    dueMap = await computeDue(busy)
+    const fullDue = await computeDue(busy)
+    // Done today = calls / notes saved today (India date), any party.
+    const startIST = new Date(`${today}T00:00:00+05:30`).toISOString()
+    const doneRows = await fetchAll(() => busy.from('collection_followups')
+      .select('party_code, party_name, group_name, channel, outcome, remarks, promised_amount, promised_date, next_followup, created_by, created_by_name, created_at')
+      .neq('channel', 'reminder').gte('created_at', startIST).order('created_at', { ascending: false }), 'done today')
+    // Per-person counts for the chips (everyone, whatever is being shown).
+    const counts = new Map()
+    const bump = (id, key) => {
+      const k = id || 'none'
+      const c = counts.get(k) || { id: id || null, name: id ? (nameOf.get(id) || 'Someone') : 'Nobody assigned', due: 0, done: 0 }
+      c[key] += 1
+      counts.set(k, c)
+    }
+    for (const r of fullDue.values()) bump(owners.ownerOf(r.group), 'due')
+    const doneSeen = new Set()
+    for (const d of doneRows) {
+      if (doneSeen.has(d.party_code)) continue
+      doneSeen.add(d.party_code)
+      bump(owners.ownerOf(d.group_name), 'done')
+    }
+    summary = [...counts.values()].sort((a, b) => (b.due + b.done) - (a.due + a.done))
+    const wanted = r => person === 'all' || owners.ownerOf(r.group) === person
+    dueMap = new Map([...fullDue].filter(([, r]) => wanted(r)))
+    const doneFiltered = []
+    const seenDone = new Set()
+    for (const d of doneRows) {
+      if (seenDone.has(d.party_code) || !(person === 'all' || owners.ownerOf(d.group_name) === person)) continue
+      seenDone.add(d.party_code)
+      doneFiltered.push(d)
+    }
+    doneToday = doneFiltered
     const codes = [...dueMap.keys()]
     parties = await inChunks(codes, 200, part => busy.from('dues_segmented').select(cols).in('party_code', part).then(r => check(r, 'dues')))
     // Someone set a follow-up date for a party who has since paid up: still show them.
@@ -405,10 +490,55 @@ async function handleList(busy, body, res) {
       latest: latestMap.get(code) || null,
       last_reminder: lastReminder.get(code) || null,
       due_reason: dueMap ? dueMap.get(code) || null : null,
+      owner_id: owners.ownerOf(p.group_name),
+      owner_name: nameOf.get(owners.ownerOf(p.group_name)) || null,
     }
   })
 
-  return send(res, 200, { parties: out, view, group, today, lastSync: fresh.lastSync, graceDays: GRACE_DAYS, graceSteps: GRACE_STEPS })
+  return send(res, 200, { parties: out, view, group, today, lastSync: fresh.lastSync, graceDays: GRACE_DAYS, graceSteps: GRACE_STEPS,
+    person, summary, doneToday, ownersReady: owners.ready,
+    me: { id: me.id, name: me.name, isAdmin: me.isAdmin },
+    people: people.map(p => ({ id: p.id, name: p.name })) })
+}
+
+// ---------------------------------------------------------------------------
+// owners — who follows up which account group (admins)
+// ---------------------------------------------------------------------------
+async function handleOwners(busy, hq, me, res) {
+  if (!me.isAdmin) return send(res, 403, { error: 'Only admins can assign groups.' })
+  const [rows, owners, people] = await Promise.all([
+    fetchAll(receivables(busy, 'group_name, segment, outstanding_balance'), 'groups'),
+    loadOwners(busy),
+    loadPeople(hq),
+  ])
+  if (!owners.ready) return send(res, 500, { error: 'Run collections-notify-setup.sql in Supabase first.' })
+  const map = new Map()
+  for (const r of rows) {
+    const name = r.group_name || ''
+    const g = map.get(name) || { group_name: name, segment: r.segment || 'Unassigned', parties: 0, total: 0, dnd: isDnd(r) }
+    g.parties += 1
+    g.total += Number(r.outstanding_balance) || 0
+    map.set(name, g)
+  }
+  // Groups given to someone earlier but with nothing due right now stay listed.
+  for (const [name] of owners.byGroup) if (!map.has(name)) map.set(name, { group_name: name, segment: '', parties: 0, total: 0 })
+  const groups = [...map.values()].map(g => ({ ...g, hq_user_id: owners.byGroup.get(g.group_name) || null }))
+    .sort((a, b) => b.total - a.total)
+  return send(res, 200, { groups, defaultOwner: owners.defaultOwner, people: people.map(p => ({ id: p.id, name: p.name })) })
+}
+
+async function handleOwnersSave(busy, me, body, res) {
+  if (!me.isAdmin) return send(res, 403, { error: 'Only admins can assign groups.' })
+  const uuid = v => (typeof v === 'string' && /^[0-9a-f-]{36}$/i.test(v) ? v : null)
+  const list = Array.isArray(body.owners) ? body.owners.slice(0, 500) : []
+  const rows = list
+    .filter(o => o && typeof o.group_name === 'string')
+    .map(o => ({ group_name: o.group_name.slice(0, 200), hq_user_id: uuid(o.hq_user_id), updated_by: me.name, updated_at: new Date().toISOString() }))
+  if (rows.length) check(await busy.from('collection_group_owners').upsert(rows, { onConflict: 'group_name' }), 'owners save')
+  if ('default_owner' in body) {
+    check(await busy.from('collection_settings').upsert({ id: 1, default_owner: uuid(body.default_owner), updated_at: new Date().toISOString() }, { onConflict: 'id' }), 'settings save')
+  }
+  return send(res, 200, { ok: true, saved: rows.length })
 }
 
 // ---------------------------------------------------------------------------

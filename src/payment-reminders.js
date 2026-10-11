@@ -181,6 +181,8 @@ export function renderPaymentReminders(container) {
         loadList()
       }
       $('pfrSync').innerHTML = syncNoteHtml(m.lastSync)
+      const tabCount = document.getElementById('pfTabToday')
+      if (tabCount) tabCount.textContent = m.dueMine ? ` ${m.dueMine}` : ''
       const dnd = m.groups.find(g => g.dnd)
       const allTotal = sendable.reduce((s, g) => s + g.total, 0)
       const allCount = sendable.reduce((s, g) => s + g.parties, 0)

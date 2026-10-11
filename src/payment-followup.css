@@ -204,3 +204,26 @@ body.pf-modal-open { overflow: hidden; }
 @media (max-width: 640px) { .pf-balance-sub { text-align: left; } }
 .pfr-filters input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--blue); }
 .pf-hint { font-style: normal; font-weight: 400; color: var(--faint); }
+
+/* Today's follow-ups */
+.pf-tab-count { display: inline-block; min-width: 18px; margin-left: 6px; padding: 0 6px; border-radius: 10px; background: var(--amb); color: #fff; font-size: 11px; line-height: 18px; text-align: center; }
+.pf-tab-count:empty { display: none; }
+.pf-tile-grn { border-left-color: var(--grn); }
+.pf-people { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 12px; }
+.pf-person { border: 1px solid var(--line); background: var(--surface); color: var(--body); border-radius: 18px; padding: 6px 12px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.pf-person span { font-weight: 400; color: var(--muted); font-size: 12px; margin-left: 4px; }
+.pf-person.active { background: var(--blue); border-color: var(--blue); color: #fff; }
+.pf-person.active span { color: rgba(255,255,255,.85); }
+.pf-person-warn { font-size: 12px; color: var(--amb-dk); background: var(--amb-bg); border-radius: 8px; padding: 4px 8px; }
+.pf-assign { margin-left: auto; }
+.pf-tag-owner { background: var(--blue-bg); color: var(--blue-dk); }
+.pf-done { margin-top: 16px; display: flex; flex-direction: column; gap: 6px; }
+.pf-done-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--grn); border-radius: 10px; padding: 8px 12px; }
+.pf-done-name { font-weight: 700; color: var(--ink); }
+.pf-done-by { margin-left: auto; }
+.pf-owners { max-width: 640px; }
+.pf-owner-default { margin-bottom: 4px; }
+.pf-owner-list { display: flex; flex-direction: column; gap: 6px; max-height: 55vh; overflow-y: auto; }
+.pf-owner-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
+.pf-owner-row select { flex: 0 0 180px; height: 34px; }
+.pf-owner-name { font-weight: 600; color: var(--ink); font-size: 13.5px; }
