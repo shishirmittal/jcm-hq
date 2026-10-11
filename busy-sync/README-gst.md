@@ -25,8 +25,16 @@ each month (around the 14th); the page shows when the newest download happened.
 
 ## WhatsApp / email sent by the page
 
-Supplier reminders ("you have not filed invoice …") go to the party's `WhatsAppNo` / `Mobile`
-in Busy through Whatshub360 (`WHATSHUB_SEND_URL` / `WHATSHUB_VID` in Vercel, same as the
-other modules). The "missing in Busy" list goes to every admin's `profiles.whatsapp` and, when
-`RESEND_API_KEY` is set, by email to every admin's `profiles.email` (plus `GST_REPORT_EMAIL` if
-set; sender `GST_EMAIL_FROM`, default `JCM HQ <onboarding@resend.dev>`).
+Sent through JCM's own Meta WhatsApp Cloud API (api/_wa-cloud.js, number +91 91091 05999).
+Business-started messages must be approved templates, so two Utility templates are needed in
+WhatsApp Manager (names overridable with GST_TPL_SUPPLIER / GST_TPL_ADMIN, language GST_TPL_LANG, default en):
+
+- `gstr1_filing_reminder` → the supplier's `WhatsAppNo` / `Mobile` from Busy.
+  Body: `Namaste {{1}}, This is J.C. Mittal & Sons, Ratlam (GSTIN {{4}}). Our GSTR-2A for {{2}} does not show the following invoice(s) of yours: {{3}}. Please check your GSTR-1 and file or amend it so that we can claim the input tax credit. Thank you.`
+- `gst_missing_in_busy` → every admin's `profiles.whatsapp`.
+  Body: `JCM HQ — GSTR-2A {{1}}: {{2}} invoice(s) in the GST portal are NOT entered in Busy (total {{3}}). Please get these bills to the accountant: {{4}}` + URL button "Open in HQ" → https://hq.jcmretails.com/#gst-recon
+
+Template parameters cannot contain line breaks, so invoice lists are one line, "; " separated,
+cut at about 900 characters ("and N more"). The admin list also goes by email when
+`RESEND_API_KEY` is set (to every admin's `profiles.email` plus `GST_REPORT_EMAIL`; sender
+`GST_EMAIL_FROM`, default `JCM HQ <onboarding@resend.dev>`).

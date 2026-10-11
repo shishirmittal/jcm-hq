@@ -1,5 +1,6 @@
 import { applyCors } from './_cors.js'
 import { createClient } from '@supabase/supabase-js'
+import { waConfigured, sendTemplate, toWaNumber } from './_wa-cloud.js'
 
 // GSTR-2A Reconciliation — Busy purchases vs the 2A data Busy downloaded through its GSP,
 // party-wise, showing ONLY the red flags (Ruchir's rules, 12 Oct 2026):
@@ -25,7 +26,8 @@ import { createClient } from '@supabase/supabase-js'
 // Actions (POST JSON):
 //   recon  month                         everything for one month ('YYYY-MM') + month list
 //   mark   month, bucket, row_key, state ('ignored' | 'done' | ''), note
-//   remind-party  month, gstin, row_keys[], message   WhatsApp to the supplier (not_in_2a)
+//   remind-party  month, gstin, row_keys[]   WhatsApp template to the supplier (not_in_2a)
+//   wa-status                            is the Meta sender configured, template names
 //   notify-admins month                  missing_busy list → every admin, WhatsApp + email
 //   log    month                         what was sent for this month
 
@@ -38,7 +40,6 @@ const PAGE_URL = `${HQ_URL}/#gst-recon`
 
 const TAB_ID = 'gst-recon'
 const TOL = 1            // rupees; a difference above this is a red flag
-const MAX_MESSAGE = 1500 // characters per WhatsApp
 
 const opts = { auth: { autoRefreshToken: false, persistSession: false } }
 
@@ -115,13 +116,14 @@ export default async function handler(req, res) {
       const gstin = String(body.gstin || '').trim()
       const keys = Array.isArray(body.row_keys) ? body.row_keys.map(String).slice(0, 50) : []
       if (!month || !gstin || !keys.length) return send(res, 400, { error: 'Pick the invoices to remind about.' })
-      return send(res, 200, await remindParty(busy, { month, gstin, keys, message: body.message, who }))
+      return send(res, 200, await remindParty(busy, { month, gstin, keys, who }))
     }
     if (action === 'notify-admins') {
       const month = isMonth(body.month) ? body.month : null
       if (!month) return send(res, 400, { error: 'Pick a month.' })
       return send(res, 200, await notifyAdmins(busy, hq, { month, who }))
     }
+    if (action === 'wa-status') return send(res, 200, { configured: waConfigured(), supplierTemplate: TPL_SUPPLIER, adminTemplate: TPL_ADMIN, lang: TPL_LANG, emailReady: !!process.env.RESEND_API_KEY })
     if (action === 'log') {
       const month = isMonth(body.month) ? body.month : null
       const rows = check(await busy.from('gst_log').select('*').eq('month', month).order('sent_at', { ascending: false }).limit(200), 'log')
@@ -371,46 +373,44 @@ function groupBy(list, keyFn) {
   return m
 }
 
-// ---------- WhatsApp (Whatshub360, same settings as the other modules) ----------
-function cleanPhone(raw) {
-  const d = String(raw || '').replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '')
-  return /^[6-9]\d{9}$/.test(d) ? d : null
-}
-async function sendWhatsApp(mobile, message) {
-  const template = process.env.WHATSHUB_SEND_URL
-  if (!template) return 'not_set_up'
-  const digits = cleanPhone(mobile)
-  if (!digits) return 'no_number'
-  const url = template
-    .replace('{vid}', encodeURIComponent(process.env.WHATSHUB_VID || ''))
-    .replace('{mobile}', digits)
-    .replace('{msg}', encodeURIComponent(message))
-  try {
-    const r = await fetch(url, { method: 'GET', signal: AbortSignal.timeout(10000) })
-    const text = (await r.text()).slice(0, 300)
-    if (!r.ok || /error|fail|invalid/i.test(text)) { console.error('Whatshub360 GST message failed:', r.status, text); return 'failed' }
-    return 'sent'
-  } catch (err) {
-    console.error('Whatshub360 GST message error:', err)
-    return 'failed'
-  }
-}
-function fitLines(head, list, tail) {
+// ---------- WhatsApp (Meta Cloud API, direct — api/_wa-cloud.js) ----------
+// Business-started messages must be APPROVED TEMPLATES (free text only works within 24 h of
+// the other side writing to us). Two Utility templates, submitted in WhatsApp Manager:
+//   gstr1_filing_reminder  (to a supplier)  {{1}} party name, {{2}} month, {{3}} invoice list, {{4}} JCM GSTIN
+//   gst_missing_in_busy    (to admins)      {{1}} month, {{2}} count, {{3}} total, {{4}} invoice list
+// Names / language can be overridden with GST_TPL_SUPPLIER, GST_TPL_ADMIN, GST_TPL_LANG.
+// Template parameters may not contain new lines, so lists are one line, "; " separated.
+const TPL_SUPPLIER = process.env.GST_TPL_SUPPLIER || 'gstr1_filing_reminder'
+const TPL_ADMIN = process.env.GST_TPL_ADMIN || 'gst_missing_in_busy'
+const TPL_LANG = process.env.GST_TPL_LANG || 'en'
+const JCM_GSTIN = '23AAPFJ0607D1ZT'
+const PARAM_MAX = 900 // characters per template parameter (Meta's body limit is 1024 in all)
+
+function fitList(items) {
   const out = []
-  let used = head.length + tail.length + 40
-  for (let i = 0; i < list.length; i++) {
-    if (used + list[i].length + 1 > MAX_MESSAGE) { out.push(`…and ${list.length - i} more`); break }
-    out.push(list[i]); used += list[i].length + 1
+  let used = 0
+  for (let i = 0; i < items.length; i++) {
+    const piece = (out.length ? '; ' : '') + items[i]
+    if (used + piece.length > PARAM_MAX) { out.push(`and ${items.length - i} more`); break }
+    out.push(items[i]); used += piece.length
   }
-  return `${head}\n${out.join('\n')}\n${tail}`.trim()
+  return out.join('; ').replace(/\s+/g, ' ')
 }
 
-const DEFAULT_PARTY_MESSAGE =
-  'Namaste {name},\n\nJ.C. Mittal & Sons (JCM Retails), Ratlam — GSTIN 23AAPFJ0607D1ZT.\n' +
-  'Our GSTR-2A for {month} does not show these invoices of yours:\n{list}\n' +
-  'Please check your GSTR-1 and file / amend it so that we can claim the input credit. Thank you.'
+// Returns { status, detail } — status: sent | failed | no_number | not_set_up.
+async function sendWhatsApp(mobile, templateName, params) {
+  if (!waConfigured()) return { status: 'not_set_up', detail: 'WHATSAPP_TOKEN / WHATSAPP_PHONE_NUMBER_ID missing in Vercel' }
+  if (!toWaNumber(mobile)) return { status: 'no_number', detail: '' }
+  try {
+    const out = await sendTemplate(mobile, templateName, TPL_LANG, params)
+    return { status: 'sent', detail: out?.messages?.[0]?.id ? `id ${out.messages[0].id}` : '' }
+  } catch (err) {
+    console.error('GST WhatsApp failed:', err.message)
+    return { status: 'failed', detail: String(err.message || '').slice(0, 300) }
+  }
+}
 
-async function remindParty(busy, { month, gstin, keys, message, who }) {
+async function remindParty(busy, { month, gstin, keys, who }) {
   const [rows, parties] = await Promise.all([
     all(busy, 'gst_purchase_rows', 'vch_key, vch_no, vch_date, party_code, party_name, gstin, taxable, cgst, sgst, igst, total'),
     busy.from('gst_parties').select('*').eq('gstin', gstin).then(r => check(r, 'parties')),
@@ -420,12 +420,10 @@ async function remindParty(busy, { month, gstin, keys, message, who }) {
   const contact = parties.find(p => p.party_code === bills[0].party_code) || parties[0]
   const number = contact?.whatsapp || contact?.mobile
   const name = bills[0].party_name || contact?.party_name || 'Sir/Madam'
-  const list = bills.map(b => `• ${b.vch_no} dt ${niceDate(b.vch_date)} — ${rupees(b.total)}`)
-  const tpl = String(message || DEFAULT_PARTY_MESSAGE).slice(0, 1200)
-  const text = tpl.replace('{name}', name).replace('{month}', monthName(month)).replace('{list}', fitLines('', list, ''))
-  const status = await sendWhatsApp(number, text)
-  check(await busy.from('gst_log').insert({ month, kind: 'party_reminder', channel: 'whatsapp', gstin, recipient: number ? String(number) : null, status, detail: `${bills.length} bill(s): ${bills.map(b => b.vch_no).join(', ')}`.slice(0, 500), by_name: who }), 'log')
-  return { status, number: number || null, name, count: bills.length }
+  const list = fitList(bills.map(b => `${b.vch_no} dt ${niceDate(b.vch_date)} (${rupees(b.total)})`))
+  const r = await sendWhatsApp(number, TPL_SUPPLIER, [name, monthName(month), list, JCM_GSTIN])
+  check(await busy.from('gst_log').insert({ month, kind: 'party_reminder', channel: 'whatsapp', gstin, recipient: number ? String(number) : null, status: r.status, detail: `${bills.length} bill(s): ${bills.map(b => b.vch_no).join(', ')}${r.detail ? ` — ${r.detail}` : ''}`.slice(0, 500), by_name: who }), 'log')
+  return { status: r.status, detail: r.detail, number: number || null, name, count: bills.length }
 }
 
 // ---------- admins: the "missing in Busy" list ----------
@@ -437,14 +435,12 @@ async function notifyAdmins(busy, hq, { month, who }) {
   const results = []
   const total = missing.reduce((s, r) => s + (r.p_total || 0), 0)
 
-  // WhatsApp
-  const lines = missing.map(r => `• ${r.party || r.gstin} — ${r.p_no} dt ${niceDate(r.p_date)} — ${rupees(r.p_total)}`)
-  const head = `JCM HQ — GSTR-2A ${monthName(month)}\n${missing.length} invoice(s) in 2A are NOT entered in Busy (total ${rupees(total)}). Please get these bills to the accountant:`
-  const text = fitLines(head, lines, `Full list + Excel: ${PAGE_URL}`)
+  // WhatsApp (template gst_missing_in_busy)
+  const list = fitList(missing.map(r => `${r.party || r.gstin}: ${r.p_no} dt ${niceDate(r.p_date)} (${rupees(r.p_total)})`))
   for (const a of admins) {
-    const status = await sendWhatsApp(a.whatsapp, text)
-    results.push({ name: a.name || a.email, channel: 'whatsapp', status })
-    check(await busy.from('gst_log').insert({ month, kind: 'admin_list', channel: 'whatsapp', recipient: a.whatsapp ? String(a.whatsapp) : null, status, detail: `${missing.length} missing in Busy`, by_name: who }), 'log')
+    const r = await sendWhatsApp(a.whatsapp, TPL_ADMIN, [monthName(month), String(missing.length), rupees(total), list || 'none'])
+    results.push({ name: a.name || a.email, channel: 'whatsapp', status: r.status, detail: r.detail })
+    check(await busy.from('gst_log').insert({ month, kind: 'admin_list', channel: 'whatsapp', recipient: a.whatsapp ? String(a.whatsapp) : null, status: r.status, detail: `${missing.length} missing in Busy${r.detail ? ` — ${r.detail}` : ''}`.slice(0, 500), by_name: who }), 'log')
   }
 
   // Email (Resend), when set up

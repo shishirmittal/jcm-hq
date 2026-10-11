@@ -3,7 +3,7 @@
 //   Missing in Busy · Not in 2A · Amount mismatch · Doc no. mismatch · Odd numbering · ₹0 value
 // Data: gst_2a_rows / gst_purchase_rows / gst_parties (JCM-Busysql project), filled every
 // 30 minutes by busy-sync/sync-gst.js on JCM-Server; the matching is done by /api/gst.
-// Actions: Download Excel (all tabs), WhatsApp reminder to a supplier that has not filed,
+// Actions: Download Excel (all tabs), WhatsApp (Meta template) reminder to a supplier that has not filed,
 // "Send to admins" (the missing-in-Busy list by WhatsApp + email), Done / Ignore per row.
 import { supabase } from './supabase.js'
 import { openSidebar } from './sidebar.js'
@@ -63,7 +63,7 @@ const BUCKETS = [
   { id: 'zero', label: '₹0 value', short: '₹0', tone: 'quiet', hint: 'Purchase vouchers of ₹0 in Busy — FOC, replacement or scheme documents.' },
 ]
 
-const STATUS_WORD = { sent: 'sent', failed: 'failed', no_number: 'no number', not_set_up: 'WhatsApp not set up' }
+const STATUS_WORD = { sent: 'sent', failed: 'failed', no_number: 'no number', not_set_up: 'WhatsApp (Meta) not set up in Vercel' }
 
 // ---------- page ----------
 export async function renderGstRecon(container) {
@@ -290,40 +290,42 @@ export async function renderGstRecon(container) {
     }
   }
 
-  // ---- supplier reminder
-  const DEFAULT_MESSAGE =
-    'Namaste {name},\n\nJ.C. Mittal & Sons (JCM Retails), Ratlam — GSTIN 23AAPFJ0607D1ZT.\n' +
-    'Our GSTR-2A for {month} does not show these invoices of yours:\n{list}\n' +
-    'Please check your GSTR-1 and file / amend it so that we can claim the input credit. Thank you.'
+  // ---- supplier reminder (Meta template gstr1_filing_reminder — text is fixed by the
+  // approved template; the page shows what will go out and which bills to include)
   function openRemind(gstin) {
     const rows = rowsFor('not_in_2a', false).filter(r => r.gstin === gstin)
     if (!rows.length) return flash('Nothing to remind about for this party.')
     const contact = state.data.contacts[gstin]
     const number = contact?.whatsapp || contact?.mobile
-    const saved = localStorage.getItem('gst-remind-message') || DEFAULT_MESSAGE
-    $('gstDrawerTitle').textContent = `WhatsApp — ${rows[0].party || gstin}`
+    const name = rows[0].party || gstin
+    $('gstDrawerTitle').textContent = `WhatsApp — ${name}`
     $('gstDrawerBody').innerHTML = `
       <p class="gst-hint">To <b>${number ? esc(String(number)) : '— no mobile in Busy party master —'}</b>${contact?.name ? ` (${esc(contact.name)})` : ''}. The number comes from Busy; change it there if it is wrong.</p>
       <div class="gst-pick">${rows.map(r => `<label><input type="checkbox" checked data-key="${esc(r.row_key)}" /> ${esc(r.b_no)} · ${esc(fmtDate(r.b_date))} · ${esc(money(r.b_total))}</label>`).join('')}</div>
-      <p class="gst-hint">Message — {name}, {month} and {list} are filled in automatically:</p>
-      <textarea id="gstMsg" class="gst-textarea" rows="9">${esc(saved)}</textarea>
+      <p class="gst-hint">Preview (approved WhatsApp template — wording cannot be changed here):</p>
+      <div class="gst-preview" id="gstPreview"></div>
       <div class="gst-drawer-actions">
-        <button class="btn-ghost btn-small" id="gstMsgReset">Reset message</button>
         <button class="btn-primary btn-small" id="gstSendRemind" ${number ? '' : 'disabled'}>${icon('send', 13)} Send WhatsApp</button>
       </div>`
     $('gstDrawer').hidden = false; $('gstDrawerBackdrop').hidden = false
-    $('gstMsgReset').addEventListener('click', () => { $('gstMsg').value = DEFAULT_MESSAGE })
+    const preview = () => {
+      const picked = rows.filter(r => $('gstDrawerBody').querySelector(`input[data-key="${CSS.escape(r.row_key)}"]`)?.checked)
+      const list = picked.map(r => `${r.b_no} dt ${fmtDate(r.b_date)} (${money(r.b_total)})`).join('; ')
+      $('gstPreview').textContent = `Namaste ${name},\n\nThis is J.C. Mittal & Sons, Ratlam (GSTIN 23AAPFJ0607D1ZT). Our GSTR-2A for ${monthName(state.month)} does not show the following invoice(s) of yours: ${list || '—'}.\n\nPlease check your GSTR-1 and file or amend it so that we can claim the input tax credit. Thank you.`
+    }
+    preview()
+    $('gstDrawerBody').querySelectorAll('input[data-key]').forEach(i => i.addEventListener('change', preview))
     $('gstSendRemind').addEventListener('click', async e => {
+      const btn = e.currentTarget
       const keys = [...$('gstDrawerBody').querySelectorAll('input[data-key]:checked')].map(i => i.dataset.key)
       if (!keys.length) return flash('Tick at least one bill.')
-      const message = $('gstMsg').value
-      localStorage.setItem('gst-remind-message', message)
-      e.currentTarget.disabled = true
+      btn.disabled = true
       try {
-        const r = await call({ action: 'remind-party', month: state.month, gstin, row_keys: keys, message })
-        flash(r.status === 'sent' ? `Sent to ${r.name} (${r.number}) for ${r.count} bill(s).` : `Not sent: ${STATUS_WORD[r.status] || r.status}.`)
+        const r = await call({ action: 'remind-party', month: state.month, gstin, row_keys: keys })
+        flash(r.status === 'sent' ? `Sent to ${r.name} (${r.number}) for ${r.count} bill(s).` : `Not sent: ${STATUS_WORD[r.status] || r.status}${r.detail ? ' — ' + r.detail : ''}`)
         if (r.status === 'sent') closeDrawer()
-      } catch (err) { flash(err.message) } finally { e.currentTarget && (e.currentTarget.disabled = false) }
+        if (!$('gstLog').hidden) loadLog()
+      } catch (err) { flash(err.message) } finally { btn.disabled = false }
     })
   }
   function closeDrawer() { $('gstDrawer').hidden = true; $('gstDrawerBackdrop').hidden = true }
@@ -336,7 +338,7 @@ export async function renderGstRecon(container) {
     $('gstAdminBtn').disabled = true
     try {
       const r = await call({ action: 'notify-admins', month: state.month })
-      flash(r.results.map(x => `${x.channel === 'email' ? 'Email' : x.name}: ${STATUS_WORD[x.status] || x.status}`).join(' · '))
+      flash(r.results.map(x => `${x.channel === 'email' ? 'Email' : x.name}: ${STATUS_WORD[x.status] || x.status}${x.status === 'failed' && x.detail ? ' (' + x.detail + ')' : ''}`).join(' · '))
       if (!$('gstLog').hidden) loadLog()
     } catch (err) { flash(err.message) } finally { $('gstAdminBtn').disabled = false }
   }
