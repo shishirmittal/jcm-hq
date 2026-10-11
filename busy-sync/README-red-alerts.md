@@ -21,6 +21,10 @@ purpose (`red_alert_skip_parties`, e.g. the counter-sale parties Nexus Enterpris
 House, Cash) are skipped by the below-cost check only. Quotations,
 sales orders and purchase orders are not checked for edits or backdating.
 
+Fresh start (11 Oct 2026): `red_alert_settings` key `activity_from` = `2026-10-11` — deletions, bill
+edits and backdating from before that date were removed and are never added again. ₹0 rate, ₹0 qty
+and below-cost alerts still cover the whole financial year.
+
 ## What we learned about Busy's tables (Oct 2026)
 
 - `CheckList` is Busy's audit log: `Type` 1 = master, 2 = voucher; `Action` 1 = added, 2 = modified;

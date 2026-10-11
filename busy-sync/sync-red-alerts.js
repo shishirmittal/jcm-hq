@@ -24,6 +24,8 @@
 //        typed in BACKDATE_DAYS or more after the date it carries (CheckList Action 1 time vs Tran1.Date).
 //   Quotations, sales orders and purchase orders are drafts by nature, so edits and backdating on
 //   them are not flagged.
+//   red_alert_settings 'activity_from' (YYYY-MM-DD): deletions, edits and backdating before that
+//   date are never added (fresh start, 11 Oct 2026). ₹0 and below-cost checks cover the whole year.
 //
 // Safe to run as often as you like: every alert has a unique key, so nothing is added twice,
 // and an alert someone has already reviewed is never touched again.
@@ -385,8 +387,13 @@ async function main() {
 
     // The deliberate-billing band, set on the Red Alerts page (Skip lists). Defaults if not set yet.
     const band = { from: 80, to: 97 };
+    // activity_from (YYYY-MM-DD): deletions, bill edits and backdating are only flagged from this
+    // date on — set when the old history was cleared for a fresh start. ₹0 / below-cost lines are
+    // not affected by it.
+    let activityFrom = null;
     const { data: settingRows } = await supabase.from('red_alert_settings').select('key, value');
     for (const r of settingRows || []) {
+      if (r.key === 'activity_from' && /^\d{4}-\d{2}-\d{2}$/.test(String(r.value || ''))) activityFrom = r.value;
       if (r.key === 'below_cost_skip_from' && Number.isFinite(Number(r.value))) band.from = Number(r.value);
       if (r.key === 'below_cost_skip_to' && Number.isFinite(Number(r.value))) band.to = Number(r.value);
     }
@@ -400,7 +407,8 @@ async function main() {
     const { zero, below } = await readSalesLines(pool, (skipRows || []).map((s) => s.item_name),
       (partyRows || []).map((p) => p.party_name), useBand);
     const audit = await readAudit(pool);
-    let rows = [...deletions, ...zero, ...below, ...audit];
+    const fromDate = (r) => !activityFrom || String(r.happened_at || '').slice(0, 10) >= activityFrom;
+    let rows = [...deletions.filter(fromDate), ...zero, ...below, ...audit.filter(fromDate)];
 
     if (AS_HISTORY) {
       rows = rows.map((r) => ({
