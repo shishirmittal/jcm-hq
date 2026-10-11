@@ -56,7 +56,9 @@ function render({ title, fileTitle, party, info, box, cols, rows, totals, note }
       while (t.length > 1 && doc.widthOfString(t + '…') > width) t = t.slice(0, -1)
       return t + '…'
     }
-    cols[cols.length - 1].w = FULL - cols.slice(0, -1).reduce((s, c) => s + c.w, 0)
+    const flex = cols.find(c => !c.w) || cols[cols.length - 1]
+    flex.w = 0
+    flex.w = FULL - cols.reduce((s, c) => s + c.w, 0)
     const header = yy => {
       doc.rect(L, yy, FULL, 20).fill(NAVY)
       let x = L
