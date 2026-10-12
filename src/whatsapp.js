@@ -82,7 +82,10 @@ export function renderWhatsapp(container, tab = 'inbox', sub = null) {
 function renderInbox(el, number) {
   el.innerHTML = `
     <div class="wa-inbox">
-      <aside class="wa-conv-list" id="waConvs"><div class="loading-state">Loading…</div></aside>
+      <aside class="wa-conv-list">
+        <div class="wa-search"><input type="search" id="waConvQ" placeholder="Search name, number or message" autocomplete="off" enterkeyhint="search"></div>
+        <div id="waConvs"><div class="loading-state">Loading…</div></div>
+      </aside>
       <section class="wa-thread" id="waThread"><div class="empty-state">Pick a conversation.</div></section>
     </div>`
   const state = { convs: [], number: number || null, timer: null, thread: null }
@@ -99,8 +102,13 @@ function renderInbox(el, number) {
     } catch (err) { if (!silent) $('waConvs').innerHTML = `<div class="empty-state">${esc(err.message)}</div>` }
   }
   function drawConvs() {
-    const list = state.convs
-    if (!list.length) { $('waConvs').innerHTML = '<div class="empty-state">No messages yet. When a customer replies or taps a button, it shows here.</div>'; return }
+    const q = ($('waConvQ').value || '').trim().toLowerCase()
+    const qDigits = q.replace(/\D/g, '')
+    const list = !q ? state.convs : state.convs.filter(c =>
+      `${c.name || ''} ${c.display || ''} ${c.last?.text || ''}`.toLowerCase().includes(q)
+      || (qDigits.length >= 3 && String(c.number || '').includes(qDigits)))
+    if (!state.convs.length) { $('waConvs').innerHTML = '<div class="empty-state">No messages yet. When a customer replies or taps a button, it shows here.</div>'; return }
+    if (!list.length) { $('waConvs').innerHTML = `<div class="empty-state">No conversation matches “${esc(q)}”.</div>`; return }
     $('waConvs').innerHTML = list.map(c => `
       <button type="button" class="wa-conv ${c.number === state.number ? 'active' : ''} ${c.unread ? 'unread' : ''}" data-number="${esc(c.number)}">
         <div class="wa-conv-top"><span class="wa-conv-name">${esc(c.name || c.display)}</span><span class="wa-conv-time">${esc(when(c.last.at))}</span></div>
@@ -109,6 +117,7 @@ function renderInbox(el, number) {
       </button>`).join('')
   }
   $('waConvs').addEventListener('click', e => { const b = e.target.closest('[data-number]'); if (b) openThread(b.dataset.number) })
+  $('waConvQ').addEventListener('input', drawConvs)
 
   async function openThread(number) {
     state.number = number
@@ -189,6 +198,7 @@ function renderInbox(el, number) {
 // ---- Templates --------------------------------------------------------------
 function renderTemplates(el) {
   el.innerHTML = '<div class="loading-state">Asking WhatsApp Manager…</div>'
+  let templates = [], tplQ = ''
   async function load() {
     try {
       const d = await call({ action: 'templates' })
@@ -198,10 +208,26 @@ function renderTemplates(el) {
           <div class="wa-row"><strong>${ok} approved</strong>${pend ? ` · ${pend} in review` : ''}${rej ? ` · <span class="pf-pill pf-tone-red">${rej} rejected</span>` : ''}${miss ? ` · <span class="pf-pill pf-tone-red">${miss} not created yet</span>` : ''}
             <span class="wa-muted">— the wording for the missing ones is in the templates file (docs/whatsapp-templates.md). Create them in WhatsApp Manager; this list refreshes from Meta.</span></div>
         </div>
-        <div class="wa-table wa-card wa-tpl-table"><table><thead><tr><th>Template</th><th>Used for</th><th>Status</th><th>Last real send</th><th>Buttons</th><th>Body</th></tr></thead><tbody>
-          ${d.templates.map(t => `<tr><td><code>${esc(t.name)}</code>${t.language ? `<div class="wa-muted">${esc(t.language)} · ${esc(t.category || '')}</div>` : ''}</td><td>${esc(t.used)}</td><td>${pill(t.status, t.status === 'MISSING' ? 'Not created' : t.status.toLowerCase())}${t.rejected_reason && t.rejected_reason !== 'NONE' ? `<div class="wa-muted">${esc(t.rejected_reason)}</div>` : ''}${t.quality && t.quality !== 'UNKNOWN' ? `<div class="wa-muted">quality ${esc(t.quality.toLowerCase())}</div>` : ''}</td><td>${t.last ? `${pill(t.last.status)}<div class="wa-muted">${esc(when(t.last.at))}</div>${t.last.error ? `<div class="wa-err">${esc(t.last.error)}</div>` : ''}` : '<span class="wa-muted">never sent</span>'}</td><td>${(t.buttons || []).map(b => `<div>${esc(b)}</div>`).join('')}</td><td class="wa-body-cell">${esc(t.body || '')}</td></tr>`).join('')}
-        </tbody></table></div>`
+        <div class="wa-search"><input type="search" id="waTplQ" placeholder="Search template name, use, wording or status" autocomplete="off" enterkeyhint="search" value="${esc(tplQ)}"></div>
+        <div id="waTplList"></div>`
+      templates = d.templates
+      el.querySelector('#waTplQ').addEventListener('input', e => { tplQ = e.target.value; drawTemplates() })
+      drawTemplates()
     } catch (err) { el.innerHTML = `<div class="empty-state">${esc(err.message)}</div>` }
+  }
+  function drawTemplates() {
+    const q = tplQ.trim().toLowerCase()
+    const list = !q ? templates : templates.filter(t => {
+      const status = t.status === 'MISSING' ? 'not created missing' : String(t.status || '').toLowerCase()
+      return `${t.name} ${t.used || ''} ${t.body || ''} ${(t.buttons || []).join(' ')} ${status} ${t.category || ''}`.toLowerCase().includes(q)
+    })
+    const box = el.querySelector('#waTplList')
+    if (!box) return
+    if (!list.length) { box.innerHTML = `<div class="empty-state">No template matches “${esc(q)}”.</div>`; return }
+    box.innerHTML = `
+        <div class="wa-table wa-card wa-tpl-table"><table><thead><tr><th>Template</th><th>Used for</th><th>Status</th><th>Last real send</th><th>Buttons</th><th>Body</th></tr></thead><tbody>
+          ${list.map(t => `<tr><td><code>${esc(t.name)}</code>${t.language ? `<div class="wa-muted">${esc(t.language)} · ${esc(t.category || '')}</div>` : ''}</td><td>${esc(t.used)}</td><td>${pill(t.status, t.status === 'MISSING' ? 'Not created' : t.status.toLowerCase())}${t.rejected_reason && t.rejected_reason !== 'NONE' ? `<div class="wa-muted">${esc(t.rejected_reason)}</div>` : ''}${t.quality && t.quality !== 'UNKNOWN' ? `<div class="wa-muted">quality ${esc(t.quality.toLowerCase())}</div>` : ''}</td><td>${t.last ? `${pill(t.last.status)}<div class="wa-muted">${esc(when(t.last.at))}</div>${t.last.error ? `<div class="wa-err">${esc(t.last.error)}</div>` : ''}` : '<span class="wa-muted">never sent</span>'}</td><td>${(t.buttons || []).map(b => `<div>${esc(b)}</div>`).join('')}</td><td class="wa-body-cell">${esc(t.body || '')}</td></tr>`).join('')}
+        </tbody></table></div>`
   }
   load()
   return { refresh: load }

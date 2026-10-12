@@ -86,3 +86,10 @@
   .wa-row .btn-small { flex: 1 1 100%; }
   .wa-switches { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Search boxes on Inbox and Templates (2026-10-12) */
+.wa-search { padding: 10px; }
+.wa-conv-list .wa-search { position: sticky; top: 0; z-index: 2; background: var(--surface, #fff); border-bottom: 1px solid var(--line, #e3e3e3); }
+.wa-search input { width: 100%; box-sizing: border-box; height: 42px; padding: 0 12px; border: 1px solid var(--line, #ccc); border-radius: 10px; background: var(--bg, #fff); color: var(--text, inherit); font-size: 15px; font-family: inherit; }
+#waTplQ { margin: 0; }
+.wa-page .wa-search:has(#waTplQ) { padding: 10px 0; }
