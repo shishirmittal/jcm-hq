@@ -1,6 +1,7 @@
 import { applyCors } from './_cors.js'
 import { createClient } from '@supabase/supabase-js'
 import { waConfigured, sendLogged, waSwitches, BANNER, inr, niceDate as waDate } from './_wa-cloud.js'
+import { buildPurchasePdf, purchaseFileName } from './_purchase-pdf.js'
 
 // Purchase Summary — every purchase bill the accounts team types into Busy, so
 // admins know what material has reached the warehouse: party, bill no. and date,
@@ -26,7 +27,8 @@ import { waConfigured, sendLogged, waSwitches, BANNER, inr, niceDate as waDate }
 //   people-save hq_user_id, instant, daily
 //   settings-save instant_on, daily_on, summary_time
 //   send-bill vch_key             send one bill's WhatsApp again, now
-//   test                          a test WhatsApp to the signed-in person
+//   test                          the newest bill's WhatsApp, to the signed-in person only
+//   pdf    vch_key                the bill PDF (base64) for the in-app viewer
 //   notify                        (sync script only) send what is due
 
 export const config = { maxDuration: 60 }
@@ -126,7 +128,8 @@ export default async function handler(req, res) {
     if (action === 'people-save') return await handlePeopleSave(busy, hq, body, me, res)
     if (action === 'settings-save') return await handleSettingsSave(busy, body, res)
     if (action === 'send-bill') return await handleSendBill(busy, hq, body, res)
-    if (action === 'test') return await handleTest(busy, me, res)
+    if (action === 'test') return await handleTest(busy, hq, me, res)
+    if (action === 'pdf') return await handlePdf(busy, hq, body, res)
     return send(res, 400, { error: 'Unknown request.' })
   } catch (err) {
     console.error('purchases handler error:', err)
@@ -298,16 +301,54 @@ function cleanPhone(raw) {
 }
 
 // Meta templates (staff): a value can't hold a line break, so lists are flattened.
-//   staff_purchase_bill     {{1}} party, {{2}} bill no, {{3}} bill date, {{4}} items (count + first few),
-//                           {{5}} bill total, {{6}} entered by + time.   Button → Purchase Summary page.
+//   staff_purchase_pdf      (2026-10-13, Shishir: "replace the text with a PDF") DOCUMENT header = the
+//                           bill PDF (api/_purchase-pdf.js); {{1}} party, {{2}} bill no, {{3}} bill total,
+//                           {{4}} entered by + time.   Button → Purchase Summary page.
+//   staff_purchase_bill     the old text version — used only while staff_purchase_pdf is not approved yet
+//                           (Meta answers 132001 "template does not exist").
 //   staff_purchase_summary  {{1}} date, {{2}} bills, {{3}} item lines, {{4}} total, {{5}} parties (flat).
-export function billMessage(v, lines, names) {
+const PDF_BUCKETS = ['wa-docs', 'gst-reports']
+const PDF_LINK_SECONDS = 7 * 24 * 3600
+
+// Make the bill PDF, keep it in Storage and return a link Meta (and the page) can open.
+async function billPdfLink(busy, v, lines, names) {
+  const pdf = await buildPurchasePdf(v, lines, whoName(v.entered_by, names))
+  const filename = purchaseFileName(v)
+  const path = `purchases/${String(v.vch_key).replace(/[^A-Za-z0-9]+/g, '-')}-${Date.now()}.pdf`
+  for (const bucket of PDF_BUCKETS) {
+    const up = await busy.storage.from(bucket).upload(path, pdf, { contentType: 'application/pdf', upsert: true })
+    if (up.error) continue
+    const signed = await busy.storage.from(bucket).createSignedUrl(path, PDF_LINK_SECONDS)
+    if (!signed.error && signed.data?.signedUrl) return { url: signed.data.signedUrl, filename }
+  }
+  throw new Error('Could not store the purchase PDF (Storage bucket wa-docs / gst-reports).')
+}
+
+export function billMessage(v, lines, names, pdf = null) {
   const who = whoName(v.entered_by, names)
   const first = lines.slice(0, 4).map(l => `${l.item_name || 'Item'} ${qtyText(l.qty)} × ${rupees(l.rate)}`).join('; ')
   const items = `${lines.length}: ${first}${lines.length > 4 ? ` and ${lines.length - 4} more` : ''}`
+  const byLine = `${who || 'someone'} at ${niceTime(v.entered_at)}, ${niceDate(v.entered_at)}`
+  const old = {
+    kind: 'staff_purchase', template: 'staff_purchase_bill', opts: { headerImageUrl: BANNER('staff-purchase') },
+    params: [v.party_name || 'Party', v.vch_no || '—', waDate(v.bill_date), items, inr(v.bill_total), byLine],
+  }
+  if (!pdf) return old
   return {
-    kind: 'staff_purchase', template: 'staff_purchase_bill', headerImageUrl: BANNER('staff-purchase'),
-    params: [v.party_name || 'Party', v.vch_no || '—', waDate(v.bill_date), items, inr(v.bill_total), `${who || 'someone'} at ${niceTime(v.entered_at)}, ${niceDate(v.entered_at)}`],
+    kind: 'staff_purchase', template: 'staff_purchase_pdf',
+    opts: { headerDocumentUrl: pdf.url, headerDocumentName: pdf.filename },
+    params: [v.party_name || 'Party', v.vch_no || '—', inr(v.bill_total), byLine],
+    fallback: old,
+  }
+}
+
+// PDF version when it can be made; the old text message if Storage fails.
+async function billMessageWithPdf(busy, v, lines, names) {
+  try {
+    return billMessage(v, lines, names, await billPdfLink(busy, v, lines, names))
+  } catch (err) {
+    console.error('purchase PDF failed, sending the text version:', err)
+    return billMessage(v, lines, names)
   }
 }
 
@@ -316,7 +357,7 @@ export function summaryMessage(day, bills) {
   const items = bills.reduce((s, b) => s + (b.item_count || 0), 0)
   const list = bills.slice(0, 8).map(b => `${b.party_name || 'Party'} ${rupees(b.bill_total)}`).join('; ') + (bills.length > 8 ? ` and ${bills.length - 8} more` : '')
   return {
-    kind: 'staff_purchase_summary', template: 'staff_purchase_summary', headerImageUrl: BANNER('staff-purchase'),
+    kind: 'staff_purchase_summary', template: 'staff_purchase_summary', opts: { headerImageUrl: BANNER('staff-purchase') },
     params: [waDate(day), String(bills.length), String(items), inr(total), list || 'none'],
   }
 }
@@ -350,11 +391,17 @@ function forBill(base, managers, v) {
   return [...base, ...extra.filter(p => !seen.has(p.id) && seen.add(p.id))]
 }
 
+// Meta's answer when a template name is not on the account (or not approved yet).
+const MISSING_TEMPLATE = /132001|does not exist|template name/i
+
 async function sendToAll(busy, people, msg, logBase) {
   const switches = await waSwitches(busy)
+  const one = (p, m) => sendLogged(busy, { kind: m.kind, to: p.mobile, template: m.template, params: m.params,
+    opts: m.opts || {}, ref: logBase.vch_key || logBase.summary_date || null, refName: p.name, by: 'HQ', switches })
   const results = await Promise.all(people.map(async p => {
-    const r = await sendLogged(busy, { kind: msg.kind, to: p.mobile, template: msg.template, params: msg.params,
-      opts: { headerImageUrl: msg.headerImageUrl }, ref: logBase.vch_key || logBase.summary_date || null, refName: p.name, by: 'HQ', switches })
+    let r = await one(p, msg)
+    // New PDF template not approved yet → send the old text message instead, so nobody misses a bill.
+    if (r.status === 'failed' && msg.fallback && MISSING_TEMPLATE.test(r.error || '')) r = await one(p, msg.fallback)
     const status = r.status === 'off' ? 'not_set_up' : r.status
     return { ...logBase, hq_user_id: p.id, name: p.name, mobile: cleanPhone(p.mobile), status }
   }))
@@ -399,7 +446,8 @@ async function runNotify(busy, hq) {
         const claimed = check(await busy.from('purchase_vouchers').update({ notify_state: 'sending' })
           .eq('vch_key', v.vch_key).eq('notify_state', 'pending').select('vch_key'), 'claim')
         if (!claimed.length) continue
-        const results = await sendToAll(busy, forBill(people, managers, v), billMessage(v, lines[v.vch_key] || [], names), { kind: 'instant', vch_key: v.vch_key })
+        const msg = await billMessageWithPdf(busy, v, lines[v.vch_key] || [], names)
+        const results = await sendToAll(busy, forBill(people, managers, v), msg, { kind: 'instant', vch_key: v.vch_key })
         check(await busy.from('purchase_vouchers').update({ notify_state: overall(results), notified_at: new Date().toISOString() })
           .eq('vch_key', v.vch_key), 'mark sent')
         out.instant++
@@ -436,14 +484,29 @@ async function handleSendBill(busy, hq, body, res) {
   const [base, names, lines, managers] = await Promise.all([recipients(busy, hq, 'instant'), loginNames(busy, hq), linesFor(busy, [key]), managersByLogin(hq)])
   const people = forBill(base, managers, v)
   if (!people.length) return send(res, 400, { error: 'Nobody gets this bill: tick someone for "Every bill", or set "Reports to" for whoever entered it in Manage Users.' })
-  const results = await sendToAll(busy, people, billMessage(v, lines[key] || [], names), { kind: 'instant', vch_key: key })
+  const msg = await billMessageWithPdf(busy, v, lines[key] || [], names)
+  const results = await sendToAll(busy, people, msg, { kind: 'instant', vch_key: key })
   check(await busy.from('purchase_vouchers').update({ notify_state: overall(results), notified_at: new Date().toISOString() }).eq('vch_key', key), 'mark sent')
   return send(res, 200, { ok: true, results: results.map(r => ({ name: r.name, status: r.status })) })
 }
 
-async function handleTest(busy, me, res) {
-  const msg = { kind: 'staff_purchase', template: 'staff_purchase_bill', headerImageUrl: BANNER('staff-purchase'),
-    params: ['Test Supplier', 'TEST/1', waDate(todayIST()), '1: Sample item 1 × ₹100', '100', `${me.name} (test)`] }
+// Test: the newest purchase bill, sent only to the person pressing the button.
+async function handleTest(busy, hq, me, res) {
+  const v = check(await busy.from('purchase_vouchers').select('*').is('deleted_at', null)
+    .order('entered_at', { ascending: false, nullsFirst: false }).limit(1).maybeSingle(), 'latest bill')
+  if (!v) return send(res, 400, { error: 'No purchase bill to test with yet.' })
+  const [names, lines] = await Promise.all([loginNames(busy, hq), linesFor(busy, [v.vch_key])])
+  const msg = await billMessageWithPdf(busy, v, lines[v.vch_key] || [], names)
   const results = await sendToAll(busy, [{ id: me.id, name: me.name, mobile: me.whatsapp }], msg, { kind: 'test' })
   return send(res, 200, { status: results[0]?.status || 'failed' })
+}
+
+// The page's "PDF" button on a bill: the same PDF as the WhatsApp, shown in HQ's in-app viewer.
+async function handlePdf(busy, hq, body, res) {
+  const key = String(body.vch_key || '')
+  const v = check(await busy.from('purchase_vouchers').select('*').eq('vch_key', key).maybeSingle(), 'bill')
+  if (!v) return send(res, 404, { error: 'Bill not found.' })
+  const [names, lines] = await Promise.all([loginNames(busy, hq), linesFor(busy, [key])])
+  const pdf = await buildPurchasePdf(v, lines[key] || [], whoName(v.entered_by, names))
+  return send(res, 200, { base64: pdf.toString('base64'), filename: purchaseFileName(v) })
 }

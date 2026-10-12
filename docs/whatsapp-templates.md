@@ -290,6 +290,20 @@ Check the items and rates against the goods received. Anything wrong → note it
 ```
 Samples: Lapp India Pvt Ltd · LAPP/88812 · 11 Oct 2026 · 12: Cable 2.5 sqmm 500 × ₹28; Cable 4 sqmm 300 × ₹44 and 10 more · 88,000 · Ratan at 11:42, 12 Oct 2026
 
+### 15b. `staff_purchase_pdf` — Purchase bill entered, with the bill PDF (replaces 15, 2026-10-13)
+Category **Utility** · Language **English** · Header: **Document** (sample: download https://hq.jcmretails.com/wa/sample-purchase.pdf and upload it) · Buttons: **Visit website** → `https://hq.jcmretails.com/#purchases`, text "Open Purchase Summary"
+
+```
+📦 Material received from {{1}}
+Bill {{2}} · ₹{{3}}
+Entered by {{4}}
+
+Items, rates and GST are in the PDF above. Please check them against the goods received.
+```
+Samples: Emechem (Indore) · 4892 · 58,620 · Ruchir Mittal at 8:47 pm, 12 Oct 2026
+
+Until this one is approved, HQ keeps sending 15 (`staff_purchase_bill`) automatically. Once it is approved, 15 is no longer used.
+
 ### 16. `staff_purchase_summary` — Purchases entered today (evening)
 Header image: `staff-purchase.png` · Buttons: **Visit website** → `https://hq.jcmretails.com/#purchases`, text "Open Purchase Summary"
 
@@ -350,6 +364,7 @@ Samples: 12 Oct 2026 · 9 · 4 · 7 · Badshah Electric (not all ordered), Nexus
 | 13 | staff_followup_evening | staff-evening.png | Open Today's follow-ups (URL) | ☐ |
 | 14 | staff_red_alert | staff-red-alert.png | Answer in HQ (URL) · Reply to admin (dynamic URL) | ☐ |
 | 15 | staff_purchase_bill | staff-purchase.png | Open Purchase Summary (URL) | ☐ |
+| 15b | staff_purchase_pdf | — (Document header) | Open Purchase Summary (URL) | ☐ |
 | 16 | staff_purchase_summary | staff-purchase.png | Open Purchase Summary (URL) | ☐ |
 | 17 | gst_mismatch_summary | — (Document header) | — | ☐ |
 | 18 | staff_orders_pending | staff-orders.png | Open Material (URL) | ☐ |

@@ -1,6 +1,6 @@
 import { applyCors } from './_cors.js'
 import { createClient } from '@supabase/supabase-js'
-import { waConfigured, sendTemplate, wabaSubscription, toWaNumber, waSwitches, sendLogged, BANNER, niceDate, listTemplates, fetchMedia } from './_wa-cloud.js'
+import { waConfigured, sendTemplate, wabaSubscription, toWaNumber, waSwitches, sendLogged, BANNER, HQ_URL, niceDate, listTemplates, fetchMedia } from './_wa-cloud.js'
 import { handleIncoming, busyClient, ledgerNameByCode } from './_wa-replies.js'
 import { runOutbox, TXN } from './_wa-outbox.js'
 import { listConversations, loadThread, replyText, unreadCount } from './_wa-inbox.js'
@@ -80,7 +80,7 @@ const EXPECTED = [
   { name: 'order_dispatched_photo', used: 'Dispatched with LR photo (Orders)' }, { name: 'order_dispatched', used: 'Dispatched, no LR (Orders)' },
   { name: 'gstr1_filing_reminder', used: 'GSTR-1 reminder to supplier (GST page)' }, { name: 'invoice_portal_otp', used: 'Invoice-portal login code' },
   { name: 'staff_followup_morning', used: 'Staff: morning follow-up list' }, { name: 'staff_followup_evening', used: 'Admins: evening collections summary' },
-  { name: 'staff_red_alert', used: 'Staff: Red Alert explanation' }, { name: 'staff_purchase_bill', used: 'Staff: purchase bill entered' },
+  { name: 'staff_red_alert', used: 'Staff: Red Alert explanation' }, { name: 'staff_purchase_pdf', used: 'Staff: purchase bill entered (PDF)' }, { name: 'staff_purchase_bill', used: 'Staff: purchase bill — old text version (until the PDF one is approved)' },
   { name: 'staff_purchase_summary', used: 'Staff: purchases evening summary' }, { name: 'gst_mismatch_summary', used: 'Staff: GST mismatch report (PDF)' },
   { name: 'staff_orders_pending', used: 'Admins: orders / material 17:30' }, { name: 'hello_world', used: 'Connection test' },
 ]
@@ -103,6 +103,7 @@ const SAMPLES = {
   staff_followup_evening: { params: () => ['12 Oct 2026', '18', '7', 'Keshav: 8 done of 12, 4 left · 3 promised ₹1,10,000; Ratan: 10 done of 13, 3 left', '2 parties, ₹85,000 — check they came in'], opts: () => ({ headerImageUrl: BANNER('staff-evening') }) },
   staff_red_alert: { params: () => ['Priti', 'Shishir', '2', 'Bill deleted: JCM/1180 Badshah Electric ₹12,400 (11 Oct); ₹0 rate: JCM/1190 line 3 (12 Oct)', 'Why was this bill deleted after printing?'], opts: () => ({ headerImageUrl: BANNER('staff-red-alert'), buttonUrlParams: { 1: '919109105999' } }) },
   staff_purchase_bill: { params: () => ['Lapp India Pvt Ltd', 'LAPP/88812', '11 Oct 2026', '12: Cable 2.5 sqmm 500 × ₹28; Cable 4 sqmm 300 × ₹44 and 10 more', '88,000', 'Ratan at 11:42, 12 Oct 2026'], opts: () => ({ headerImageUrl: BANNER('staff-purchase') }) },
+  staff_purchase_pdf: { params: () => ['Emechem (Indore)', '4892', '58,620', 'Ruchir Mittal at 8:47 pm, 12 Oct 2026'], opts: () => ({ headerDocumentUrl: `${HQ_URL}/wa/sample-purchase.pdf`, headerDocumentName: 'Purchase-4892-Emechem-Indore.pdf' }) },
   staff_purchase_summary: { params: () => ['12 Oct 2026', '6', '41', '3,42,000', 'Lapp India ₹88,000; Daikin ₹1,20,000; Atomberg ₹54,000 and 3 more'], opts: () => ({ headerImageUrl: BANNER('staff-purchase') }) },
   staff_orders_pending: { params: () => ['12 Oct 2026', '9', '4', '2,15,000', 'Badshah Electric (3 days), Nexus Enterprises (2 days), Shree Traders (today) and 6 more'], opts: () => ({ headerImageUrl: BANNER('staff-orders') }) },
 }

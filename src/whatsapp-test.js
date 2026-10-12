@@ -19,7 +19,7 @@ const SAMPLES = [
   ['txn_payment', 'Payment made — supplier', true], ['txn_purchase', 'Purchase bill entered — supplier', true], ['txn_order', 'Order booked — customer', true],
   ['quotation_sent', 'Quotation sent — customer', true], ['order_dispatched', 'Dispatched (no LR photo)', true], ['order_dispatched_photo', 'Dispatched with LR photo (banner stands in)', true],
   ['staff_followup_morning', 'Staff: morning follow-up list', false], ['staff_followup_evening', 'Admins: evening summary', false],
-  ['staff_red_alert', 'Staff: Red Alert explanation', false], ['staff_purchase_bill', 'Staff: purchase bill entered', false],
+  ['staff_red_alert', 'Staff: Red Alert explanation', false], ['staff_purchase_pdf', 'Staff: purchase bill entered (PDF)', false], ['staff_purchase_bill', 'Staff: purchase bill — old text version', false],
   ['staff_purchase_summary', 'Staff: purchases evening summary', false], ['staff_orders_pending', 'Admins: orders / material 17:30', false],
 ]
 

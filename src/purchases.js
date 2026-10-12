@@ -14,6 +14,7 @@ import { canSee } from './permissions.js'
 import { apiUrl } from './native.js'
 import { esc } from './utils.js'
 import { icon } from './icons.js'
+import { openPdfViewer } from './pdf-viewer.js'
 import { hqConfirm } from './hq-dialog.js'
 
 const TAB_ID = 'purchases'
@@ -118,7 +119,10 @@ export async function renderPurchases(container) {
         <div class="pur-tiles" id="purTiles"></div>
         <div class="pur-listbar">
           <span class="pur-sync" id="purSync"></span>
-          <button class="pur-link" id="purToggleAll">Hide items</button>
+          <span class="pur-listbar-actions">
+            <button class="btn-ghost btn-small pur-wa-btn" id="purSettingsBtn2">WhatsApp settings</button>
+            <button class="pur-link" id="purToggleAll">Hide items</button>
+          </span>
         </div>
         <div id="purList"><div class="loading-state">Loading purchases…</div></div>
       </main>
@@ -179,6 +183,16 @@ export async function renderPurchases(container) {
 
   // ---- bills
   $('purList').addEventListener('click', async e => {
+    const pdfBtn = e.target.closest('[data-pdf]')
+    if (pdfBtn) {
+      e.stopPropagation()
+      pdfBtn.disabled = true
+      try {
+        const r = await call({ action: 'pdf', vch_key: pdfBtn.dataset.pdf })
+        await openPdfViewer({ base64: r.base64, filename: r.filename })
+      } catch (err) { flash(err.message) } finally { pdfBtn.disabled = false }
+      return
+    }
     const resend = e.target.closest('[data-resend]')
     if (resend) {
       e.stopPropagation()
@@ -310,13 +324,17 @@ export async function renderPurchases(container) {
               <tr class="pur-total"><td></td><td>Bill total${showBoth ? ' <small class="pur-why">(after discounts, freight, round-off)</small>' : ''}</td><td class="pur-r">${showBoth ? '' : esc(num(b.total_qty))}</td><td></td><td class="pur-r">${money(b.bill_total)}</td></tr>
             </tfoot>
           </table>
-          ${b.deleted_at ? '' : `<div class="pur-item-actions"><button class="btn-ghost btn-small" data-resend="${esc(b.vch_key)}">${icon('send', 13)} Send on WhatsApp</button></div>`}
+          <div class="pur-item-actions">
+            <button class="btn-ghost btn-small" data-pdf="${esc(b.vch_key)}">${icon('file', 13)} PDF</button>
+            ${b.deleted_at ? '' : `<button class="btn-ghost btn-small" data-resend="${esc(b.vch_key)}">${icon('send', 13)} Send on WhatsApp</button>`}
+          </div>
         </div>` : ''}
       </article>`
   }
 
   // ---- WhatsApp settings drawer
   $('purSettingsBtn').addEventListener('click', openDrawer)
+  $('purSettingsBtn2').addEventListener('click', openDrawer)
   $('purDrawerClose').addEventListener('click', closeDrawer)
   $('purDrawerBackdrop').addEventListener('click', closeDrawer)
   function closeDrawer() { $('purDrawer').hidden = true; $('purDrawerBackdrop').hidden = true }
@@ -350,7 +368,7 @@ export async function renderPurchases(container) {
             <input type="checkbox" data-person="${esc(u.id)}" data-kind="daily" ${u.daily ? 'checked' : ''} aria-label="Summary for ${esc(u.name)}" />
           </div>`).join('')}
       </div>
-      <button class="btn-ghost btn-small pur-test" id="purTest">${icon('send', 13)} Send a test WhatsApp to me</button>
+      <button class="btn-ghost btn-small pur-test" id="purTest">${icon('send', 13)} Send the newest bill to me (test)</button>
     `
     const body = $('purDrawerBody')
     body.querySelector('#purInstantOn').addEventListener('change', e => saveSetting({ instant_on: e.target.checked }, e.target))
