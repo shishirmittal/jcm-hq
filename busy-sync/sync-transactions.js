@@ -5,7 +5,9 @@
 //   1. Reads vouchers typed into Busy in the last LOOKBACK_HOURS (CheckList Action 1 = first save):
 //        9 Sales (invoice)  14 Receipt  18 Credit note  17 Debit note  19 Payment  2 Purchase  12 Sales order
 //      with the BILLED party's name + mobile from the voucher's Billing/Shipping Details (BillingDet), falling
-//      back to the ledger account (Master1 + MasterAddressInfo), plus amount and item count.
+//      back to the ledger account (Master1 + MasterAddressInfo) only for real customer ledgers, plus amount and
+//      item count. Ledger-only accounts (Nexus Enterprises, Silver Electric House, Cash — LEDGER_ONLY_CODES)
+//      never fall back: no billing name + mobile → status 'no_billing', nothing is sent.
 //   2. Writes each one ONCE to wa_outbox in Supabase (JCM-Busysql project; unique on db + vch_code).
 //        Every kind goes at the next run (send_after = now). (Invoices used to wait for 20:30; dropped 2026-10-12.)
 //      A voucher cancelled / deleted in Busy before its message went out is marked 'cancelled'.
@@ -35,6 +37,12 @@ const KINDS = { 9: 'invoice', 14: 'receipt', 18: 'credit_note', 17: 'debit_note'
 const TYPES = Object.keys(KINDS).map(Number);
 // Accounts that are never "the party" on a receipt / payment (same list as sync.js).
 const CONTROL_ACCOUNTS = [4, 1100, 1115, 1116, 56680, 7398, 7501, 54463, 60016, 1];
+// Ledger-only accounts (Shishir, 2026-10-12): these are dummy / collective ledgers, never a real customer.
+// A voucher booked on one of them goes ONLY to the party in its Billing/Shipping Details; with no billing
+// details the message is skipped (status 'no_billing') — the ledger's name and mobile are never used.
+const LEDGER_ONLY_CODES = [40355 /* Nexus Enterprises */, 65494 /* Silver Electric House */, 56680 /* Cash (Retail) */, ...CONTROL_ACCOUNTS];
+const LEDGER_ONLY_NAMES = /nexus enterprises|silver electric house|^cash\b/i;
+const isLedgerOnly = (code, name) => LEDGER_ONLY_CODES.includes(Number(code)) || LEDGER_ONLY_NAMES.test(String(name || ''));
 
 const LOG_FILE = path.join(__dirname, 'transactions.log');
 function log(message) {
@@ -121,6 +129,13 @@ function toRow(v) {
   const kind = KINDS[v.VchType];
   const enteredAt = ist(v.EnteredAt);
   const cancelled = Number(v.Cancelled) === 1 || Number(v.VchCancelled) === 1;
+  // The message goes to the BILLED party (Busy's Billing/Shipping Details on the voucher) — name and
+  // mobile. A real customer ledger may fall back to the ledger's own name / mobile when the voucher has
+  // no billing details; a ledger-only account (Nexus Enterprises, Silver Electric House, Cash) never does.
+  const ledgerOnly = isLedgerOnly(v.PartyCode, v.PartyName);
+  const billedName = txt(v.BilledName);
+  const billedMobile = txt(v.BilledMobile);
+  const noBilling = ledgerOnly && !(billedName && billedMobile);
   return {
     db: DB,
     vch_code: Number(v.VchCode),
@@ -128,18 +143,17 @@ function toRow(v) {
     vch_no: txt(v.VchNo),
     vch_date: v.VchDate,
     party_code: String(v.PartyCode),
-    // The message goes to the BILLED party (Busy's Billing/Shipping Details on the voucher) — name and
-    // mobile — and only falls back to the ledger account when the voucher has none (Shishir, 2026-10-12).
-    party_name: txt(v.BilledName) || txt(v.PartyName),
+    party_name: billedName || (ledgerOnly ? null : txt(v.PartyName)),
     ledger_name: txt(v.PartyName),
-    mobile: txt(v.BilledMobile) || txt(v.WhatsAppNo) || txt(v.Mobile),
+    mobile: billedMobile || (ledgerOnly ? null : txt(v.WhatsAppNo) || txt(v.Mobile)),
     amount: r2(v.Amount),
     items: Number(v.Items) || 0,
     entered_by: txt(v.EnteredBy),
     entered_at: enteredAt,
     // Everything goes at the next run — the 20:30 wait for invoices was dropped on 2026-10-12 (team's call).
     send_after: new Date().toISOString(),
-    status: AS_HISTORY ? 'skipped' : cancelled ? 'cancelled' : 'queued',
+    status: AS_HISTORY ? 'skipped' : cancelled ? 'cancelled' : noBilling ? 'no_billing' : 'queued',
+    error: noBilling ? `ledger-only account "${txt(v.PartyName)}" with no billing name/mobile on the voucher — not sent` : null,
     cancelled,
   };
 }
@@ -154,7 +168,7 @@ async function main() {
   for (const r of rows) by[r.kind] = (by[r.kind] || 0) + 1;
   log(`${rows.length} vouchers in the last ${LOOKBACK_HOURS} h: ${Object.entries(by).map(([k, n]) => `${k} ${n}`).join(', ') || 'none'}`);
   if (CHECK) {
-    for (const r of rows.slice(0, 30)) console.log(`${r.kind} ${r.vch_no} ${r.vch_date} ${r.party_name} ₹${r.amount} → ${r.mobile || 'NO NUMBER'} after ${r.send_after}${r.cancelled ? ' CANCELLED' : ''}`);
+    for (const r of rows.slice(0, 30)) console.log(`${r.kind} ${r.vch_no} ${r.vch_date} ${r.party_name} ₹${r.amount} → ${r.mobile || 'NO NUMBER'} after ${r.send_after}${r.cancelled ? ' CANCELLED' : ''}${r.status === 'no_billing' ? ' NO BILLING (ledger-only, not sent)' : ''}`);
     return;
   }
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });

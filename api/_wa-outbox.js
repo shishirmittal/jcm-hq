@@ -15,6 +15,11 @@ import { sendLogged, waSwitches, waConfigured, BANNER, inr, niceDate } from './_
 
 const EXPIRE_HOURS = 24
 const MAX_PER_TICK = 60
+// Ledger-only names must never reach a customer (Shishir, 2026-10-12). sync-transactions.js already skips
+// these; this is the second lock in case an older queued row still carries one.
+const LEDGER_ONLY = /nexus enterprises|silver electric house|^cash\b/i
+const LEDGER_ONLY_CODES = new Set(['40355', '65494', '56680'])
+const ledgerOnlyRow = r => !r.party_name || LEDGER_ONLY.test(r.party_name) || (LEDGER_ONLY_CODES.has(String(r.party_code)) && r.party_name === r.ledger_name)
 
 export const TXN = {
   invoice: { template: 'txn_invoice', banner: 'invoice', params: r => [r.party_name, r.vch_no, niceDate(r.vch_date), inr(r.amount), String(r.items || 0)], buttons: (c, r) => [`qr:${c}`, `invpdf:${c}:${r?.vch_no || ''}`] },
@@ -42,6 +47,10 @@ export async function runOutbox(busy) {
     const spec = TXN[r.kind]
     if (!spec) { await busy.from('wa_outbox').update({ status: 'failed', error: 'unknown kind' }).eq('id', r.id); counts.failed++; continue }
     if (switches.off.has(r.kind)) { counts.off++; continue } // stays queued until switched on (or expires)
+    if (ledgerOnlyRow(r)) {
+      await busy.from('wa_outbox').update({ status: 'no_billing', error: `ledger-only account "${r.ledger_name || r.party_name || ''}" — no billed party on the voucher, not sent` }).eq('id', r.id).eq('status', 'queued')
+      counts.no_billing = (counts.no_billing || 0) + 1; continue
+    }
     // Claim it so two ticks can never send the same voucher twice.
     const claim = await busy.from('wa_outbox').update({ status: 'sending' }).eq('id', r.id).eq('status', 'queued').select('id')
     if (claim.error || !(claim.data || []).length) continue

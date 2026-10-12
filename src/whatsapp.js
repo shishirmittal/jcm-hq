@@ -42,8 +42,8 @@ export const KIND_LABEL = {
   staff_followup: 'Staff: morning list', staff_evening: 'Admins: evening summary', staff_red_alert: 'Staff: Red Alert', staff_purchase: 'Staff: purchase bill',
   staff_purchase_summary: 'Staff: purchases summary', staff_gst: 'Staff: GST report', staff_orders: 'Admins: orders 17:30', test: 'Sample / test',
 }
-const TONE = { sent: 'blue', delivered: 'grn', read: 'grn', received: 'grey', failed: 'red', no_number: 'grey', off: 'grey', queued: 'amb', sending: 'amb', cancelled: 'grey', expired: 'grey', skipped: 'grey', APPROVED: 'grn', PENDING: 'amb', REJECTED: 'red', MISSING: 'red', PAUSED: 'red', DISABLED: 'red' }
-const STATUS_TEXT = { sent: 'Sent', delivered: 'Delivered', read: 'Read ✓✓', failed: 'Failed', no_number: 'No number', off: 'Switched off', received: 'Received' }
+const TONE = { sent: 'blue', delivered: 'grn', read: 'grn', received: 'grey', failed: 'red', no_number: 'grey', no_billing: 'grey', off: 'grey', queued: 'amb', sending: 'amb', cancelled: 'grey', expired: 'grey', skipped: 'grey', APPROVED: 'grn', PENDING: 'amb', REJECTED: 'red', MISSING: 'red', PAUSED: 'red', DISABLED: 'red' }
+const STATUS_TEXT = { sent: 'Sent', delivered: 'Delivered', read: 'Read ✓✓', failed: 'Failed', no_number: 'No number', no_billing: 'No billed party (ledger only)', off: 'Switched off', received: 'Received' }
 const when = iso => iso ? new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }) : ''
 const timeOnly = iso => iso ? new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }) : ''
 const dayOf = iso => new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
@@ -247,7 +247,7 @@ function renderOutbox(el) {
     <div class="wa-card">
       <p class="wa-muted">Customer messages queued from Busy by JCM Sync; they go within 5 minutes. A kind that is switched off (Settings) stays queued for 24 h and then expires.</p>
       <div class="wa-row">
-        <select id="waOutboxFilter"><option value="queued">Queued</option><option value="sent">Sent</option><option value="failed">Failed</option><option value="no_number">No number</option><option value="expired">Expired</option><option value="cancelled">Cancelled</option><option value="skipped">Loaded as history</option><option value="">All</option></select>
+        <select id="waOutboxFilter"><option value="queued">Queued</option><option value="sent">Sent</option><option value="failed">Failed</option><option value="no_number">No number</option><option value="no_billing">No billed party (ledger only)</option><option value="expired">Expired</option><option value="cancelled">Cancelled</option><option value="skipped">Loaded as history</option><option value="">All</option></select>
         <button class="btn-ghost btn-small" id="waTick">Send what is due now</button>
         <button class="btn-ghost btn-small" id="waOrdersNow">Send the 17:30 orders message now</button>
       </div>
@@ -269,7 +269,7 @@ function renderOutbox(el) {
     $('waTick').disabled = true; $('waTickResult').textContent = 'Sending…'
     try {
       const d = await call({ action: 'tick' }); const o = d.outbox || {}
-      $('waTickResult').textContent = o.skipped ? o.skipped : `Done: ${o.sent || 0} sent · ${o.failed || 0} failed · ${o.no_number || 0} no number${o.off ? ` · ${o.off} waiting (kind switched off)` : ''}${o.expired ? ` · ${o.expired} expired` : ''}.`
+      $('waTickResult').textContent = o.skipped ? o.skipped : `Done: ${o.sent || 0} sent · ${o.failed || 0} failed · ${o.no_number || 0} no number${o.off ? ` · ${o.off} waiting (kind switched off)` : ''}${o.expired ? ` · ${o.expired} expired` : ''}${o.no_billing ? ` · ${o.no_billing} skipped (ledger-only name, no billed party)` : ''}.`
       load()
     } catch (err) { $('waTickResult').textContent = '❌ ' + err.message }
     finally { $('waTick').disabled = false }
