@@ -26,6 +26,7 @@ import { renderPurchases } from './purchases.js'
 import { renderGstRecon } from './gst-recon.js'
 import { renderTaskBoard, unmountTaskBoard } from './task-board.js'
 import { mountPinnedSidebar, unmountPinnedSidebar } from './sidebar.js'
+import { startNotifyBell, stopNotifyBell } from './notify-bell.js'
 import { renderStock, unmountStock } from './stock.js'
 import { getCurrentProfile as loadProfileForOrders } from './supabase.js'
 import { IS_NATIVE } from './native.js'
@@ -83,6 +84,7 @@ async function init() {
       unmountStock()
       unmountPinnedSidebar()
       unmountNativeShell()
+      stopNotifyBell()
       renderLogin(app, pendingLoginMessage)
       pendingLoginMessage = null
     }
@@ -126,6 +128,7 @@ async function enterApp() {
     // Phones get the bottom tab bar too (CSS shows it below 800 px only).
     mountNativeShell()
   }
+  startNotifyBell()
   route()
 }
 

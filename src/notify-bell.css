@@ -1,0 +1,38 @@
+/* Notification bell (src/notify-bell.js) — classes nb-* */
+.nb-wrap { display: inline-flex; align-items: center; gap: 8px; }
+.nb-bell { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 34px; padding: 0; border-radius: 8px; }
+.nb-solo { margin-left: auto; }
+.nb-count {
+  position: absolute; top: -6px; right: -6px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+  background: var(--red); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center;
+  box-shadow: 0 0 0 2px var(--surface);
+}
+.nb-count[hidden] { display: none; }
+.nb-bell.has-new svg { animation: nb-ring 1.4s ease-in-out 2; transform-origin: 50% 10%; }
+.nb-bell.has-new::after {
+  content: ''; position: absolute; bottom: 3px; left: 50%; width: 6px; height: 6px; margin-left: -3px;
+  border-radius: 50%; background: var(--amb);
+}
+@keyframes nb-ring { 0%, 100% { transform: rotate(0) } 15% { transform: rotate(14deg) } 30% { transform: rotate(-12deg) } 45% { transform: rotate(8deg) } 60% { transform: rotate(-4deg) } }
+@media (prefers-reduced-motion: reduce) { .nb-bell.has-new svg { animation: none; } }
+
+.nb-panel {
+  position: fixed; z-index: 1000; width: min(360px, calc(100vw - 16px)); max-height: 70vh; overflow-y: auto;
+  background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 10px 30px var(--shadow); padding: 6px;
+}
+.nb-head { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); padding: 8px 10px 6px; }
+.nb-empty { padding: 14px 10px 16px; color: var(--muted); font-size: 13.5px; }
+.nb-item { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 8px; color: var(--text); text-decoration: none; }
+.nb-item:hover { background: var(--bg); }
+.nb-item.is-new { background: color-mix(in srgb, var(--amb-bg) 70%, var(--surface)); }
+.nb-item.is-info .nb-text strong { color: var(--body); }
+.nb-icon { display: inline-flex; width: 30px; height: 30px; border-radius: 8px; align-items: center; justify-content: center; background: var(--blue-bg); color: var(--blue-dk); flex-shrink: 0; }
+.nb-item.is-info .nb-icon { background: var(--line-soft); color: var(--body); }
+.nb-text { flex: 1; min-width: 0; font-size: 13.5px; line-height: 1.35; }
+.nb-text strong { color: var(--red-dk); font-size: 15px; margin-right: 2px; }
+.nb-page { display: block; font-size: 11.5px; color: var(--muted); }
+.nb-go { color: var(--faint); display: inline-flex; }
+
+body.native-app .nb-bell { color: var(--app-navy-ink); border-color: rgba(255, 255, 255, 0.28); }
+body.native-app .nb-count { box-shadow: 0 0 0 2px var(--app-navy); }

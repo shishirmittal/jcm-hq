@@ -30,7 +30,7 @@ export function avatarColor(seed) {
 // Task Board's header already carries the per-person counts for everyone
 // else. getSession() (local, cached) rather than getUser() (a round-trip to
 // the auth server) — this runs on every sidebar mount.
-async function loadNavBadges() {
+export async function loadNavBadges() {
   const { data: { session } } = await supabase.auth.getSession()
   const myId = session?.user?.id
   const [{ count: openLeads }, { count: pendingQuotes }, { count: openTasks }, redAlerts, myExplain, paymentFollowup, purchasesToday, waUnread] = await Promise.all([
