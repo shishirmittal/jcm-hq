@@ -73,3 +73,16 @@
 .wa-bubble .wa-tap { color: #075e54; }
 .wa-day { color: #54656f; }
 .wa-file:disabled { opacity: .6; cursor: progress; }
+
+/* Settings tab on phones (2026-10-12): the sample dropdown's long option text
+   stretched its card past the screen, so the whole tab slid sideways. Cards
+   and rows may now shrink, and on a phone each control takes a full line. */
+.wa-card, .wa-card > * { min-width: 0; }
+.wa-card { grid-template-columns: minmax(0, 1fr); }
+.wa-row > * { max-width: 100%; }
+.wa-row select { text-overflow: ellipsis; }
+@media (max-width: 640px) {
+  .wa-row input, .wa-row select { min-width: 0; flex: 1 1 100%; width: 100%; }
+  .wa-row .btn-small { flex: 1 1 100%; }
+  .wa-switches { grid-template-columns: minmax(0, 1fr); }
+}
