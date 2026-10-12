@@ -19,6 +19,7 @@ import { renderExplain } from './explain.js'
 import { renderPaymentFollowup } from './payment-followup.js'
 import { renderCustomers } from './customers.js'
 import { renderSyncStatus, unmountSyncStatus } from './sync-status.js'
+import { startPhoneTables } from './phone-tables.js'
 import { renderWhatsapp } from './whatsapp.js'
 import './whatsapp.css'
 import { renderPurchases } from './purchases.js'
@@ -31,6 +32,9 @@ import { IS_NATIVE } from './native.js'
 import { mountNativeShell, unmountNativeShell, syncNativeShell, phoneHome } from './native-shell.js'
 import { mountBackButton } from './back-button.js'
 import { setPermissions, clearPermissions, routeDecision, hasAnyTab, fallbackHash, isAdminProfile } from './permissions.js'
+
+// Wide tables become one card per row on phones (WhatsApp Templates / Log / Outbox …).
+startPhoneTables()
 
 const app = document.getElementById('app')
 let pendingLoginMessage = null

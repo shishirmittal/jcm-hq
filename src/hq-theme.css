@@ -235,3 +235,34 @@ body.native-app .logo-small { font-family: 'Inter', system-ui, sans-serif; font-
   .app-header .btn-small:has(svg) svg { width: 20px; height: 20px; }
   body.native-app .app-header .btn-small:has(svg) { border-color: rgba(255,255,255,.28); }
 }
+
+/* Header height as a variable, for things that stick just under it. */
+:root { --hq-header-h: 64px; }
+body.native-app { --hq-header-h: calc(56px + env(safe-area-inset-top)); }
+
+/* ---- WhatsApp page on phones (2026-10-12) ----
+   The page grid let wide tables stretch it past the screen edge, and .app-main's
+   overflow-x made a scroll box that stopped the tabs from sticking. Now: the page
+   never gets wider than the screen, each table scrolls sideways inside its card,
+   and the tabs stay pinned under the header. */
+.wa-page .app-main.wa-main { overflow: visible; min-width: 0; grid-template-columns: minmax(0, 1fr); margin: 0 auto; box-sizing: border-box; }
+.wa-main > * { min-width: 0; }
+.wa-table { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+.wa-page .wa-tabs { position: sticky; top: var(--hq-header-h); z-index: 8; background: var(--bg); margin: -1.25rem -1.25rem 0; padding: 6px 1.25rem 0; flex-wrap: nowrap; scrollbar-width: none; }
+.wa-page .wa-tabs::-webkit-scrollbar { display: none; }
+@media (max-width: 799px) {
+  .wa-page .wa-tabs .pf-tab { font-size: 15px; padding: 12px 12px; }
+}
+
+/* Wide tables as one card per row on phones (src/phone-tables.js adds data-label). */
+@media (max-width: 599px) {
+  table.hq-stacked, table.hq-stacked tbody, table.hq-stacked tr, table.hq-stacked td { display: block; width: 100%; box-sizing: border-box; }
+  table.hq-stacked thead { display: none; }
+  table.hq-stacked tr { padding: 10px 2px; border-top: 1px solid var(--line); }
+  table.hq-stacked tr:first-child { border-top: 0; }
+  table.hq-stacked td { border: 0 !important; padding: 3px 0 3px 100px !important; white-space: normal !important; min-width: 0 !important; max-width: none !important; position: relative; min-height: 20px; }
+  table.hq-stacked td::before { content: attr(data-label); position: absolute; left: 0; top: 4px; width: 92px; color: var(--muted); font-size: 12px; font-weight: 600; }
+  table.hq-stacked td[data-label=""] { padding-left: 0 !important; }
+  table.hq-stacked td[data-label=""]::before { display: none; }
+  table.hq-stacked td:first-child { font-weight: 700; }
+}
