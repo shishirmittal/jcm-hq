@@ -86,3 +86,8 @@ body.dark-mode .tb-hq .tb-card[data-card="ready"] .tb-card-count { color: #8FB7F
 /* Orders tab: confirm sheets sit above the phone tab bar */
 body.has-tabbar .tb-hq .tb-sheet { padding-bottom: calc(var(--app-nav-h, 64px) + 28px); }
 @media (min-width: 800px) { body.has-tabbar:not(.native-app) .tb-hq .tb-sheet { padding-bottom: 36px; } }
+
+/* Orders tab: the action buttons (PICK / READY / UPLOAD LR / Dispatch without photo …)
+   stay on screen just above the phone tab bar while the item list scrolls under them.
+   --app-nav-h is the tab bar's measured height (0 when it is hidden, e.g. on a computer). */
+.tb-hq .tb-bottom { position: sticky; bottom: var(--app-nav-h, 0px); z-index: 6; background: var(--bg); box-shadow: 0 -8px 18px var(--shadow); }
