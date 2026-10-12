@@ -13,11 +13,17 @@ import { hqConfirm } from './hq-dialog.js'
 
 export async function callWhatsapp(payload) {
   const { data: { session } } = await supabase.auth.getSession()
-  const res = await fetch(apiUrl('/api/whatsapp'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
-    body: JSON.stringify(payload),
-  })
+  let res
+  try {
+    res = await fetch(apiUrl('/api/whatsapp'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(25000),
+    })
+  } catch (err) {
+    throw new Error(err?.name === 'TimeoutError' ? 'HQ did not answer in 25 seconds. Press Refresh and try again.' : `Could not reach HQ: ${err.message}`)
+  }
   let body = null
   try { body = await res.json() } catch { /* not JSON */ }
   if (!res.ok) throw new Error(body?.error || 'Something went wrong. Try again.')
