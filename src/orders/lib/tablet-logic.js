@@ -17,6 +17,9 @@ export const shortDate = iso => {
   return isNaN(d) ? '' : new Intl.DateTimeFormat('en-GB', { timeZone: TZ, day: 'numeric', month: 'short' }).format(d)
 }
 
+// Today's date in India, YYYY-MM-DD (fallback when the server has not said yet).
+export const todayIso = () => new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10)
+
 export const firstName = n => String(n || '').trim().split(/\s+/)[0] || ''
 
 // The home screen: one big card per job this person has.

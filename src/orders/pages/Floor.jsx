@@ -35,6 +35,9 @@ export default function Floor() {
   const [session, setSession] = useState(null)     // { profile } — who HQ says this is
   const [orders, setOrders] = useState([])
   const [materialCount, setMaterialCount] = useState(null)
+  // Pending material list, kept here so a YES on the confirm sheet can update it at once.
+  const [matGroups, setMatGroups] = useState(null)
+  const [matToday, setMatToday] = useState(null)
   const [loadError, setLoadError] = useState('')
   const [card, setCard] = useState(null)           // which stage card is open
   const [openId, setOpenId] = useState(null)
@@ -183,16 +186,42 @@ export default function Floor() {
     extra: <DispatchFacts call={call} order={order} />,
     exec: async () => { const r = await doMove('dispatch'); if (r) dispatched(r) },
   })
-  const confirmMaterial = (it, days) => askFor({
-    back: 'material', name: it.item, line: `Mark ${it.item} as ordered, arriving in ${days} days?`, confirmLabel: 'YES, ORDERED',
-    exec: async () => {
-      try {
-        const r = await call('/api/tablet', { method: 'POST', body: { op: 'material_ordered', id: it.id, days }, staff: true })
-        if (r.status === 401) { lock(); return }
-        if (r.ok) { setNotice({ ok: `${it.item}: ordered, arriving in ${days} days.` }); setScreen('material') }
-        else setNotice({ error: `Not saved — ${r.data.error || `the server said no (code ${r.status}).`}` })
-      } catch { setNotice({ error: 'Not saved — no connection to the server. Try again.' }) }
-    },
+  // Pending material on the tablet: MARK ORDERED / Change date / Undo. Every one asks
+  // first; after YES the list changes at once (optimistic) and the server answer
+  // replaces it — or it is rolled back with "Not saved — …".
+  const whenText = c => c.date ? T.shortDate(c.date) : `${c.days} days (${T.shortDate(T.addDays(matToday || T.todayIso(), c.days))})`
+  const sendMaterial = async (body, okText, optimistic) => {
+    const before = matGroups
+    if (optimistic) setMatGroups(g => (g ? optimistic(g) : g))
+    setNotice({ ok: okText }); setScreen('material')
+    try {
+      const r = await call('/api/tablet', { method: 'POST', body, staff: true })
+      if (r.status === 401) { lock(); return }
+      if (r.ok) { if (r.data.items) setMatGroups(r.data.items); if (r.data.today) setMatToday(r.data.today) }
+      else { setMatGroups(before); setNotice({ error: `Not saved — ${r.data.error || `the server said no (code ${r.status}).`}` }) }
+    } catch { setMatGroups(before); setNotice({ error: 'Not saved — no connection to the server. Try again.' }) }
+  }
+  const expectedOf = c => c.date || T.addDays(matToday || T.todayIso(), c.days)
+  const confirmMaterial = (it, c) => askFor({
+    back: 'material', name: it.item,
+    line: it.orderedAt
+      ? `Change the expected date for ${it.item} to ${whenText(c)}?`
+      : `Mark ${it.item} as ordered, arriving in ${whenText(c)}?`,
+    confirmLabel: it.orderedAt ? 'YES, CHANGE DATE' : 'YES, ORDERED',
+    exec: async () => sendMaterial(
+      { op: 'material_ordered', id: it.id, ...(c.date ? { date: c.date } : { days: c.days }) },
+      it.orderedAt ? `${it.item}: now expected ${T.shortDate(expectedOf(c))}.` : `${it.item}: ordered, expected ${T.shortDate(expectedOf(c))}.`,
+      g => T.markItemOrdered(g, it.id, expectedOf(c)),
+    ),
+  })
+  const confirmUnorder = it => askFor({
+    back: 'material', name: it.item,
+    line: `Undo "ordered" for ${it.item}? It goes back to Not ordered.`, confirmLabel: 'YES, UNDO',
+    exec: async () => sendMaterial(
+      { op: 'material_unordered', id: it.id },
+      `${it.item}: back to Not ordered.`,
+      g => g.map(x => ({ ...x, items: x.items.map(i => (i.id === it.id ? { ...i, orderedAt: null, expectedDate: null, late: false } : i)) })),
+    ),
   })
 
   const shell = (children, showRole) => (
@@ -229,7 +258,7 @@ export default function Floor() {
               if (a.op === 'pick') confirmPick()
               if (a.op === 'check') confirmCheck()
             }} />, true)}
-        {signedIn && screen === 'material' && shell(<Material call={call} notice={notice} onBack={() => { setNotice(null); setScreen('home') }} onAskOrdered={confirmMaterial} />, true)}
+        {signedIn && screen === 'material' && shell(<Material call={call} notice={notice} groups={matGroups} setGroups={setMatGroups} setToday={setMatToday} onBack={() => { setNotice(null); setScreen('home') }} onAskOrdered={confirmMaterial} onUndo={confirmUnorder} />, true)}
         {signedIn && screen === 'boxes' && order && shell(
           <Boxes order={order} notice={notice} onBack={() => setScreen('order')} onConfirm={confirmReady} />, true)}
         {signedIn && screen === 'labels' && order && (
@@ -756,19 +785,20 @@ function PhotoSheet({ order, me, call, photo, notice, from, onRetake, onBack, on
 // MARK ORDERED asks "When will it arrive?" (2 / 4 / 7 days); the row then shows
 // "Ordered 6 Oct · expected 10 Oct" until Busy shows the stock, then goes.
 // The same list, with "pick a date" and CLEAR, is on /owner.
-function Material({ call, notice, onBack, onAskOrdered }) {
-  const [groups, setGroups] = useState(null)
+function Material({ call, notice, groups, setGroups, setToday, onBack, onAskOrdered, onUndo }) {
   const [error, setError] = useState('')
   const [asking, setAsking] = useState(null) // item id waiting for "when will it arrive?"
+  const [pickDate, setPickDate] = useState('')
   const load = useCallback(async () => {
     setError('')
     try {
       const r = await call('/api/tablet?op=material', { staff: true })
-      if (r.ok) setGroups(r.data.items)
+      if (r.ok) { setGroups(r.data.items); if (r.data.today) setToday(r.data.today) }
       else setError(r.data.error || `The server did not answer properly (code ${r.status}).`)
     } catch { setError('No connection to the server.') }
-  }, [call])
+  }, [call, setGroups, setToday])
   useEffect(() => { load() }, [load])
+  const ask = (it, c) => { setAsking(null); setPickDate(''); onAskOrdered(it, c) }
   return (
     <>
       <div className="tb-mat-top">
@@ -778,6 +808,7 @@ function Material({ call, notice, onBack, onAskOrdered }) {
       </div>
       <div className="tb-mat-list">
         {notice?.ok && <div className="tb-ok">{notice.ok}</div>}
+        {notice?.error && <div className="tb-error">{notice.error}</div>}
         {error && <div className="tb-error">{error}</div>}
         {!groups && !error && <p className="tb-p">Loading…</p>}
         {groups && !groups.length && <p className="tb-p">Nothing to order — stock covers every open order.</p>}
@@ -794,11 +825,16 @@ function Material({ call, notice, onBack, onAskOrdered }) {
                 </span>
                 {asking === it.id
                   ? <span className="tb-mat-when">
-                      {[2, 4, 7].map(n => <button key={n} className="tb-btn-outline" onClick={() => { setAsking(null); onAskOrdered(it, n) }}>{n} days</button>)}
-                      <button className="tb-link" onClick={() => setAsking(null)}>Cancel</button>
+                      {[2, 4, 7].map(n => <button key={n} className="tb-btn-outline" onClick={() => ask(it, { days: n })}>{n} days</button>)}
+                      <input type="date" className="tb-mat-date" value={pickDate} onChange={e => setPickDate(e.target.value)} aria-label="Pick a date" />
+                      {pickDate && <button className="tb-btn-outline" onClick={() => ask(it, { date: pickDate })}>Use {T.shortDate(pickDate)}</button>}
+                      <button className="tb-link" onClick={() => { setAsking(null); setPickDate('') }}>Cancel</button>
                     </span>
                   : it.orderedAt
-                    ? <button className="tb-btn-outline tb-mat-btn" onClick={() => setAsking(it.id)}>Change date</button>
+                    ? <span className="tb-mat-acts">
+                        <button className="tb-btn-outline tb-mat-btn" onClick={() => setAsking(it.id)}>Change date</button>
+                        <button className="tb-link tb-mat-undo" onClick={() => onUndo(it)}>Undo</button>
+                      </span>
                     : <button className="tb-big-primary tb-mat-btn" onClick={() => setAsking(it.id)}>MARK ORDERED</button>}
               </div>
             ))}

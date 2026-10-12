@@ -1,3 +1,4 @@
+import { createClient } from '@supabase/supabase-js'
 import { must } from './db.js'
 import { selectTolerant } from './columns.js'
 import { nameMap } from './auth.js'
@@ -93,6 +94,40 @@ export const FLOOR_STAGES = ['new', 'picking']
 // The three bands of /owner list 1, in this order.
 export const BAND_ORDER = { red: 0, amber: 1, green: 2 }
 
+// Items to order are grouped by the FIRST level of Busy's item-group tree (Shishir,
+// 2026-10-13) — e.g. "Signify Innovations", not "LED Strip & Driver - Philips".
+// Read from the Busy-data project's items.category_path ("A > B > C"), kept 10 min
+// per warm instance. If it can't be read, the old grouping (last level) is used.
+const TOP_TTL = 10 * 60 * 1000
+const topCache = new Map() // item code → { top, at }
+async function firstLevelGroups(codes) {
+  const out = new Map()
+  const want = []
+  for (const c of new Set(codes)) {
+    const hit = topCache.get(c)
+    if (hit && Date.now() - hit.at < TOP_TTL) { if (hit.top) out.set(c, hit.top) } else want.push(c)
+  }
+  const key = process.env.SUPABASE_BUSY_SERVICE_ROLE_KEY
+  if (!want.length || !key) return out
+  try {
+    const busy = createClient('https://jlkjjqnmhsgefpluemyz.supabase.co', key, { auth: { autoRefreshToken: false, persistSession: false } })
+    for (let i = 0; i < want.length; i += 300) {
+      const part = want.slice(i, i + 300)
+      const { data, error } = await busy.from('items').select('code, category_path').in('code', part)
+      if (error) throw error
+      const found = new Map((data || []).map(r => [Number(r.code), String(r.category_path || '').split('>')[0].trim()]))
+      for (const c of part) {
+        const top = found.get(Number(c)) || ''
+        topCache.set(c, { top, at: Date.now() })
+        if (top) out.set(c, top)
+      }
+    }
+  } catch (err) {
+    console.error('item groups (first level) not read:', err.message || err)
+  }
+  return out
+}
+
 export async function materialOverview(dbc, now = new Date()) {
   const today = todayIST(now)
   // Two waits on the database: orders + pending material together, then their lines + names.
@@ -100,7 +135,7 @@ export async function materialOverview(dbc, now = new Date()) {
     must(selectTolerant(cols => dbc.from('orders').select(cols).is('closed_at', null).in('stage', [...WAITING_STAGES, ...FLOOR_STAGES]), WAIT_FULL, WAIT_BASE), 'reading orders'),
     must(selectTolerant(cols => dbc.from('procurement').select(cols).is('closed_at', null), PROC_FULL, PROC_BASE), 'reading pending material'),
   ])
-  const [lines, people] = await Promise.all([readLines(dbc, orders.map(o => o.id)), nameMap(dbc, orders.map(o => o.waiting_by))])
+  const [lines, people, topGroup] = await Promise.all([readLines(dbc, orders.map(o => o.id)), nameMap(dbc, orders.map(o => o.waiting_by)), firstLevelGroups(proc.map(p => p.item_code))])
   const procByItem = new Map(proc.map(p => [p.item_code, p]))
 
   const linesBy = new Map()
@@ -157,7 +192,7 @@ export async function materialOverview(dbc, now = new Date()) {
   }
   const groups = new Map()
   for (const r of proc) {
-    const supplier = r.supplier_name || r.item_group || 'Other'
+    const supplier = r.supplier_name || topGroup.get(r.item_code) || r.item_group || 'Other'
     const days = r.ordered_at ? Math.floor((now.getTime() - Date.parse(r.ordered_at)) / 86400000) : null
     const list = groups.get(supplier) || []
     list.push({

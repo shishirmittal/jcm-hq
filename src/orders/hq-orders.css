@@ -91,3 +91,9 @@ body.has-tabbar .tb-hq .tb-sheet { padding-bottom: calc(var(--app-nav-h, 64px) +
    stay on screen just above the phone tab bar while the item list scrolls under them.
    --app-nav-h is the tab bar's measured height (0 when it is hidden, e.g. on a computer). */
 .tb-hq .tb-bottom { position: sticky; bottom: var(--app-nav-h, 0px); z-index: 6; background: var(--bg); box-shadow: 0 -8px 18px var(--shadow); }
+
+/* Tablet Pending material: Change date + Undo side by side, date picker in the "when" row. */
+.tb-hq .tb-mat-acts { display: inline-flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.tb-hq .tb-mat-undo { font-size: 18px; }
+.tb-hq .tb-mat-date { height: 52px; padding: 0 10px; border: 2px solid var(--line); border-radius: 10px; font: inherit; font-size: 18px; background: var(--surface); color: var(--text); }
+.tb-hq .tb-phone .tb-mat-date { height: 44px; font-size: 16px; }
