@@ -208,3 +208,15 @@ export async function listTemplates() {
   }
   return out
 }
+
+// Fetch a media file a customer sent (webhook gives only the media id). Returns { buffer, mime, size }.
+export async function fetchMedia(mediaId) {
+  const token = process.env.WHATSAPP_TOKEN
+  const meta = await fetch(`${GRAPH}/${encodeURIComponent(mediaId)}`, { headers: { Authorization: `Bearer ${token}` } })
+  const info = await meta.json().catch(() => null)
+  if (!meta.ok || !info?.url) throw new Error(`Meta said: ${info?.error?.message || `HTTP ${meta.status}`}`)
+  const file = await fetch(info.url, { headers: { Authorization: `Bearer ${token}` } })
+  if (!file.ok) throw new Error(`Could not download the file (HTTP ${file.status}).`)
+  const buffer = Buffer.from(await file.arrayBuffer())
+  return { buffer, mime: info.mime_type || file.headers.get('content-type') || 'application/octet-stream', size: buffer.length }
+}

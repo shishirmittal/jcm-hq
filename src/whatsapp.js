@@ -129,7 +129,7 @@ function renderInbox(el, number) {
         lastDay = day
         const st = m.direction === 'out' ? `<span class="wa-msg-status wa-st-${esc(m.status)}" title="${esc(m.error || m.status || '')}">${m.status === 'read' ? '✓✓' : m.status === 'delivered' ? '✓✓' : m.status === 'failed' || m.status === 'no_number' || m.status === 'off' ? '✕ ' + esc(STATUS_TEXT[m.status] || m.status) : '✓'}</span>` : ''
         const who = m.direction === 'out' ? `<span class="wa-muted">${esc(m.by || 'HQ')}</span>` : ''
-        const text = m.kind === 'template' ? `<span class="wa-template">📨 ${esc(m.template)}</span><div class="wa-muted">${esc((m.text || '').replace(/^\[[^\]]+\]\s*/, ''))}</div>` : m.kind === 'button' ? `<span class="wa-tap">↩ tapped <strong>${esc(m.text)}</strong></span>` : esc(m.text || '')
+        const text = m.kind === 'template' ? `<span class="wa-template">📨 ${esc(m.template)}</span><div class="wa-muted">${esc((m.text || '').replace(/^\[[^\]]+\]\s*/, ''))}</div>` : m.kind === 'button' ? `<span class="wa-tap">↩ tapped <strong>${esc(m.text)}</strong></span>` : m.media && m.direction === 'in' ? `<button type="button" class="wa-file" data-media="${m.mid}">${m.kind === 'image' ? '🖼' : m.kind === 'video' ? '🎬' : m.kind === 'audio' ? '🎙' : '📎'} ${esc(m.text || m.kind)}<span class="wa-muted"> · tap to ${m.kind === 'image' ? 'view' : 'download'}</span></button>${m.kind === 'image' ? `<div class="wa-img" id="waImg${m.mid}"></div>` : ''}` : esc(m.text || '')
         return `${sep}<div class="wa-msg wa-${m.direction} ${m.kind === 'template' ? 'wa-tpl' : ''}"><div class="wa-bubble">${text}${m.error && m.direction === 'out' ? `<div class="wa-err">${esc(m.error)}</div>` : ''}<div class="wa-meta">${who} ${esc(timeOnly(m.at))} ${st}</div></div></div>`
       }).join('')
       th.innerHTML = `
@@ -148,6 +148,21 @@ function renderInbox(el, number) {
       th.querySelector('#waMsgs').scrollTop = 1e9
       th.querySelector('#waBack').addEventListener('click', () => { state.number = null; history.replaceState(null, '', '#whatsapp/inbox'); el.classList.remove('wa-show-thread'); drawConvs() })
       el.classList.add('wa-show-thread')
+      th.querySelector('#waMsgs').addEventListener('click', async e => {
+        const b = e.target.closest('[data-media]')
+        if (!b) return
+        b.disabled = true
+        try {
+          const d = await call({ action: 'media', id: Number(b.dataset.media) })
+          const bytes = Uint8Array.from(atob(d.base64), ch => ch.charCodeAt(0))
+          const blob = new Blob([bytes], { type: d.mime })
+          const url = URL.createObjectURL(blob)
+          const img = el.querySelector(`#waImg${b.dataset.media}`)
+          if (img && d.mime.startsWith('image/')) { img.innerHTML = `<a href="${url}" target="_blank" rel="noopener"><img src="${url}" alt=""></a>` }
+          else { const a = document.createElement('a'); a.href = url; a.download = d.filename; document.body.appendChild(a); a.click(); a.remove() }
+        } catch (err) { alert(err.message) }
+        finally { b.disabled = false }
+      })
       th.querySelector('#waReplySend')?.addEventListener('click', sendReply)
       th.querySelector('#waReplyText')?.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) sendReply() })
     } catch (err) { th.innerHTML = `<div class="empty-state">${esc(err.message)}</div>` }

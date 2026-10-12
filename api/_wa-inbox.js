@@ -125,7 +125,7 @@ export async function loadThread(busy, number, { markSeen = true } = {}) {
   ])
   if (m.error) throw new Error(/relation|does not exist|schema cache/i.test(m.error.message) ? 'SETUP' : m.error.message)
   const items = []
-  for (const x of m.data || []) items.push({ id: `m${x.id}`, direction: x.direction, kind: x.kind, text: x.text, payload: x.payload, at: x.created_at, status: x.status, error: x.error, by: x.sent_by, read_at: x.read_at, delivered_at: x.delivered_at })
+  for (const x of m.data || []) items.push({ id: `m${x.id}`, mid: x.id, direction: x.direction, kind: x.kind, text: x.text, payload: x.payload, media: !!x.media_id, at: x.created_at, status: x.status, error: x.error, by: x.sent_by, read_at: x.read_at, delivered_at: x.delivered_at })
   for (const x of l.data || []) items.push({ id: `l${x.id}`, direction: 'out', kind: 'template', template: x.template, text: `[${x.template}] ${(x.params || []).join(' · ')}`, at: x.created_at, status: x.status, error: x.error, by: x.sent_by, ref: x.ref, ref_name: x.ref_name, read_at: x.read_at, delivered_at: x.delivered_at })
   items.sort((a, b) => a.at.localeCompare(b.at))
   const lastIn = [...(m.data || [])].reverse().find(x => x.direction === 'in')?.created_at || null

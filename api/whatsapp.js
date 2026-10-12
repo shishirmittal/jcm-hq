@@ -1,6 +1,6 @@
 import { applyCors } from './_cors.js'
 import { createClient } from '@supabase/supabase-js'
-import { waConfigured, sendTemplate, wabaSubscription, toWaNumber, waSwitches, sendLogged, BANNER, niceDate, listTemplates } from './_wa-cloud.js'
+import { waConfigured, sendTemplate, wabaSubscription, toWaNumber, waSwitches, sendLogged, BANNER, niceDate, listTemplates, fetchMedia } from './_wa-cloud.js'
 import { handleIncoming, busyClient, ledgerNameByCode } from './_wa-replies.js'
 import { runOutbox, TXN } from './_wa-outbox.js'
 import { listConversations, loadThread, replyText, unreadCount } from './_wa-inbox.js'
@@ -208,6 +208,17 @@ export default async function handler(req, res) {
     if (body.action === 'thread') {
       try { return send(res, 200, await loadThread(busy, String(body.number || ''))) }
       catch (err) { if (err.message === 'SETUP') return send(res, 200, { items: [], setup: true }); throw err }
+    }
+    if (body.action === 'media') {
+      // A file / photo a customer sent: fetched from Meta on demand (they keep it ~30 days), handed to the page as base64.
+      const row = await busy.from('wa_messages').select('media_id, text, kind').eq('id', Number(body.id)).maybeSingle()
+      if (row.error || !row.data?.media_id) return send(res, 404, { error: 'No file on that message.' })
+      try {
+        const m = await fetchMedia(row.data.media_id)
+        if (m.size > 4_000_000) return send(res, 413, { error: 'That file is over 4 MB — too big to pass through HQ. Open it on the WhatsApp phone.' })
+        const name = /\.\w{2,5}$/.test(row.data.text || '') ? row.data.text : `${row.data.kind || 'file'}-${body.id}.${(m.mime.split('/')[1] || 'bin').replace('jpeg', 'jpg')}`
+        return send(res, 200, { mime: m.mime, filename: name, base64: m.buffer.toString('base64') })
+      } catch (err) { return send(res, 502, { error: err.message }) }
     }
     if (body.action === 'reply') {
       const number = toWaNumber(body.number)
