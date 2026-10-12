@@ -107,10 +107,16 @@ OUTER APPLY (
 ) gst
 WHERE t1.VchType = 9 AND t2.RecType IN (2, 7);`;
 
+const CUSTOMERS_QUERY = `${RECENT}
+SELECT DISTINCT m.Code AS party_code, m.Name AS name, a.Mobile AS mobile, a.WhatsAppNo AS whatsapp_no
+FROM ResolvedInvoices ri
+INNER JOIN Master1 m ON m.Code = ri.resolved_party_code AND m.MasterType = 2
+LEFT JOIN MasterAddressInfo a ON a.MasterCode = m.Code;`;
+
 async function main() {
   log(`start${CHECK ? ' (check only)' : ''} — ${SQL_CONFIG.database}`);
   const pool = await sql.connect(SQL_CONFIG);
-  const [inv, items] = await Promise.all([pool.request().query(INVOICES_QUERY), pool.request().query(ITEMS_QUERY)]);
+  const [inv, items, cust] = await Promise.all([pool.request().query(INVOICES_QUERY), pool.request().query(ITEMS_QUERY), pool.request().query(CUSTOMERS_QUERY)]);
   await pool.close();
   const now = new Date().toISOString();
   const invoices = inv.recordset.map(r => ({
@@ -132,6 +138,12 @@ async function main() {
   if (CHECK || !invoices.length) return;
 
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
+  // Customers first — invoices.party_code points at customers, and a brand-new party is not there yet.
+  const customers = cust.recordset.map(r => ({ party_code: r.party_code, name: r.name, mobile: r.mobile ? r.mobile.trim() : null, whatsapp_no: r.whatsapp_no ? r.whatsapp_no.trim() : null, last_synced_at: now }));
+  for (let i = 0; i < customers.length; i += 500) {
+    const { error } = await supabase.from('customers').upsert(customers.slice(i, i + 500), { onConflict: 'party_code' });
+    if (error) throw new Error(`customers upsert: ${error.message}`);
+  }
   for (let i = 0; i < invoices.length; i += 500) {
     const { error } = await supabase.from('invoices').upsert(invoices.slice(i, i + 500), { onConflict: 'vch_no' });
     if (error) throw new Error(`invoices upsert: ${error.message}`);
@@ -145,7 +157,7 @@ async function main() {
     const { error } = await supabase.from('invoice_items').insert(lines.slice(i, i + 500));
     if (error) throw new Error(`invoice_items insert: ${error.message}`);
   }
-  log(`written: ${invoices.length} invoices, ${lines.length} lines`);
+  log(`written: ${customers.length} customers, ${invoices.length} invoices, ${lines.length} lines`);
 }
 
 main().catch(err => { log(`FAILED: ${err.message || err}`); process.exit(1); });
