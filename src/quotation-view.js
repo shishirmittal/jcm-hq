@@ -5,6 +5,7 @@ import { IS_NATIVE } from './native.js'
 import { sharePdf, pdfFilename } from './share-pdf.js'
 import logoUrl from './assets/jcm-logo.png'
 import { hqConfirm, hqAlert } from './hq-dialog.js'
+import './quotation-sheet.css'
 
 // Fallback only — a payee-only code with no amount in it, shown if the QR library
 // failed to load. The real one is generated per quotation by qrDataUri() below.
@@ -64,13 +65,6 @@ function money(n) {
   return formatMoney(n)
 }
 
-function formatDateDots(d) {
-  const day = d.getDate()
-  const month = d.toLocaleDateString('en-IN', { month: 'short' })
-  const year = d.getFullYear()
-  return `${day} · ${month} · ${year}`
-}
-
 const BRANDS = [
   'Philips', 'Havells', 'Schneider Electric', 'Legrand', 'LK', 'Larsen & Toubro',
   'Finolex', 'Orient Electric', 'Crompton', 'Daikin', 'Voltas', 'Panasonic', 'Bajaj', 'Anchor',
@@ -81,7 +75,7 @@ const BRANDS = [
 // room to spare, based on the v3 design's row height. A real per-item budget is
 // larger than this on non-final pages; the final page also needs to fit
 // totals/words/bank/brands/policies/footer below its items, hence the margin.
-const ITEMS_PER_PAGE = 18
+const ITEMS_PER_PAGE = 15
 
 function chunk(arr, size) {
   if (!arr.length) return [[]]
@@ -90,138 +84,164 @@ function chunk(arr, size) {
   return out
 }
 
-function renderPageHtml({ quotation, pageRows, pageIndex, totalPages, startNumber, isLast, totals, qrSrc }) {
-  const { createdDate, validUntil, grandTotal, totalMrp, totalQty, totalDiscount, onRequestCount, pricingMode, gstRate, taxableValue, gstAmount } = totals
+// Same look as the customer invoice PDF on invoice.jcmretails.com
+// (jcm-invoiceportal public/invoice-template.html) — classes qi-*, styles in
+// quotation-sheet.css. Header + footer repeat on every page; the customer block
+// is on page 1; totals, terms and bank details only on the last page.
+const QUOTE_TERMS = [
+  'Rates are subject to revision without prior notice after the validity date.',
+  'Advance payment may be requested for special or non-stock orders.',
+  'Delivery is subject to stock availability at the time of order confirmation.',
+  'Goods once sold are not returnable except as per brand warranty terms.',
+  'Subject to Ratlam jurisdiction only.'
+]
+
+function inr(n) {
+  const v = Number(n) || 0
+  return v.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+function dmy(d) {
+  return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`
+}
+
+function renderPageHtml({ quotation, pageRows, pageIndex, totalPages, startNumber, isFirst, isLast, totals, qrSrc, brought, carried }) {
+  const { createdDate, validUntil, grandTotal, totalMrp, totalQty, totalDiscount, onRequestCount, pricingMode, gstRate, taxableValue, gstAmount, itemCount } = totals
+  const addr = [quotation.address, quotation.city].filter(Boolean).join(', ')
+  const qtyText = Number.isInteger(totalQty) ? totalQty : totalQty.toFixed(2)
 
   return `
-    <div class="print-page">
-      ${totalPages > 1 ? `<div class="sheet-page-indicator">Page ${pageIndex + 1} of ${totalPages}</div>` : ''}
-
-      <div class="sheet-topbar">
-        <div class="sheet-brand">
-          <img src="${logoUrl}" alt="JCM Retails" class="sheet-monogram" />
-          <div class="sheet-brand-text">
-            <p class="sheet-unit-of">A Unit of</p>
-            <h1>J.C. Mittal and Sons</h1>
-          </div>
-        </div>
-        <div class="sheet-topbar-right">
-          <div class="sheet-doc-info">
-            <p class="sheet-doc-type">Quotation</p>
-            <p class="sheet-doc-sub">Not a Tax Invoice</p>
-          </div>
+    <div class="print-page qi">
+      <header class="qi-head">
+        <div class="qi-lockup">
+          <img class="qi-logo" src="${logoUrl}" alt="JCM Retails" />
           <div>
-            <div class="sheet-qr"><img src="${qrSrc}" alt="UPI QR for ${esc(money(grandTotal))}" /></div>
-            <div class="sheet-qr-label">Scan to Pay</div>
+            <div class="qi-co-name">J.C.Mittal And Sons</div>
+            <div class="qi-co-gstin">GSTIN 23AAPFJ0607D1ZT</div>
           </div>
         </div>
-      </div>
+        <div class="qi-co-contact">87-88, Freeganj Road, Ratlam, MP 457001<br />07412 490490 · 910910-8258 · hello@jcmretails.com<br />www.jcmretails.com</div>
+      </header>
 
-      <div class="sheet-contactbar">
-        <div class="sheet-contact-item">📍 87-88, Freeganj Road, Ratlam (M.P.) 457001</div>
-        <div class="sheet-contact-item">📞 07412-490490 &nbsp;·&nbsp; 91091-08258</div>
-        <div class="sheet-contact-item">✉️ Hello@jcmretails.com</div>
-      </div>
-
-      <div class="sheet-meta">
-        <div class="sheet-meta-field"><label>Quotation No.</label><div class="val mono">${esc(quotation.quote_no || '—')}</div></div>
-        <div class="sheet-meta-field"><label>Date</label><div class="val">${formatDateDots(createdDate)}</div></div>
-        <div class="sheet-meta-field"><label>Valid Until</label><div class="val">${formatDateDots(validUntil)}</div></div>
-      </div>
-
-      <hr class="sheet-divider" />
-
-      <div class="sheet-billto">
-        <label>Quotation For</label>
-        <div class="sheet-billto-grid">
-          <span class="name">${esc(quotation.client_name)}</span>
-          ${quotation.phone ? `<span>${esc(quotation.phone)}</span>` : ''}
-          ${(quotation.address || quotation.city) ? `<span class="muted">${esc([quotation.address, quotation.city].filter(Boolean).join(', '))}</span>` : ''}
+      <div class="qi-title-row">
+        <div class="qi-title-left"><h1>Quotation</h1><span class="qi-pill">Not a tax invoice</span></div>
+        <div style="text-align:right">
+          <div class="qi-doc-no-label">Quotation no.</div>
+          <div class="qi-doc-no">${esc(quotation.quote_no || '—')}</div>
+          <div class="qi-doc-date">Dated ${dmy(createdDate)}</div>
         </div>
       </div>
 
-      <div class="sheet-table-wrap">
-        <table class="sheet-table">
-          <thead>
-            <tr>
-              <th style="width:22px;">#</th>
-              <th>Item</th>
-              <th style="width:70px;">Model</th>
-              <th style="width:80px;">Colour</th>
-              <th class="num" style="width:38px;">Qty</th>
-              <th class="num" style="width:64px;">List Price</th>
-              <th class="num" style="width:44px;">Disc</th>
-              <th class="num" style="width:76px;">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${pageRows.map((r, i) => `
-              <tr>
-                <td>${String(startNumber + i).padStart(2, '0')}</td>
-                <td>${esc(r.description)}</td>
-                <td class="model">${esc(r.model || '—')}</td>
-                <td class="colour">${esc(r.colour || '—')}</td>
-                <td class="num">${r.qty}</td>
-                <td class="num">${r.on_request ? '—' : money(r.mrp)}</td>
-                <td class="num">${r.on_request ? '—' : (Number(r.discount_pct) || 0) + '%'}</td>
-                <td class="num">${money(r.amount)}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
+      ${isFirst ? `
+      <section class="qi-parties">
+        <div>
+          <div class="qi-eyebrow">Quotation for</div>
+          <div class="qi-party-name">${esc(quotation.client_name || '—')}</div>
+          ${addr ? `<div class="qi-party-addr">${esc(addr)}</div>` : ''}
+          ${quotation.phone ? `<div class="qi-mono qi-party-phone">${esc(quotation.phone)}</div>` : ''}
+        </div>
+        <div>
+          <div class="qi-eyebrow">Details</div>
+          <div class="qi-kv">
+            <span class="k">Date</span><span>${dmy(createdDate)}</span>
+            <span class="k">Valid until</span><span>${dmy(validUntil)}</span>
+            <span class="k">Prices</span><span>${pricingMode === 'discount_plus_tax' ? `GST ${gstRate}% added` : 'Inclusive of GST'}</span>
+            ${quotation.label ? `<span class="k">Reference</span><span>${esc(quotation.label)}</span>` : ''}
+          </div>
+        </div>
+        <div class="qi-qr-col">
+          <div>
+            <div class="qi-eyebrow">Scan to pay</div>
+            <div class="qi-qr-amt">₹${inr(Math.round(grandTotal))}</div>
+            <div class="qi-qr-note">Any UPI app</div>
+          </div>
+          <img class="qi-qr" src="${qrSrc}" alt="UPI QR" />
+        </div>
+      </section>` : ''}
+
+      <div class="qi-items">
+        <div class="qi-row qi-ihead">
+          <div>#</div><div>Item</div><div>Model</div><div>Colour</div>
+          <div class="r">Qty</div><div class="r">List price</div><div class="r">Discount</div><div class="r">Price</div><div class="r">Amount</div>
+        </div>
+        ${!isFirst ? `<div class="qi-brought"><div>Brought forward from page ${pageIndex}</div><div>${inr(brought)}</div></div>` : ''}
+        ${pageRows.map((r, i) => {
+          const qty = Number(r.qty) || 0
+          const disc = Number(r.discount_pct) || 0
+          const price = qty ? Number(r.amount || 0) / qty : 0
+          return `
+        <div class="qi-row qi-line">
+          <div class="sr">${startNumber + i}</div>
+          <div class="desc">${esc(r.description)}</div>
+          <div class="code">${esc(r.model || '—')}</div>
+          <div class="code">${esc(r.colour || '—')}</div>
+          <div class="num qty">${qty}</div>
+          <div class="num">${r.on_request ? '—' : inr(r.mrp)}</div>
+          <div class="num ${disc && !r.on_request ? '' : 'nil'}">${disc && !r.on_request ? disc.toFixed(2) + '%' : '—'}</div>
+          <div class="num ink">${r.on_request ? '—' : inr(price)}</div>
+          <div class="amt">${r.on_request ? 'On request' : inr(r.amount)}</div>
+        </div>`
+        }).join('')}
+        ${!isLast ? `<div class="qi-carry"><div>Carried forward to page ${pageIndex + 2}</div><div>${inr(carried)}</div></div>` : ''}
       </div>
+
+      <div class="qi-grow"></div>
 
       ${isLast ? `
-        <div class="sheet-totals">
-          <div class="sheet-totals-block">
-            <div class="sheet-total-row"><span class="t-label">Total Qty</span><span class="t-val">${totalQty}</span></div>
-            <div class="sheet-total-row"><span class="t-label">Total List Price</span><span class="t-val">${money(totalMrp)}</span></div>
-            <div class="sheet-total-row"><span class="t-label">Total Discount</span><span class="t-val">− ${money(totalDiscount)}</span></div>
-            ${pricingMode === 'discount_plus_tax' ? `
-              <div class="sheet-total-row"><span class="t-label">Taxable Value</span><span class="t-val">${money(taxableValue)}</span></div>
-              <div class="sheet-total-row"><span class="t-label">GST Amount (${gstRate}%)</span><span class="t-val">${money(gstAmount)}</span></div>
-              <div class="sheet-total-row grand"><span class="t-label">Grand Total</span><span class="t-val">${money(grandTotal)}</span></div>
-            ` : `
-              <div class="sheet-total-row grand"><span class="t-label">Tax Paid Total</span><span class="t-val">${money(grandTotal)}</span></div>
-            `}
+      <div>
+        <section class="qi-totals">
+          <div>
+            <div class="qi-eyebrow" style="margin-bottom:0">Amount in words</div>
+            <div class="qi-words">Rupees ${numberToWordsIndian(Math.round(grandTotal))} Only</div>
+            ${onRequestCount ? `<div class="qi-qty-note">+ ${onRequestCount} item(s) priced on request — not included in the total.</div>` : ''}
+            <div class="qi-eyebrow" style="margin:14px 0 4px">Brands we carry</div>
+            <div class="qi-brands">${BRANDS.map(esc).join(' · ')}</div>
           </div>
-        </div>
-        ${onRequestCount ? `<p class="sheet-note" style="text-align:right;padding-right:40px">+ ${onRequestCount} item(s) priced on request</p>` : ''}
-
-        <div class="sheet-words">Amount in Words: <span>Rupees ${numberToWordsIndian(grandTotal)} Only</span></div>
-
-        <div class="sheet-bankstrip">
-          <span><strong>Bank</strong><span class="v">State Bank of India</span></span>
-          <span><strong>A/C Name</strong><span class="v">J.C. Mittal and Sons</span></span>
-          <span><strong>A/C No.</strong><span class="v">38596845721</span></span>
-          <span><strong>IFSC</strong><span class="v">SBIN0009452</span></span>
-          <span><strong>Branch</strong><span class="v">SME Ratlam</span></span>
-          <span><strong>UPI</strong><span class="v">7415277521-1@okbizaxis</span></span>
-        </div>
-
-        <div class="sheet-brands">
-          <span class="sheet-brands-label">Brands</span>
-          <div class="sheet-brand-list">${BRANDS.map(b => `<span>${esc(b)}</span>`).join('')}</div>
-        </div>
-
-        <div class="sheet-policies">
-          <div class="sheet-policy-col"><h4>Validity &amp; Pricing</h4><p>Prices quoted are inclusive of applicable GST and valid for 7 days from the date above. Rates subject to revision without prior notice thereafter.</p></div>
-          <div class="sheet-policy-col"><h4>Payment &amp; Delivery</h4><p>Advance payment may be requested for special or non-stock orders. Delivery timelines are subject to stock availability at the time of order confirmation.</p></div>
-          <div class="sheet-policy-col"><h4>Returns &amp; Warranty</h4><p>Goods once sold are not returnable or exchangeable except as per applicable warranty terms. Product service is handled through official brand service centres.</p></div>
-        </div>
-
-        <div class="sheet-footer">
-          <div class="sheet-sig-block">
-            <span class="sheet-sig-label">Authorised Signatory</span>
-            <div class="sheet-sig-name">J.C. Mittal and Sons</div>
+          <div>
+            <div class="qi-sum">
+              <div>Total list price</div><div class="v">${inr(totalMrp)}</div>
+              <div>Discount</div><div class="v">− ${inr(totalDiscount)}</div>
+              ${pricingMode === 'discount_plus_tax' ? `
+              <div>Taxable value</div><div class="v">${inr(taxableValue)}</div>
+              <div>CGST (${gstRate / 2}%)</div><div class="v">${inr(gstAmount / 2)}</div>
+              <div>SGST (${gstRate / 2}%)</div><div class="v">${inr(gstAmount / 2)}</div>` : ''}
+              <div>Round off</div><div class="v">${(Math.round(grandTotal) - grandTotal >= 0 ? '+' : '') + inr(Math.round(grandTotal) - grandTotal)}</div>
+            </div>
+            <div class="qi-grand">
+              <div class="qi-grand-label">${pricingMode === 'discount_plus_tax' ? 'Grand total' : 'Total (tax paid)'}</div>
+              <div class="qi-grand-val">₹${inr(Math.round(grandTotal))}</div>
+            </div>
+            <div class="qi-qty-note">${qtyText} Pcs across ${itemCount} items</div>
           </div>
-          <div class="sheet-footer-note">
-            <strong>Thank you for your business</strong>
-            This is a computer-generated quotation.<br />
-            For queries: Hello@jcmretails.com &nbsp;·&nbsp; 91091-08258
+        </section>
+
+        <section class="qi-foot-cols">
+          <div>
+            <div class="qi-eyebrow">Terms</div>
+            <ol class="qi-terms">${[pricingMode === 'discount_plus_tax' ? `GST at ${gstRate}% is added as shown. Prices valid for 7 days from the date above.` : 'Prices are inclusive of applicable GST and valid for 7 days from the date above.', ...QUOTE_TERMS].map(t => `<li>${esc(t)}</li>`).join('')}</ol>
           </div>
-        </div>
-      ` : ''}
+          <div>
+            <div class="qi-eyebrow">Pay to</div>
+            <div class="qi-kv">
+              <span class="k">A/c name</span><span>J.C. Mittal and Sons</span>
+              <span class="k">Bank</span><span>State Bank of India</span>
+              <span class="k">Account no.</span><span class="qi-mono">38596845721</span>
+              <span class="k">IFSC</span><span class="qi-mono">SBIN0009452</span>
+              <span class="k">Branch</span><span>SME Branch, Ratlam</span>
+              <span class="k">UPI</span><span class="qi-mono">${UPI_VPA}</span>
+            </div>
+            <div class="qi-care">
+              <span class="qi-care-label">Customer care</span>
+              <span class="qi-care-no">910 910 8258</span>
+            </div>
+          </div>
+        </section>
+      </div>` : ''}
+
+      <footer class="qi-sheet-foot">
+        <div>E. &amp; O.E. · Computer-generated quotation, valid without signature.</div>
+        <div class="qi-mono">${esc(quotation.quote_no || '')} · ${dmy(createdDate)} · Page ${pageIndex + 1} of ${totalPages}</div>
+      </footer>
     </div>
   `
 }
@@ -284,7 +304,7 @@ export async function renderQuotationView(container, quotationId, onBack, autoAc
 
   const createdDate = new Date(quotation.created_at)
   const validUntil = new Date(createdDate.getTime() + 7 * 24 * 60 * 60 * 1000)
-  const totals = { createdDate, validUntil, grandTotal, totalMrp, totalQty, totalDiscount, onRequestCount, pricingMode, gstRate, taxableValue, gstAmount }
+  const totals = { createdDate, validUntil, grandTotal, totalMrp, totalQty, totalDiscount, onRequestCount, pricingMode, gstRate, taxableValue, gstAmount, itemCount: rows.length }
 
   // Built here, after grandTotal is final, and reused on every page — never a
   // value captured before the totals were known. Falls back to the static
@@ -292,11 +312,15 @@ export async function renderQuotationView(container, quotationId, onBack, autoAc
   const qrSrc = qrDataUri(upiPayUri(grandTotal, `Quotation ${quotation.quote_no || ''}`.trim())) || QR_DATA_URI
 
   const pages = chunk(rows, ITEMS_PER_PAGE)
+  let running = 0
   const pagesHtml = pages.map((pageRows, pageIndex) => {
     const startNumber = pages.slice(0, pageIndex).reduce((s, p) => s + p.length, 0) + 1
+    const brought = running
+    running += pageRows.reduce((s, r) => s + (r.on_request ? 0 : Number(r.amount || 0)), 0)
     return renderPageHtml({
       quotation, pageRows, pageIndex, totalPages: pages.length,
-      startNumber, isLast: pageIndex === pages.length - 1, totals, qrSrc
+      startNumber, isFirst: pageIndex === 0, isLast: pageIndex === pages.length - 1, totals, qrSrc,
+      brought, carried: running
     })
   }).join('')
 

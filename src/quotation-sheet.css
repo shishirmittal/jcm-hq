@@ -1,0 +1,80 @@
+/* ---- Quotation sheet, invoice-portal look (classes qi-*) ----
+   Mirrors jcm-invoiceportal public/invoice-template.html so a quotation and a
+   tax invoice from JCM look like the same family. Fixed 210×297mm pages: the
+   PDF is one html2canvas capture per page placed at 210×297, so the box must
+   be exactly A4. Not themed (stays white in dark mode), like the old letterhead. */
+.print-page.qi {
+  --qi-ink:#14161c; --qi-body:#4b5060; --qi-muted:#6d7280; --qi-faint:#9aa0ad;
+  --qi-line:#e5e7ee; --qi-hair:#eceef3; --qi-accent:#2f3f8f; --qi-accent-soft:#eef0f9;
+  --qi-sans:'Instrument Sans','Inter','Noto Sans',system-ui,sans-serif;
+  --qi-mono:'IBM Plex Mono',ui-monospace,monospace;
+  --qi-cols:22px minmax(0,1fr) 64px 58px 34px 60px 50px 60px 72px;
+  background:#fff; color:var(--qi-ink); font-family:var(--qi-sans);
+  width:210mm; height:297mm; min-height:297mm; padding:13mm 13mm 11mm;
+  overflow:hidden; display:flex; flex-direction:column; box-sizing:border-box;
+}
+.print-page.qi::before { display:none; }
+.print-page.qi * { box-sizing:border-box; }
+
+.qi-head { display:flex; justify-content:space-between; align-items:flex-start; gap:24px; flex:none; }
+.qi-lockup { display:flex; align-items:center; gap:13px; }
+.qi-logo { width:46px; height:46px; border-radius:50%; object-fit:contain; flex:none; display:block; }
+.qi-co-name { font-size:23px; font-weight:700; letter-spacing:-.02em; line-height:1.1; }
+.qi-co-gstin { font-family:var(--qi-mono); font-size:9px; letter-spacing:.04em; color:var(--qi-muted); margin-top:2px; }
+.qi-co-contact { text-align:right; font-size:9px; color:var(--qi-muted); line-height:1.5; }
+
+.qi-title-row { display:flex; justify-content:space-between; align-items:flex-end; gap:24px; margin-top:16px; flex:none; }
+.qi-title-left { display:flex; align-items:baseline; gap:10px; }
+.print-page.qi h1 { font-family:var(--qi-sans); font-size:30px; font-weight:700; letter-spacing:-.03em; line-height:1; margin:0; color:var(--qi-ink); }
+.qi-pill { font-size:8.5px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--qi-accent); background:var(--qi-accent-soft); padding:3px 8px; border-radius:20px; white-space:nowrap; }
+.qi-doc-no-label { font-size:8.5px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--qi-faint); }
+.qi-doc-no { font-family:var(--qi-mono); font-size:22px; font-weight:600; letter-spacing:-.01em; color:var(--qi-accent); line-height:1.2; }
+.qi-doc-date { font-family:var(--qi-mono); font-size:10.5px; color:var(--qi-muted); margin-top:2px; }
+
+.qi-parties { display:grid; grid-template-columns:1fr 1fr 1fr; gap:22px; margin-top:12px; padding-top:12px; border-top:1px solid var(--qi-line); flex:none; }
+.qi-eyebrow { font-size:8.5px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--qi-faint); margin-bottom:7px; }
+.qi-party-name { font-size:13px; font-weight:600; }
+.qi-party-addr { font-size:10.5px; color:var(--qi-body); line-height:1.55; margin-top:3px; }
+.qi-party-phone { font-size:10px; color:var(--qi-body); margin-top:6px; }
+.qi-kv { display:grid; grid-template-columns:auto 1fr; gap:4px 12px; font-size:10.5px; line-height:1.4; }
+.qi-kv .k { color:var(--qi-muted); white-space:nowrap; }
+.qi-mono { font-family:var(--qi-mono); }
+.qi-qr-col { display:flex; justify-content:flex-end; align-items:flex-start; gap:10px; text-align:right; }
+.qi-qr { width:74px; height:74px; display:block; border:1px solid var(--qi-line); border-radius:6px; padding:3px; background:#fff; }
+.qi-qr-amt { font-family:var(--qi-mono); font-size:13px; font-weight:600; color:var(--qi-accent); }
+.qi-qr-note { font-size:9px; color:var(--qi-muted); margin-top:2px; }
+
+.qi-items { margin-top:14px; font-variant-numeric:tabular-nums; flex:none; }
+.qi-row { display:grid; grid-template-columns:var(--qi-cols); column-gap:8px; }
+.qi-ihead { padding-bottom:7px; border-bottom:1px solid var(--qi-ink); }
+.qi-ihead > div { font-size:8.5px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:var(--qi-faint); }
+.qi-line { padding:5px 0; border-bottom:1px solid var(--qi-hair); align-items:start; }
+.qi-line .sr { font-size:10px; color:var(--qi-faint); }
+.qi-line .desc { font-size:11px; }
+.qi-line .code { font-size:9.5px; font-family:var(--qi-mono); color:var(--qi-muted); overflow-wrap:anywhere; }
+.qi-line .num { font-size:10.5px; text-align:right; color:var(--qi-body); }
+.qi-line .num.qty, .qi-line .num.ink { color:var(--qi-ink); }
+.qi-line .nil { color:var(--qi-faint); }
+.qi-line .amt { font-size:11px; text-align:right; font-weight:600; }
+.qi-items .r { text-align:right; }
+.qi-carry { display:flex; justify-content:space-between; gap:12px; padding:8px 0 0; font-weight:700; font-size:11px; }
+.qi-brought { display:flex; justify-content:space-between; gap:12px; padding:6px 0; border-bottom:1px solid var(--qi-hair); color:var(--qi-muted); font-weight:600; font-size:10.5px; }
+
+.qi-grow { flex:1 1 auto; min-height:14px; }
+
+.qi-totals { display:grid; grid-template-columns:1fr 260px; gap:30px; padding-top:12px; border-top:1px solid var(--qi-line); }
+.qi-words { font-size:12px; font-weight:600; margin-top:3px; }
+.qi-brands { font-size:9px; color:var(--qi-muted); line-height:1.5; }
+.qi-sum { display:grid; grid-template-columns:1fr auto; gap:6px 12px; font-size:10.5px; color:var(--qi-body); font-variant-numeric:tabular-nums; }
+.qi-sum .v { text-align:right; color:var(--qi-ink); }
+.qi-grand { display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-top:10px; padding-top:10px; border-top:1px solid var(--qi-ink); }
+.qi-grand-label { font-size:9px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--qi-body); }
+.qi-grand-val { font-size:20px; font-weight:700; letter-spacing:-.02em; }
+.qi-qty-note { margin-top:8px; font-size:9.5px; color:var(--qi-muted); }
+
+.qi-foot-cols { display:grid; grid-template-columns:1.15fr 1fr; gap:30px; margin-top:16px; padding-top:12px; border-top:1px solid var(--qi-line); }
+.qi-terms { margin:0; padding-left:15px; font-size:9.5px; color:var(--qi-body); line-height:1.6; }
+.qi-care { display:flex; align-items:baseline; gap:9px; margin-top:12px; padding:7px 11px; background:var(--qi-accent-soft); border-radius:8px; }
+.qi-care-label { font-size:8.5px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--qi-accent); white-space:nowrap; }
+.qi-care-no { font-family:var(--qi-mono); font-size:14px; font-weight:600; color:var(--qi-accent); }
+.qi-sheet-foot { display:flex; justify-content:space-between; gap:16px; margin-top:14px; padding-top:8px; border-top:1px solid var(--qi-line); font-size:8px; color:var(--qi-faint); white-space:nowrap; flex:none; }

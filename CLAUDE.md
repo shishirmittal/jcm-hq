@@ -68,3 +68,4 @@ Each module may be built in its own Claude chat that pushes straight to `main` (
 - D: TV board at board.jcmretails.com with screen token.
 - E: Phone layout + Android app (JCM HQ).
 - Prototype (Claude Design): https://claude.ai/artifact/LdWwPmWCaYsLDZteK8uMNh
+- Quotation sheet look (2026-10-12, HQ UI chat): the quotation view / Print / PDF now uses the invoice-portal invoice design (jcm-invoiceportal public/invoice-template.html) — markup in src/quotation-view.js renderPageHtml, styles in src/quotation-sheet.css (classes qi-*, fixed 210×297mm pages, 15 items per page, carried/brought forward totals, UPI QR in the customer row). The old navy/gold .sheet-* rules in style.css are no longer used by any page. Fonts Instrument Sans + IBM Plex Mono added to index.html. All HQ UI-change requests are handled in that chat.
