@@ -93,3 +93,16 @@
 .wa-search input { width: 100%; box-sizing: border-box; height: 42px; padding: 0 12px; border: 1px solid var(--line, #ccc); border-radius: 10px; background: var(--bg, #fff); color: var(--text, inherit); font-size: 15px; font-family: inherit; }
 #waTplQ { margin: 0; }
 .wa-page .wa-search:has(#waTplQ) { padding: 10px 0; }
+
+/* In-app PDF / photo viewer (src/pdf-viewer.js) */
+.modal-overlay.pv-overlay { position: fixed; inset: 0; z-index: 9999; background: #1f2328; display: flex; flex-direction: column; padding: 0; align-items: stretch; justify-content: flex-start; }
+.pv-bar { display: flex; align-items: center; gap: 10px; padding: 10px 12px; padding-top: max(10px, env(safe-area-inset-top)); background: #111418; color: #fff; }
+.pv-name { flex: 1; min-width: 0; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pv-btn { border: 1px solid #3a4048; background: #22272e; color: #fff; border-radius: 8px; padding: 8px 12px; font: inherit; font-size: 14px; cursor: pointer; }
+.pv-save { background: #d9a93a; border-color: #d9a93a; color: #111; font-weight: 600; }
+.pv-pages { flex: 1; overflow: auto; -webkit-overflow-scrolling: touch; padding: 8px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.pv-page { background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+.pv-img { max-width: 100%; height: auto; }
+.pv-pages.pv-zoomed { align-items: flex-start; }
+.pv-page { flex: none; }
+.pv-msg { color: #cfd6dd; font-size: 14px; text-align: center; padding: 20px; }
