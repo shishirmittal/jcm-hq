@@ -163,6 +163,9 @@ export async function waSwitches(busy) {
   if (r.error) return { ready: false, off: new Set(), get: () => null }
   const map = new Map((r.data || []).map(x => [x.key, x.value]))
   const off = new Set([...map.keys()].filter(k => k.startsWith('off:') && map.get(k) === 'true').map(k => k.slice(4)))
+  // Customer transaction messages start OFF until someone ticks them on the WhatsApp page (a real
+  // customer must never get a message just because the code went live).
+  for (const k of ['invoice', 'receipt', 'credit_note', 'debit_note', 'payment', 'purchase', 'order']) if (!map.has(`off:${k}`)) off.add(k)
   return { ready: true, off, get: k => map.get(k) ?? null, map }
 }
 

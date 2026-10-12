@@ -57,7 +57,7 @@ export function renderWhatsappSettings(container) {
 
         <section class="wa-card">
           <h3>What HQ sends — switches</h3>
-          <p class="wa-muted" id="waSwNote">Untick a kind to stop it. A customer message that is off stays queued for 24 h, then expires. Automatic payment reminders have their own switch on Payment Follow-up → WhatsApp reminders.</p>
+          <p class="wa-muted" id="waSwNote">Tick a kind to let HQ send it. Customer transaction messages start OFF — tick them once their template is approved. A customer message that is off stays queued for 24 h, then expires. Automatic payment reminders have their own switch on Payment Follow-up → WhatsApp reminders.</p>
           <div id="waSwitches" class="wa-switches">Loading…</div>
         </section>`
   const $ = id => container.querySelector('#' + id)
