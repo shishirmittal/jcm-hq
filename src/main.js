@@ -32,6 +32,7 @@ import { getCurrentProfile as loadProfileForOrders } from './supabase.js'
 import { IS_NATIVE } from './native.js'
 import { mountNativeShell, unmountNativeShell, syncNativeShell, phoneHome } from './native-shell.js'
 import { mountBackButton } from './back-button.js'
+import { mountAppLinks } from './app-links.js'
 import { setPermissions, clearPermissions, routeDecision, hasAnyTab, fallbackHash, isAdminProfile } from './permissions.js'
 
 // Wide tables become one card per row on phones (WhatsApp Templates / Log / Outbox …).
@@ -116,6 +117,7 @@ async function enterApp() {
   if (IS_NATIVE) {
     mountNativeShell()
     mountBackButton()
+    mountAppLinks()
     // The app opens on the Task Board. '' is the Dashboard, which the
     // three-tab shell has no tab for — landing there would show a page with
     // no tab lit and no way back to one except the drawer.

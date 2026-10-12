@@ -19,6 +19,15 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Links to https://hq.jcmretails.com/ (root, e.g. /#purchases) open the app on that page
+                 (src/app-links.js). Not auto-verified (APK key changes per build): each phone approves it
+                 once in Settings → Apps → JCM HQ → Open by default → Add link. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="hq.jcmretails.com" android:path="/" />
+            </intent-filter>
         </activity>
 
         <provider
