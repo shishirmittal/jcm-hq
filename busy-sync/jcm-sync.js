@@ -33,8 +33,9 @@ const DIR = __dirname;
 // ---------------------------------------------------------------------------
 // The timetable. every = minutes between starts; dailyAt = 'HH:MM' India time;
 // hours = only start between these India times; timeout = minutes before a run is stopped;
-// args = what follows `node`; logFile = where the script's own output goes (for scripts
-// that do not keep a log of their own).
+// monthlyOn = day of month (India time) with dailyAt as the time — runs once that day, or at the
+// next start if the PC was off; args = what follows `node`; logFile = where the script's own
+// output goes (for scripts that do not keep a log of their own).
 // ---------------------------------------------------------------------------
 const JOBS = [
   { id: 'orders', name: 'Orders (board, tablet, Orders tab)', args: ['sync-orders.js'], every: 3, timeout: 10 },
@@ -47,7 +48,8 @@ const JOBS = [
   // HQ decides what is due; this only asks every 15 minutes (see followup-notify.js).
   { id: 'followup-notify', name: 'Payment follow-up WhatsApps + tasks', args: ['followup-notify.js'], every: 15, timeout: 5 },
   // GSTR-2A reconciliation: 2A data Busy downloaded + purchase GST summaries + party contacts.
-  { id: 'gst', name: 'GSTR-2A reconciliation data', args: ['sync-gst.js'], every: 30, timeout: 15 },
+  // Needed once a month (after suppliers file GSTR-1); otherwise "Run now" on the Sync status page.
+  { id: 'gst', name: 'GSTR-2A reconciliation data', args: ['sync-gst.js'], monthlyOn: 5, dailyAt: '06:00', timeout: 15 },
   // Customer / supplier WhatsApps for new Busy vouchers (invoices at 20:30, the rest at once) — see sync-transactions.js.
   { id: 'transactions', name: 'Transaction WhatsApps (invoice, receipt, notes, order…)', args: ['sync-transactions.js'], every: 5, timeout: 4 },
   // Invoice portal tables for invoices touched in the last 48 h (nightly sync.js still does the full year).
@@ -78,7 +80,7 @@ const istParts = (d = new Date()) => {
   return { date: t.toISOString().slice(0, 10), mins: t.getUTCHours() * 60 + t.getUTCMinutes() };
 };
 const toMins = hhmm => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
-const describe = j => j.dailyAt ? `daily at ${j.dailyAt}` : `every ${j.every} min${j.hours ? ` (${j.hours[0]}–${j.hours[1]})` : ''}`;
+const describe = j => j.monthlyOn ? `monthly on the ${j.monthlyOn}${['th', 'st', 'nd', 'rd'][j.monthlyOn % 10 > 3 || Math.floor(j.monthlyOn % 100 / 10) === 1 ? 0 : j.monthlyOn % 10]} at ${j.dailyAt} (or Run now)` : j.dailyAt ? `daily at ${j.dailyAt}` : `every ${j.every} min${j.hours ? ` (${j.hours[0]}–${j.hours[1]})` : ''}`;
 
 // ---------------------------------------------------------------------------
 // Supabase (status for the HQ page). Never allowed to stop a job from running.
@@ -116,7 +118,9 @@ async function loadState() {
     // A daily job that already ran today (India date) after its time is done for today.
     if (job.dailyAt && r.last_started_at) {
       const p = istParts(new Date(r.last_started_at));
-      if (p.mins >= toMins(job.dailyAt)) s.lastDailyDate = p.date;
+      // Monthly job: only a run on/after its day counts as this month's (a Run now on the 2nd must not skip the 5th).
+      const dayOk = !job.monthlyOn || Number(p.date.slice(8, 10)) >= job.monthlyOn;
+      if (dayOk && p.mins >= toMins(job.dailyAt)) s.lastDailyDate = p.date;
     }
   }
 }
@@ -139,7 +143,7 @@ function runJob(job, why) {
   s.lastStart = started.getTime();
   // Only the run at its own time counts as "tonight's"; a catch-up or Run now in the
   // morning must not stop the evening run.
-  if (job.dailyAt && why === 'daily time') s.lastDailyDate = istParts(started).date;
+  if (job.dailyAt && (why === 'daily time' || why === 'monthly time')) s.lastDailyDate = istParts(started).date;
   log(`▶ ${job.id} started (${why})`);
 
   const out = [];
@@ -205,6 +209,14 @@ function due(job, now) {
   const s = state[job.id];
   if (s.running) return null;
   const p = istParts(now);
+  if (job.monthlyOn) {
+    // Once a month: on the day at the time, or the first start after it (PC was off). Never twice a month.
+    const month = p.date.slice(0, 7);
+    if (s.lastDailyDate && s.lastDailyDate.slice(0, 7) === month) return null;
+    const day = Number(p.date.slice(8, 10));
+    if (day > job.monthlyOn || (day === job.monthlyOn && p.mins >= toMins(job.dailyAt))) return 'monthly time';
+    return null;
+  }
   if (job.dailyAt) {
     if (s.lastDailyDate === p.date) return null;
     if (p.mins >= toMins(job.dailyAt)) return 'daily time';

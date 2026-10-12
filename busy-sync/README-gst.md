@@ -1,7 +1,7 @@
 # sync-gst.js — deploy notes
 
 Feeds the GSTR-2A Reconciliation page (hq.jcmretails.com/#gst-recon, GST section, admins).
-Every 30 minutes (JCM Sync job `gst`) it copies, for the current Busy database:
+Once a month — the 5th at 06:00 (JCM Sync job `gst`, `monthlyOn`), or "Run now" on HQ → Admin → Sync status — it copies, for the current Busy database:
 
 | Busy | Supabase (JCM-Busysql) | What |
 |---|---|---|
