@@ -10,6 +10,7 @@ import { loadOrder, buildOrderPdf, loadInvoice, buildInvoicePdf } from './_doc-p
 // Called from the WhatsApp webhook in api/whatsapp.js. Never throws to the caller.
 
 const SUPABASE_BUSY_URL = 'https://jlkjjqnmhsgefpluemyz.supabase.co'
+const HQ = 'https://hq.jcmretails.com'
 
 // Same merchant details Busy prints in the QR on every invoice. Change here only.
 const UPI = {
@@ -114,7 +115,9 @@ function parsePayload(payload) {
   let m = /^(qr|ledger|inv|portal):(\d{1,9})$/.exec(p)
   if (m) return { kind: m[1] === 'inv' ? 'invoices' : m[1], code: m[2] }
   m = /^(so|invpdf):(\d{1,9}):(.{1,60})$/.exec(p)
-  return m ? { kind: m[1], code: m[2], ref: m[3] } : null
+  if (m) return { kind: m[1], code: m[2], ref: m[3] }
+  m = /^quote:(.{1,110})$/.exec(p)
+  return m ? { kind: 'quote', code: '0', ref: m[1] } : null
 }
 const hqClient = () => {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -139,6 +142,15 @@ export async function handleIncoming(value) {
       if (!parsed && !kindByLabel) continue
       const from = m.from
       console.log(`wa reply: button="${label}" payload=${payload ? 'yes' : 'none'}`)
+      if (parsed?.kind === 'quote') {
+        // "PDF Copy" on a quotation: the PDF was stored when it was sent (quote:<storage path>, or quote:sample).
+        let pdf = null
+        if (parsed.ref === 'sample') { try { pdf = Buffer.from(await (await fetch(`${HQ}/wa/sample-quotation.pdf`)).arrayBuffer()) } catch { pdf = null } }
+        else for (const bucket of ['wa-docs', 'gst-reports']) { const d = await busy.storage.from(bucket).download(parsed.ref); if (!d.error && d.data) { pdf = Buffer.from(await d.data.arrayBuffer()); break } }
+        if (!pdf) await sendText(from, 'Thank you. Our team will send the quotation PDF to you here shortly.')
+        else await sendMedia(from, pdf, { kind: 'document', mime: 'application/pdf', filename: `JCM-${(parsed.ref.split('/').pop() || 'Quotation.pdf').replace(/-\d{13}\.pdf$/, '.pdf')}`, caption: '*Your quotation is attached.*\n*आपका कोटेशन संलग्न है।*' })
+        continue
+      }
       const name = parsed && busy ? await ledgerNameByCode(busy, parsed.code) : ''
       if (!parsed || !name) {
         // Old message without a customer code, or the code is unknown: never guess from the phone number.

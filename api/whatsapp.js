@@ -96,7 +96,7 @@ const SAMPLES = {
   txn_payment: cust('payment', { vch_no: 'P/310', vch_date: '2026-10-12', amount: 1_20_000 }),
   txn_purchase: cust('purchase', { vch_no: 'INV-5521', vch_date: '2026-10-12', amount: 88000, items: 12 }),
   txn_order: cust('order', { vch_no: 'SO/261/45', vch_date: '2026-10-12', amount: 32500, items: 5 }),
-  quotation_sent: { params: name => [name, 'Q-2026-118', '12 Oct 2026', '1,85,000'], opts: () => ({ headerDocumentUrl: `${HQ}/wa/sample-quotation.pdf`, headerDocumentName: 'Quotation-Q-2026-118.pdf' }) },
+  quotation_sent: { params: name => [name, 'Q-2026-118', '12 Oct 2026', '1,85,000'], opts: () => ({ headerImageUrl: BANNER('quotation'), buttonPayloads: ['quote:sample'] }) },
   order_dispatched: { params: name => [name, '6', 'JCM/1234'], opts: code => ({ headerImageUrl: BANNER('dispatched'), buttonPayloads: [`invpdf:${code}:JCM/1234`] }) },
   order_dispatched_photo: { params: name => [name, '6', 'JCM/1234'], opts: code => ({ headerImageUrl: BANNER('dispatched'), buttonPayloads: [`invpdf:${code}:JCM/1234`] }) },
   staff_followup_morning: { params: () => ['Keshav', '12', '4,85,000', 'Badshah Electric ₹1,20,000, Nexus Enterprises ₹95,000, Shree Traders ₹60,000 and 9 more'], opts: () => ({ headerImageUrl: BANNER('staff-followup') }) },
@@ -221,10 +221,14 @@ export default async function handler(req, res) {
     }
     if (body.action === 'templates') {
       const live = await listTemplates()
+      // Last real send per template (what actually happened), so the tab answers "is it working?".
+      const lastRows = await busy.from('wa_log').select('template, status, error, created_at').order('created_at', { ascending: false }).limit(2000)
+      const lastBy = new Map()
+      for (const r of lastRows.data || []) if (!lastBy.has(r.template)) lastBy.set(r.template, { status: r.status, error: r.error, at: r.created_at })
       const byName = new Map(live.map(t => [t.name, t]))
       const rows = EXPECTED.map(e => {
         const t = byName.get(e.name)
-        return { ...e, found: !!t, status: t?.status || 'MISSING', category: t?.category || null, language: t?.language || null, rejected_reason: t?.rejected_reason || null, quality: t?.quality_score?.score || null,
+        return { ...e, found: !!t, last: lastBy.get(e.name) || null, status: t?.status || 'MISSING', category: t?.category || null, language: t?.language || null, rejected_reason: t?.rejected_reason || null, quality: t?.quality_score?.score || null,
           body: t ? (t.components || []).find(c => c.type === 'BODY')?.text || '' : '', buttons: t ? ((t.components || []).find(c => c.type === 'BUTTONS')?.buttons || []).map(b => `${b.type === 'QUICK_REPLY' ? '↩' : b.type === 'URL' ? '🔗' : b.type === 'PHONE_NUMBER' ? '📞' : ''} ${b.text}`) : [] }
       })
       const extra = live.filter(t => !EXPECTED.some(e => e.name === t.name)).map(t => ({ name: t.name, used: '(not used by HQ)', found: true, status: t.status, category: t.category, language: t.language, rejected_reason: t.rejected_reason || null, body: (t.components || []).find(c => c.type === 'BODY')?.text || '', buttons: ((t.components || []).find(c => c.type === 'BUTTONS')?.buttons || []).map(b => b.text) }))
@@ -237,15 +241,16 @@ export default async function handler(req, res) {
       const pdf = Buffer.from(b64, 'base64')
       const safe = String(body.quote_no || 'quotation').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '')
       const path = `quotations/${safe}-${Date.now()}.pdf`
-      let url = null
+      let stored = false
       for (const bucket of ['wa-docs', 'gst-reports']) {
         const up = await busy.storage.from(bucket).upload(path, pdf, { contentType: 'application/pdf', upsert: true })
-        if (!up.error) { url = busy.storage.from(bucket).getPublicUrl(path).data?.publicUrl || null; break }
+        if (!up.error) { stored = true; break }
       }
-      if (!url) return send(res, 500, { error: 'Could not store the PDF (no public bucket wa-docs / gst-reports).' })
+      if (!stored) return send(res, 500, { error: 'Could not store the PDF (no bucket wa-docs / gst-reports).' })
+      // Template quotation_sent (as Shishir made it): Quotation banner header + a "PDF Copy" quick reply; the tap sends the stored PDF.
       const out = await sendLogged(busy, { kind: 'quotation', to: body.phone, template: 'quotation_sent',
         params: [String(body.name || 'Customer'), String(body.quote_no || ''), niceDate(body.date), Number(body.total || 0).toLocaleString('en-IN')],
-        opts: { headerDocumentUrl: url, headerDocumentName: String(body.filename || `${safe}.pdf`) }, ref: String(body.quote_no || ''), refName: String(body.name || ''), by: me.name })
+        opts: { headerImageUrl: BANNER('quotation'), buttonPayloads: [`quote:${path}`] }, ref: String(body.quote_no || ''), refName: String(body.name || ''), by: me.name })
       if (out.status !== 'sent') return send(res, 502, { error: out.error || out.status })
       return send(res, 200, { ok: true, messageId: out.id })
     }
@@ -277,6 +282,22 @@ export default async function handler(req, res) {
       const r = await q
       if (r.error) return send(res, 500, { error: r.error.message })
       return send(res, 200, { rows: r.data || [] })
+    }
+    if (body.action === 'sample-all') {
+      // Every template that exists in WhatsApp Manager, one after another, to one number (customer ones need a Busy code).
+      const code = String(body.code || '').replace(/\D/g, '')
+      const name = code ? await ledgerNameByCode(busy, code) : ''
+      if (code && !name) return send(res, 400, { error: 'No customer with that Busy code.' })
+      const live = new Set((await listTemplates()).filter(t => t.status === 'APPROVED').map(t => t.name))
+      const results = []
+      for (const [t, spec] of Object.entries(SAMPLES)) {
+        if (!live.has(t)) { results.push({ template: t, status: 'not created' }); continue }
+        const needsCode = /^txn_|^order_dispatched|^quotation/.test(t)
+        if (needsCode && !code) { results.push({ template: t, status: 'skipped (needs a Busy code)' }); continue }
+        const out = await sendLogged(busy, { kind: 'test', to: body.phone, template: t, params: spec.params(needsCode ? name : 'Sample'), opts: spec.opts(code || '0'), by: 'test-all' })
+        results.push({ template: t, status: out.status, error: out.error || null })
+      }
+      return send(res, 200, { results })
     }
     if (body.action === 'sample') {
       // Any template, sample values. Customer templates take a real Busy code (ledger name + buttons).

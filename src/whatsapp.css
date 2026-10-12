@@ -16,7 +16,7 @@
 .wa-table th { font-size: 12px; color: var(--muted, #6b7280); }
 .wa-table td:nth-child(2) { min-width: 140px; }
 .wa-tpl-table table { table-layout: fixed; }
-.wa-tpl-table th:nth-child(1) { width: 15%; } .wa-tpl-table th:nth-child(2) { width: 16%; } .wa-tpl-table th:nth-child(3) { width: 10%; } .wa-tpl-table th:nth-child(4) { width: 14%; }
+.wa-tpl-table th:nth-child(1) { width: 14%; } .wa-tpl-table th:nth-child(2) { width: 15%; } .wa-tpl-table th:nth-child(3) { width: 9%; } .wa-tpl-table th:nth-child(4) { width: 16%; } .wa-tpl-table th:nth-child(5) { width: 12%; }
 .wa-tpl-table td { word-break: break-word; }
 /* Tabs page */
 .wa-tabs { margin-bottom: 12px; }

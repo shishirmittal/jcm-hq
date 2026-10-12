@@ -33,6 +33,8 @@ const LOOKBACK_HOURS = 48;
 
 const KINDS = { 9: 'invoice', 14: 'receipt', 18: 'credit_note', 17: 'debit_note', 19: 'payment', 2: 'purchase', 12: 'order' };
 const TYPES = Object.keys(KINDS).map(Number);
+// Accounts that are never "the party" on a receipt / payment (same list as sync.js).
+const CONTROL_ACCOUNTS = [4, 1100, 1115, 1116, 56680, 7398, 7501, 54463, 60016, 1];
 
 const LOG_FILE = path.join(__dirname, 'transactions.log');
 function log(message) {
@@ -88,17 +90,26 @@ async function readVouchers(pool) {
     )
     SELECT t1.VchCode, t1.VchType, LTRIM(RTRIM(t1.VchNo)) AS VchNo,
            CONVERT(VARCHAR(10), t1.[Date], 23) AS VchDate,
-           t1.MasterCode1 AS PartyCode, p.Name AS PartyName,
+           COALESCE(rp.MasterCode1, t1.MasterCode1) AS PartyCode, p.Name AS PartyName,
            a.Mobile, a.WhatsAppNo,
            bd.PartyName AS BilledName, bd.MobileNo AS BilledMobile,
-           ISNULL(ps.Amt, 0) AS Amount,
+           COALESCE(rp.Amt, ps.Amt, 0) AS Amount,
            ISNULL(i.n, 0) AS Items,
            ISNULL(t1.Cancelled, 0) AS Cancelled, ISNULL(t1.VchCancelled, 0) AS VchCancelled,
            e.UserName AS EnteredBy, CONVERT(VARCHAR(19), e.ActionTime, 126) AS EnteredAt
     FROM entered e
     JOIN Tran1 t1 ON t1.VchCode = e.Code
-    LEFT JOIN Master1 p ON p.Code = t1.MasterCode1
-    LEFT JOIN MasterAddressInfo a ON a.MasterCode = t1.MasterCode1
+    -- Receipts / payments: Tran1's account is the cash or bank; the PARTY is the other side in Tran2.
+    OUTER APPLY (
+      SELECT TOP 1 t2.MasterCode1, ABS(t2.Value1) AS Amt
+      FROM Tran2 t2 JOIN Master1 pm ON pm.Code = t2.MasterCode1
+      WHERE t2.VchCode = t1.VchCode AND t2.RecType = 1 AND t1.VchType IN (14, 19)
+        AND t2.MasterCode1 <> t1.MasterCode1 AND pm.MasterType = 2
+        AND pm.Code NOT IN (${CONTROL_ACCOUNTS.join(',')})
+      ORDER BY ABS(t2.Value1) DESC
+    ) rp
+    LEFT JOIN Master1 p ON p.Code = COALESCE(rp.MasterCode1, t1.MasterCode1)
+    LEFT JOIN MasterAddressInfo a ON a.MasterCode = COALESCE(rp.MasterCode1, t1.MasterCode1)
     LEFT JOIN BillingDet bd ON bd.VchCode = t1.VchCode
     LEFT JOIN partyside ps ON ps.VchCode = t1.VchCode
     LEFT JOIN items i ON i.VchCode = t1.VchCode

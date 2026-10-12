@@ -52,6 +52,10 @@ export function renderWhatsappSettings(container) {
             </select>
             <button class="btn-ghost btn-small" id="waRem">Send sample reminder</button>
           </div>
+          <div class="wa-row">
+            <button class="btn-ghost btn-small" id="waSampleAll">Send EVERY approved template to this number</button>
+            <span class="wa-muted">One of each, with sample figures — the quickest full test. Customer ones use the Busy code above.</span>
+          </div>
           <p id="waSampleResult" aria-live="polite"></p>
         </section>
 
@@ -90,6 +94,16 @@ export function renderWhatsappSettings(container) {
     try { await call({ action: 'sample', phone: phone(), template, code: needsCode ? code : '' }); $('waSampleResult').textContent = `✅ ${template} sent.` }
     catch (err) { $('waSampleResult').textContent = '❌ ' + err.message }
     finally { busy($('waSampleSend'), false) }
+  })
+  $('waSampleAll').addEventListener('click', async () => {
+    if (phone().length !== 10) { $('waSampleResult').textContent = 'Type a 10-digit mobile number in Connection first.'; return }
+    if (!window.confirm('Send one sample of every approved template to this number?')) return
+    busy($('waSampleAll'), true); $('waSampleResult').textContent = 'Sending all… this takes a minute.'
+    try {
+      const d = await call({ action: 'sample-all', phone: phone(), code: $('waCode').value.replace(/\D/g, '') })
+      $('waSampleResult').innerHTML = d.results.map(r => `${r.status === 'sent' ? '✅' : r.status === 'not created' || r.status.startsWith('skipped') ? '⚪' : '❌'} <code>${esc(r.template)}</code> ${esc(r.status)}${r.error ? ` — ${esc(r.error)}` : ''}`).join('<br>')
+    } catch (err) { $('waSampleResult').textContent = '❌ ' + err.message }
+    finally { busy($('waSampleAll'), false) }
   })
   $('waRem').addEventListener('click', async () => {
     const code = $('waCode').value.replace(/\D/g, '')
