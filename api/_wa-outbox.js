@@ -1,7 +1,7 @@
 // Customer / supplier transaction messages (2026-10-12): one Meta template per Busy voucher,
 // queued in wa_outbox by busy-sync/sync-transactions.js on JCM-Server and sent from here.
 //
-//   invoice      txn_invoice      {{1}} name {{2}} bill no {{3}} date {{4}} amount {{5}} items   buttons QR Code / Ledger
+//   invoice      txn_invoice      {{1}} name {{2}} bill no {{3}} date {{4}} amount {{5}} items   buttons QR Code / PDF Copy (→ invoice PDF)
 //   receipt      txn_receipt      {{1}} name {{2}} amount {{3}} date {{4}} receipt no             button Ledger
 //   credit_note  txn_credit_note  {{1}} name {{2}} note no {{3}} date {{4}} amount                button Ledger
 //   debit_note   txn_debit_note   {{1}} name {{2}} note no {{3}} date {{4}} amount                button Ledger
@@ -17,7 +17,7 @@ const EXPIRE_HOURS = 24
 const MAX_PER_TICK = 60
 
 export const TXN = {
-  invoice: { template: 'txn_invoice', banner: 'invoice', params: r => [r.party_name, r.vch_no, niceDate(r.vch_date), inr(r.amount), String(r.items || 0)], buttons: c => [`qr:${c}`, `ledger:${c}`] },
+  invoice: { template: 'txn_invoice', banner: 'invoice', params: r => [r.party_name, r.vch_no, niceDate(r.vch_date), inr(r.amount), String(r.items || 0)], buttons: (c, r) => [`qr:${c}`, `invpdf:${c}:${r?.vch_no || ''}`] },
   receipt: { template: 'txn_receipt', banner: 'receipt', params: r => [r.party_name, inr(r.amount), niceDate(r.vch_date), r.vch_no], buttons: c => [`ledger:${c}`] },
   credit_note: { template: 'txn_credit_note', banner: 'credit-note', params: r => [r.party_name, r.vch_no, niceDate(r.vch_date), inr(r.amount)], buttons: c => [`ledger:${c}`] },
   debit_note: { template: 'txn_debit_note', banner: 'debit-note', params: r => [r.party_name, r.vch_no, niceDate(r.vch_date), inr(r.amount)], buttons: c => [`ledger:${c}`] },

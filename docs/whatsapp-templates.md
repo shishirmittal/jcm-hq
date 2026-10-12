@@ -28,7 +28,7 @@ Banners live at `https://hq.jcmretails.com/wa/<name>.png` (1200 × 628).
 Queued by JCM Sync every 5 minutes from Busy and sent at the next run. Each kind can be switched off on the WhatsApp page.
 
 ### 1. `txn_invoice` — Invoice generated  ✅ created by Shishir 12 Oct
-Header image: `invoice.png` · Buttons: Quick reply **QR Code**, Quick reply **Ledger**
+Header image: `invoice.png` · Buttons: Quick reply **QR Code**, Quick reply **PDF Copy** (HQ replies with the invoice PDF)
 
 ```
 Namaste {{1}},
@@ -334,7 +334,7 @@ Samples: 12 Oct 2026 · 9 · 4 · 7 · Badshah Electric (not all ordered), Nexus
 
 | # | Template | Banner | Buttons | Done |
 |---|---|---|---|---|
-| 1 | txn_invoice | invoice.png | QR Code · Ledger | ✅ |
+| 1 | txn_invoice | invoice.png | QR Code · PDF Copy | ✅ |
 | 2 | txn_receipt | receipt.png | Ledger | ✅ |
 | 3 | txn_purchase | purchase.png | — | ☐ |
 | 4 | txn_payment | payment.png | — | ☐ |
