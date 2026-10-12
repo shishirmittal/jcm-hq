@@ -1,6 +1,7 @@
 import PDFDocument from 'pdfkit'
 import { createCanvas, loadImage, GlobalFonts } from '@napi-rs/canvas'
 import { FONT_REG, FONT_BOLD, LOGO_PNG } from './_ledger-assets.js'
+import { jcmKit, INK, GREY } from './_jcm-doc.js'
 
 // GSTR-2A reconciliation — the two things the WhatsApp messages carry:
 //   bannerPng(month)   the header image of the supplier reminder template ("GST MISMATCH /
@@ -9,7 +10,7 @@ import { FONT_REG, FONT_BOLD, LOGO_PNG } from './_ledger-assets.js'
 //                      deadline, counts) and one section per red-flag type, party-wise
 // Fonts and logo are the ledger PDF's (api/_ledger-assets.js).
 
-const NAVY = '#12213B', GOLD = '#D9AE55', GREY = '#5b6678', LINE = '#e3e7ee', TINT = '#f6f8fb', RED = '#b42318', AMBER = '#b54708'
+const NAVY = '#12213B', GOLD = '#D9AE55', LINE = '#e3e7ee', RED = '#b42318'
 
 export const BUCKET_LABEL = {
   missing_busy: 'Missing in Busy', not_in_2a: 'Not in GSTR-2A', amount: 'Amount mismatch',
@@ -77,56 +78,37 @@ export async function bannerPng(month, to = null) {
   return canvas.toBuffer('image/png')
 }
 
-// ---------- staff summary PDF ----------
+// ---------- staff summary PDF (JCM document style, api/_jcm-doc.js) ----------
 // rows: the reconcile() rows (unmarked) for the chosen kinds; counts/totals: per kind.
 export function buildMismatchPdf({ period, kinds, rows, counts, totals, sender, deadline, contacts = {} }) {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'A4', margin: 36, bufferPages: true, info: { Title: `GSTR-2A mismatch ${period}`, Author: 'JCM HQ' } })
+    const doc = new PDFDocument({ size: 'A4', margin: 0, bufferPages: true, info: { Title: `GSTR-2A mismatch ${period}`, Author: 'J.C. Mittal and Sons, Ratlam' } })
     const chunks = []
     doc.on('data', c => chunks.push(c)); doc.on('end', () => resolve(Buffer.concat(chunks))); doc.on('error', reject)
-    doc.registerFont('R', Buffer.from(FONT_REG, 'base64'))
-    doc.registerFont('B', Buffer.from(FONT_BOLD, 'base64'))
-    const L = 36, R = doc.page.width - 36, FULL = R - L
-    const BOTTOM = doc.page.height - 48
+    const K = jcmKit(doc)
+    const { L, R, FULL, BOTTOM, label, rule } = K
+    let y = K.header()
+    y = K.title(y, 'GSTR-2A Mismatch', 'Staff report', 'Period', period, longDate(new Date()))
 
-    // ---- header band
-    doc.rect(0, 0, doc.page.width, 92).fill(NAVY)
-    doc.image(Buffer.from(LOGO_PNG, 'base64'), L, 18, { width: 56 })
-    doc.fillColor('#ffffff').font('B').fontSize(17).text('J.C. MITTAL AND SONS', L + 70, 24)
-    doc.fillColor(GOLD).font('R').fontSize(10).text('JCM Retails  ·  87-88 Freeganj Road, Ratlam, Madhya Pradesh', L + 70, 48)
-    doc.fillColor('#ffffff').font('B').fontSize(12).text('GSTR-2A MISMATCH SUMMARY', R - 230, 30, { width: 230, align: 'right' })
-    doc.fillColor(GOLD).font('B').fontSize(13).text(period.toUpperCase(), R - 260, 50, { width: 260, align: 'right' })
+    const col = FULL / 3
+    label('Sent by', L, y); doc.fillColor(INK).font('SB').fontSize(9.5).text(sender || 'JCM HQ', L, y + 11, { lineBreak: false })
+    label('Sent on', L + col, y); doc.fillColor(INK).font('SB').fontSize(9.5).text(longDate(new Date()), L + col, y + 11, { lineBreak: false })
+    label('Clear all items by', L + 2 * col, y); doc.fillColor(RED).font('SB').fontSize(9.5).text(longDate(deadline), L + 2 * col, y + 11, { lineBreak: false })
+    y += 32
+    doc.fillColor(GREY).font('S').fontSize(7.5).text('Busy purchase entries compared with the GSTR-2A data downloaded in Busy. Only mismatches are listed, party-wise. Each section says what to do.', L, y, { width: FULL })
+    y = doc.y + 10
+    rule(y); y += 10
 
-    // ---- cover block
-    let y = 112
-    doc.fillColor(GREY).font('R').fontSize(9).text('SENT BY', L, y)
-    doc.fillColor(NAVY).font('B').fontSize(13).text(sender || 'JCM HQ', L, y + 12)
-    doc.fillColor(GREY).font('R').fontSize(9).text('SENT ON', L + 180, y)
-    doc.fillColor(NAVY).font('B').fontSize(13).text(longDate(new Date()), L + 180, y + 12)
-    const bx = R - 200
-    doc.roundedRect(bx, y - 4, 200, 46, 6).fill('#fdecec')
-    doc.fillColor(RED).font('R').fontSize(9).text('CLEAR ALL ITEMS BY', bx + 12, y + 4)
-    doc.fillColor(RED).font('B').fontSize(14).text(longDate(deadline), bx + 12, y + 18)
-    y += 62
-    doc.fillColor(GREY).font('R').fontSize(9.5).text(
-      'Busy purchase entries compared with the GSTR-2A data downloaded in Busy. Only mismatches are listed, party-wise. Each section says what to do.', L, y, { width: FULL })
-    y = doc.y + 12
-
-    // ---- counts table
-    const cw = [FULL - 200, 70, 130]
-    doc.rect(L, y, FULL, 20).fill(TINT)
-    doc.fillColor(GREY).font('B').fontSize(9)
-    doc.text('RED FLAG', L + 8, y + 6); doc.text('ITEMS', L + cw[0], y + 6, { width: cw[1], align: 'right' }); doc.text('AMOUNT (Rs.)', L + cw[0] + cw[1], y + 6, { width: cw[2] - 8, align: 'right' })
-    y += 20
+    const cw = [FULL - 190, 60, 130]
+    label('Red flag', L + 2, y); label('Items', L + cw[0], y, { width: cw[1] - 4, align: 'right' }); label('Amount (Rs.)', L + cw[0] + cw[1], y, { width: cw[2] - 4, align: 'right' })
+    rule(y + 11); y += 16
     for (const k of kinds) {
-      doc.fillColor(NAVY).font('R').fontSize(10)
-      doc.text(BUCKET_LABEL[k], L + 8, y + 6); doc.text(String(counts[k] || 0), L + cw[0], y + 6, { width: cw[1], align: 'right' }); doc.text(inr(totals[k] || 0), L + cw[0] + cw[1], y + 6, { width: cw[2] - 8, align: 'right' })
-      doc.moveTo(L, y + 22).lineTo(R, y + 22).strokeColor(LINE).lineWidth(0.5).stroke()
-      y += 22
+      doc.fillColor(INK).font('S').fontSize(8)
+      doc.text(BUCKET_LABEL[k], L + 2, y, { lineBreak: false }); doc.text(String(counts[k] || 0), L + cw[0], y, { width: cw[1] - 4, align: 'right', lineBreak: false }); doc.text(inr(totals[k] || 0), L + cw[0] + cw[1], y, { width: cw[2] - 4, align: 'right', lineBreak: false })
+      rule(y + 12); y += 16
     }
-    y += 14
+    y += 10
 
-    // ---- sections
     const colsFor = k => {
       if (k === 'missing_busy') return [['Invoice (2A)', 140], ['Date', 70], ['Taxable', 80, 'r'], ['Tax', 75, 'r'], ['Total', 85, 'r'], ['Filed in', 73]]
       if (k === 'not_in_2a') return [['Bill (Busy)', 140], ['Date', 70], ['Taxable', 80, 'r'], ['Tax', 75, 'r'], ['Total', 85, 'r'], ['Entered by', 73]]
@@ -143,58 +125,47 @@ export function buildMismatchPdf({ period, kinds, rows, counts, totals, sender, 
       if (k === 'sequence') return [r.b_no, dmy(r.b_date), inr(r.b_total), `${r.kind}: ${r.note || ''}`]
       return [r.b_no, dmy(r.b_date), (r.note || '').replace(/^Series /, ''), r.entered_by || '', '']
     }
-    const ensure = h => { if (y + h > BOTTOM) { doc.addPage(); y = 40 } }
+    const ensure = h => { if (y + h > BOTTOM) { doc.addPage(); y = K.header() } }
 
     for (const k of kinds) {
       const list = rows.filter(r => r.bucket === k)
-      ensure(60)
-      doc.fillColor(NAVY).font('B').fontSize(13).text(`${BUCKET_LABEL[k]}  ·  ${list.length} item${list.length === 1 ? '' : 's'}`, L, y)
-      y = doc.y + 2
-      doc.fillColor(AMBER).font('R').fontSize(9).text(BUCKET_HINT[k], L, y, { width: FULL })
+      ensure(70)
+      doc.fillColor(INK).font('S').fontSize(15).text(BUCKET_LABEL[k], L, y, { lineBreak: false })
+      doc.fillColor(GREY).font('M').fontSize(8).text(`${list.length} item${list.length === 1 ? '' : 's'}`, R - 120, y + 6, { width: 120, align: 'right', lineBreak: false })
+      y += 20
+      doc.fillColor(GREY).font('S').fontSize(7.5).text(BUCKET_HINT[k], L, y, { width: FULL })
       y = doc.y + 8
-      if (!list.length) { doc.fillColor(GREY).font('R').fontSize(10).text('Nothing here.', L, y); y += 24; continue }
-
-      // party-wise
+      if (!list.length) { doc.fillColor(GREY).font('S').fontSize(8).text('Nothing here.', L, y); y += 24; continue }
       const byParty = new Map()
       for (const r of list) { const key = `${r.party || ''}|${r.gstin}`; if (!byParty.has(key)) byParty.set(key, []); byParty.get(key).push(r) }
       const cols = colsFor(k)
       const scale = FULL / cols.reduce((s, c) => s + c[1], 0)
       for (const [, prs] of [...byParty.entries()].sort((a, b) => (a[1][0].party || '').localeCompare(b[1][0].party || ''))) {
         const r0 = prs[0]
-        ensure(60)
+        ensure(64)
         const c = contacts[r0.gstin]
         const sub = [r0.gstin, c?.station, (c?.whatsapp || c?.mobile) ? String(c.whatsapp || c.mobile) : null].filter(Boolean).join('  ·  ')
-        doc.fillColor(NAVY).font('B').fontSize(10.5).text(r0.party || (r0.new_party ? '(not in Busy party master)' : r0.gstin), L, y)
-        doc.fillColor(GREY).font('R').fontSize(8.5).text(sub, L, doc.y)
-        y = doc.y + 3
-        // table head
-        doc.rect(L, y, FULL, 16).fill(TINT)
+        doc.fillColor(INK).font('SB').fontSize(9).text(r0.party || (r0.new_party ? '(not in Busy party master)' : r0.gstin), L, y, { lineBreak: false })
+        doc.fillColor(GREY).font('M').fontSize(6.5).text(sub, L, y + 12, { lineBreak: false })
+        y += 24
         let x = L
-        doc.fillColor(GREY).font('B').fontSize(8)
-        for (const [label, w, al] of cols) { doc.text(label.toUpperCase(), x + 4, y + 4, { width: w * scale - 8, align: al === 'r' ? 'right' : 'left', lineBreak: false }); x += w * scale }
-        y += 16
+        for (const [t, w, al] of cols) { label(t, x + 2, y, { width: w * scale - 6, align: al === 'r' ? 'right' : 'left' }); x += w * scale }
+        rule(y + 11); y += 15
         for (const r of prs) {
           ensure(18)
           x = L
           const cells = cellsFor(k, r)
-          doc.fillColor(NAVY).font('R').fontSize(8.5)
-          const rowH = Math.max(16, ...cols.map(([, w], i) => doc.heightOfString(String(cells[i] ?? ''), { width: w * scale - 8 }) + 6))
-          cols.forEach(([, w, al], i) => { doc.text(String(cells[i] ?? ''), x + 4, y + 4, { width: w * scale - 8, align: al === 'r' ? 'right' : 'left' }); x += w * scale })
-          doc.moveTo(L, y + rowH).lineTo(R, y + rowH).strokeColor(LINE).lineWidth(0.5).stroke()
-          y += rowH
+          doc.fillColor(INK).font('S').fontSize(7.5)
+          const rowH = Math.max(14, ...cols.map(([, w], i) => doc.heightOfString(String(cells[i] ?? ''), { width: w * scale - 6 }) + 5))
+          cols.forEach(([, w, al], i) => { doc.font(i === 0 ? 'M' : 'S').text(String(cells[i] ?? ''), x + 2, y, { width: w * scale - 6, align: al === 'r' ? 'right' : 'left' }); x += w * scale })
+          rule(y + rowH - 2); y += rowH + 2
         }
         y += 10
       }
       y += 6
     }
-
-    // ---- footer on every page
     const pages = doc.bufferedPageRange()
-    for (let i = 0; i < pages.count; i++) {
-      doc.switchToPage(i)
-      doc.fillColor(GREY).font('R').fontSize(8)
-        .text(`JCM HQ · GSTR-2A mismatch summary · ${period} · page ${i + 1} of ${pages.count}`, L, doc.page.height - 30, { width: FULL, align: 'center', lineBreak: false })
-    }
+    for (let i = 0; i < pages.count; i++) { doc.switchToPage(i); K.footer(i + 1, pages.count, 'GSTR-2A mismatch summary for staff · sent from JCM HQ', period) }
     doc.end()
   })
 }

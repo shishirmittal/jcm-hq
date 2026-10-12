@@ -1,5 +1,4 @@
-import PDFDocument from 'pdfkit'
-import { FONT_REG, FONT_BOLD, LOGO_PNG } from './_ledger-assets.js'
+import { jcmDoc, money as inr2 } from './_jcm-doc.js'
 
 // Ledger statement PDF for the WhatsApp "Ledger" button. Same numbers as the Customer Card ledger:
 // this financial year's postings from party_ledger, running balance worked back from today's outstanding.
@@ -49,91 +48,26 @@ function dmy(v) {
 const longDate = d => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
 
 export function buildLedgerPdf({ partyName, stmt }) {
-  return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'A4', margin: 36, bufferPages: true, info: { Title: `Statement of Account - ${partyName}`, Author: 'J.C. Mittal and Sons, Ratlam' } })
-    const chunks = []
-    doc.on('data', c => chunks.push(c)); doc.on('end', () => resolve(Buffer.concat(chunks))); doc.on('error', reject)
-    doc.registerFont('R', Buffer.from(FONT_REG, 'base64'))
-    doc.registerFont('B', Buffer.from(FONT_BOLD, 'base64'))
-    const W = doc.page.width, L = 36, R = W - 36, FULL = R - L
-    const now = new Date()
-    const y = now.getFullYear(), fyStart = now.getMonth() >= 3 ? y : y - 1
-
-    // Header band
-    doc.rect(0, 0, W, 92).fill(NAVY)
-    doc.rect(0, 92, W, 4).fill(GOLD)
-    doc.circle(L + 30, 46, 33).fill(GOLD); doc.circle(L + 30, 46, 30).fill('#ffffff')
-    doc.image(Buffer.from(LOGO_PNG, 'base64'), L, 16, { width: 60, height: 60 })
-    doc.fillColor('#ffffff').font('B').fontSize(17).text('J.C. MITTAL AND SONS', L + 78, 28)
-    doc.fillColor(GOLD).font('R').fontSize(10).text('JCM Retails  ·  87-88 Freeganj Road, Ratlam, Madhya Pradesh', L + 78, 52)
-    doc.fillColor('#ffffff').font('B').fontSize(12).text('STATEMENT OF ACCOUNT', R - 200, 36, { width: 200, align: 'right' })
-
-    // Party + summary
-    doc.fillColor(GREY).font('R').fontSize(9).text('ACCOUNT OF', L, 112)
-    doc.fillColor(NAVY).font('B').fontSize(16).text(partyName, L, 124, { width: FULL * 0.6 })
-    doc.fillColor(GREY).font('R').fontSize(9.5).text(`Financial year ${fyStart}-${String(fyStart + 1).slice(2)}  (1 Apr ${fyStart} to ${longDate(now)})`, L, doc.y + 2)
-    const bx = R - 190
-    doc.roundedRect(bx, 108, 190, 62, 8).fill(TINT)
-    doc.fillColor(GREY).font('R').fontSize(9).text(stmt.closing >= 0 ? 'AMOUNT DUE FROM YOU' : 'CREDIT BALANCE', bx + 12, 116)
-    doc.fillColor(NAVY).font('B').fontSize(18).text(`Rs. ${inr(Math.abs(stmt.closing))}`, bx + 12, 131)
-    let top = Math.max(doc.y + 14, 186)
-
-    // Table
-    const cols = [
-      { k: 'date', t: 'Date', w: 68 }, { k: 'type', t: 'Particulars', w: 86 }, { k: 'no', t: 'Vch No.', w: 104 },
-      { k: 'debit', t: 'Debit', w: 70, right: true }, { k: 'credit', t: 'Credit', w: 70, right: true }, { k: 'balance', t: 'Balance', w: 0, right: true },
-    ]
-    cols[5].w = FULL - cols.slice(0, 5).reduce((s, c) => s + c.w, 0)
-    // Cut text to fit a column (pdfkit would otherwise wrap it onto a second line and run into the next row).
-    const fit = (text, width) => {
-      let t = String(text ?? '')
-      if (doc.widthOfString(t) <= width) return t
-      while (t.length > 1 && doc.widthOfString(t + '…') > width) t = t.slice(0, -1)
-      return t + '…'
-    }
-    const header = yy => {
-      doc.rect(L, yy, FULL, 20).fill(NAVY)
-      let x = L
-      doc.fillColor('#ffffff').font('B').fontSize(9)
-      for (const c of cols) { doc.text(fit(c.t, c.w - 8), x + 4, yy + 6, { width: c.w - 8, align: c.right ? 'right' : 'left', lineBreak: false }); x += c.w }
-      return yy + 20
-    }
-    const line = (yy, vals, o = {}) => {
-      if (o.tint) doc.rect(L, yy, FULL, 18).fill(TINT)
-      let x = L
-      doc.fillColor(o.color || NAVY).font(o.bold ? 'B' : 'R').fontSize(9)
-      for (const c of cols) { doc.text(fit(vals[c.k] ?? '', c.w - 8), x + 4, yy + 5, { width: c.w - 8, align: c.right ? 'right' : 'left', lineBreak: false }); x += c.w }
-      doc.moveTo(L, yy + 18).lineTo(R, yy + 18).lineWidth(0.4).strokeColor(LINE).stroke()
-      return yy + 18
-    }
-    let yy = header(top)
-    const bottomLimit = doc.page.height - 56
-    const ensure = () => { if (yy + 18 > bottomLimit) { doc.addPage(); yy = header(36) } }
-    ensure(); yy = line(yy, { type: 'Opening b/f', balance: drcr(stmt.opening) }, { bold: true, tint: true })
-    stmt.rows.forEach((x, i) => {
-      ensure()
-      yy = line(yy, { date: dmy(x.date), type: x.type, no: x.no, debit: x.debit ? inr(x.debit) : '', credit: x.credit ? inr(x.credit) : '', balance: drcr(x.balance) }, { tint: i % 2 === 1 })
-    })
-    const totD = stmt.rows.reduce((s, x) => s + x.debit, 0), totC = stmt.rows.reduce((s, x) => s + x.credit, 0)
-    ensure(); yy = line(yy, { type: 'Total', debit: inr(totD), credit: inr(totC) }, { bold: true })
-    ensure(); yy = line(yy, { type: 'Closing balance', balance: drcr(stmt.closing) }, { bold: true, tint: true })
-    if (!stmt.rows.length) { doc.fillColor(GREY).font('R').fontSize(10).text('No entries in this financial year yet.', L, yy + 14) }
-
-    // Notes
-    const upd = stmt.asOf ? ` Ledger updated ${new Date(stmt.asOf).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })}.` : ''
-    if (yy + 60 > bottomLimit) { doc.addPage(); yy = 36 }
-    doc.fillColor(GREY).font('R').fontSize(8.5).text(`Dr = amount you owe us, Cr = credit in your favour.${upd} If anything looks different from your books, please tell us. Payments made in the last day or two may not show yet.`, L, yy + 14, { width: FULL })
-
-    // Footer on every page
-    const range = doc.bufferedPageRange()
-    for (let i = 0; i < range.count; i++) {
-      doc.switchToPage(range.start + i)
-      doc.page.margins.bottom = 0 // footer sits in the bottom margin; without this pdfkit adds a blank page
-      doc.moveTo(L, doc.page.height - 40).lineTo(R, doc.page.height - 40).lineWidth(0.6).strokeColor(GOLD).stroke()
-      doc.fillColor(GREY).font('R').fontSize(8)
-        .text('Computer-generated statement from J.C. Mittal and Sons, Ratlam. No signature required.', L, doc.page.height - 32, { width: FULL - 80, lineBreak: false })
-        .text(`Page ${i + 1} of ${range.count}`, R - 70, doc.page.height - 32, { width: 70, align: 'right', lineBreak: false })
-    }
-    doc.end()
+  const now = new Date()
+  const y = now.getFullYear(), fyStart = now.getMonth() >= 3 ? y : y - 1
+  const totD = stmt.rows.reduce((s, x) => s + x.debit, 0), totC = stmt.rows.reduce((s, x) => s + x.credit, 0)
+  const rows = stmt.rows.map(x => ({ date: dmy(x.date), type: x.type, no: x.no || '', debit: x.debit ? inr2(x.debit) : '', credit: x.credit ? inr2(x.credit) : '', balance: drcr(x.balance) }))
+  const upd = stmt.asOf ? new Date(stmt.asOf).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }) : null
+  return jcmDoc({
+    fileTitle: `Statement of Account - ${partyName}`, title: 'Statement of Account', badge: 'Ledger',
+    numberLabel: 'Financial year', number: `${fyStart}-${String(fyStart + 1).slice(2)}`, dated: longDate(now),
+    blocks: [
+      { label: 'Account of', lines: [partyName] },
+      { label: 'Period', rows: [['From', `01-04-${fyStart}`], ['To', dmy(now.toISOString())], ['Entries', String(stmt.rows.length)], ['Ledger updated', upd || '—']] },
+    ],
+    table: {
+      cols: [{ k: 'date', t: 'Date', w: 62, mono: true }, { k: 'type', t: 'Particulars', w: 90 }, { k: 'no', t: 'Vch no.', w: 0, mono: true }, { k: 'debit', t: 'Debit', w: 78, right: true }, { k: 'credit', t: 'Credit', w: 78, right: true }, { k: 'balance', t: 'Balance', w: 92, right: true, bold: true }],
+      rows: [{ type: 'Opening b/f', balance: drcr(stmt.opening) }, ...rows],
+      totalsRows: [{ type: 'Total', debit: inr2(totD), credit: inr2(totC) }, { type: 'Closing balance', balance: drcr(stmt.closing) }],
+      empty: 'No entries in this financial year yet.',
+    },
+    totals: [[stmt.closing >= 0 ? 'AMOUNT DUE FROM YOU' : 'CREDIT BALANCE', `₹${inr2(Math.abs(stmt.closing))}`, { big: true }]],
+    leftNote: { label: 'Notes', lines: ['Dr = amount you owe us, Cr = credit in your favour.', 'Payments made in the last day or two may not show yet.', 'If anything looks different from your books, please tell us on WhatsApp.'] },
+    footerLeft: 'E. & O.E. · Computer-generated statement, valid without signature.',
   })
 }
