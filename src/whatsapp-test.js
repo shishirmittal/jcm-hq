@@ -6,7 +6,7 @@ import { esc } from './utils.js'
 import { callWhatsapp as call } from './whatsapp.js'
 
 const KIND_LABEL = {
-  invoice: 'Invoice (customer, 20:30)', receipt: 'Receipt (customer)', credit_note: 'Credit note (customer)', debit_note: 'Debit note (customer)',
+  invoice: 'Invoice (customer)', receipt: 'Receipt (customer)', credit_note: 'Credit note (customer)', debit_note: 'Debit note (customer)',
   payment: 'Payment made (supplier)', purchase: 'Purchase bill entered (supplier)', order: 'Order booked (customer)', quotation: 'Quotation (customer)',
   dispatch: 'Dispatched (customer, Orders)', gst_supplier: 'GSTR-1 reminder (supplier)', reminder: 'Payment reminders (customer)',
   staff_followup: 'Staff: morning follow-up list', staff_evening: 'Admins: evening collections summary', staff_red_alert: 'Staff: Red Alert explanation',

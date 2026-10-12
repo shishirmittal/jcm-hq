@@ -25,7 +25,7 @@ Banners live at `https://hq.jcmretails.com/wa/<name>.png` (1200 × 628).
 
 ## A. Customers and suppliers (sent by HQ for new Busy vouchers)
 
-Queued by JCM Sync every 5 minutes from Busy. **Invoices go out at 20:30** in the evening; everything else goes at the next run. Each kind can be switched off on the WhatsApp page.
+Queued by JCM Sync every 5 minutes from Busy and sent at the next run. Each kind can be switched off on the WhatsApp page.
 
 ### 1. `txn_invoice` — Invoice generated  ✅ created by Shishir 12 Oct
 Header image: `invoice.png` · Buttons: Quick reply **QR Code**, Quick reply **Ledger**

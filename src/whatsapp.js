@@ -230,7 +230,7 @@ function renderLog(el) {
 function renderOutbox(el) {
   el.innerHTML = `
     <div class="wa-card">
-      <p class="wa-muted">Customer messages queued from Busy by JCM Sync. Invoices wait for 20:30; the rest go within 5 minutes. A kind that is switched off (Settings) stays queued for 24 h and then expires.</p>
+      <p class="wa-muted">Customer messages queued from Busy by JCM Sync; they go within 5 minutes. A kind that is switched off (Settings) stays queued for 24 h and then expires.</p>
       <div class="wa-row">
         <select id="waOutboxFilter"><option value="queued">Queued</option><option value="sent">Sent</option><option value="failed">Failed</option><option value="no_number">No number</option><option value="expired">Expired</option><option value="cancelled">Cancelled</option><option value="skipped">Loaded as history</option><option value="">All</option></select>
         <button class="btn-ghost btn-small" id="waTick">Send what is due now</button>

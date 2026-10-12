@@ -8,7 +8,7 @@
 //   payment      txn_payment      {{1}} name {{2}} amount {{3}} date {{4}} voucher no             (to a supplier; no buttons)
 //   purchase     txn_purchase     {{1}} name {{2}} bill no {{3}} bill date {{4}} amount {{5}} items   (to a supplier)
 //   order        txn_order        {{1}} name {{2}} order no {{3}} date {{4}} items {{5}} amount   buttons Call (phone) / Order copy (→ SO PDF)
-// Invoices wait for 20:30 (send_after, set by the sync script); the rest go at the next tick.
+// Everything goes at the next tick after it is queued (the 20:30 wait for invoices was dropped 2026-10-12).
 // A row older than EXPIRE_HOURS past its send time is never sent (marked expired) — so switching a
 // kind on after days off does not flood customers with old messages.
 import { sendLogged, waSwitches, waConfigured, BANNER, inr, niceDate } from './_wa-cloud.js'

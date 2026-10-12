@@ -73,7 +73,7 @@ const EXPECTED = [
   { name: 'payment_reminder_40d', used: 'Payment reminder — Dealer, red (over 40 days)' },
   { name: 'retail_reminder_20d', used: 'Payment reminder — Retail, amber' },
   { name: 'retail_reminder_40d', used: 'Payment reminder — Retail, red' },
-  { name: 'txn_invoice', used: 'Invoice generated (customer, 20:30)' }, { name: 'txn_receipt', used: 'Payment received (customer)' },
+  { name: 'txn_invoice', used: 'Invoice generated (customer)' }, { name: 'txn_receipt', used: 'Payment received (customer)' },
   { name: 'txn_credit_note', used: 'Credit note (customer)' }, { name: 'txn_debit_note', used: 'Debit note (customer)' },
   { name: 'txn_payment', used: 'Payment made (supplier)' }, { name: 'txn_purchase', used: 'Purchase bill entered (supplier)' },
   { name: 'txn_order', used: 'Order booked (customer)' }, { name: 'quotation_sent', used: 'Quotation (customer)' },

@@ -7,9 +7,7 @@
 //      with the BILLED party's name + mobile from the voucher's Billing/Shipping Details (BillingDet), falling
 //      back to the ledger account (Master1 + MasterAddressInfo), plus amount and item count.
 //   2. Writes each one ONCE to wa_outbox in Supabase (JCM-Busysql project; unique on db + vch_code).
-//        Invoices wait until INVOICE_AT (20:30 India time) that day — one message after the material has
-//        gone, so nobody rings up asking to change the bill (Shishir). Entered after 20:30 → next evening.
-//        Everything else goes at the next run (send_after = now).
+//        Every kind goes at the next run (send_after = now). (Invoices used to wait for 20:30; dropped 2026-10-12.)
 //      A voucher cancelled / deleted in Busy before its message went out is marked 'cancelled'.
 //   3. Asks HQ to send what is due: POST https://hq.jcmretails.com/api/whatsapp { action: 'tick' } with the
 //      Busy service key. HQ picks the Meta template per kind, sends, and marks each row sent / failed.
@@ -32,7 +30,6 @@ const CHECK = process.argv.includes('--check');
 const AS_HISTORY = process.argv.includes('--as-history');
 const HQ_URL = (process.env.HQ_URL || 'https://hq.jcmretails.com').replace(/\/+$/, '');
 const LOOKBACK_HOURS = 48;
-const INVOICE_AT = process.env.INVOICE_WHATSAPP_AT || '20:30'; // India time
 
 const KINDS = { 9: 'invoice', 14: 'receipt', 18: 'credit_note', 17: 'debit_note', 19: 'payment', 2: 'purchase', 12: 'order' };
 const TYPES = Object.keys(KINDS).map(Number);
@@ -71,17 +68,6 @@ const txt = s => (s == null ? null : String(s).trim() || null);
 const r2 = n => (n == null || Number.isNaN(Number(n)) ? null : Math.round(Number(n) * 100) / 100);
 // Busy's CheckList times are India wall-clock times.
 const ist = s => (s ? `${s}+05:30` : null);
-
-// 20:30 India time on the voucher's entry day, as an ISO instant; next day if already past.
-function invoiceSendAfter(enteredIso) {
-  const entered = new Date(enteredIso || Date.now());
-  const [h, m] = INVOICE_AT.split(':').map(Number);
-  const istMs = entered.getTime() + 5.5 * 3600e3;
-  const day = new Date(istMs).toISOString().slice(0, 10);
-  let at = new Date(`${day}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00+05:30`);
-  if (at.getTime() <= entered.getTime()) at = new Date(at.getTime() + 86400e3);
-  return at.toISOString();
-}
 
 async function readVouchers(pool) {
   const r = await pool.request().query(`
@@ -140,7 +126,8 @@ function toRow(v) {
     items: Number(v.Items) || 0,
     entered_by: txt(v.EnteredBy),
     entered_at: enteredAt,
-    send_after: kind === 'invoice' ? invoiceSendAfter(enteredAt) : new Date().toISOString(),
+    // Everything goes at the next run — the 20:30 wait for invoices was dropped on 2026-10-12 (team's call).
+    send_after: new Date().toISOString(),
     status: AS_HISTORY ? 'skipped' : cancelled ? 'cancelled' : 'queued',
     cancelled,
   };
