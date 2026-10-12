@@ -1,5 +1,5 @@
 /* WhatsApp admin page (#whatsapp-test) — classes wa-* */
-.wa-main { max-width: 980px; display: grid; gap: 14px; }
+.wa-main { max-width: none; width: 100%; display: grid; gap: 14px; }
 .wa-card { border: 1px solid var(--line, #e3e3e3); border-radius: 12px; padding: 14px; background: var(--surface, #fff); display: grid; gap: 8px; }
 .wa-card h3 { margin: 0; font-size: 16px; }
 .wa-card p { margin: 0; }
@@ -10,12 +10,17 @@
 .wa-switch { display: flex; gap: 8px; align-items: center; }
 .wa-table { overflow: auto; }
 .wa-table table { border-collapse: collapse; width: 100%; font-size: 13px; }
-.wa-table th, .wa-table td { text-align: left; padding: 6px 8px; border-top: 1px solid var(--line, #eee); vertical-align: top; white-space: nowrap; }
+.wa-table th, .wa-table td { text-align: left; padding: 6px 8px; border-top: 1px solid var(--line, #eee); vertical-align: top; }
+.wa-table td code { white-space: nowrap; }
+.wa-table th { white-space: nowrap; }
 .wa-table th { font-size: 12px; color: var(--muted, #6b7280); }
-.wa-table td:nth-child(2) { white-space: normal; min-width: 160px; }
+.wa-table td:nth-child(2) { min-width: 140px; }
+.wa-tpl-table table { table-layout: fixed; }
+.wa-tpl-table th:nth-child(1) { width: 15%; } .wa-tpl-table th:nth-child(2) { width: 16%; } .wa-tpl-table th:nth-child(3) { width: 10%; } .wa-tpl-table th:nth-child(4) { width: 14%; }
+.wa-tpl-table td { word-break: break-word; }
 /* Tabs page */
 .wa-tabs { margin-bottom: 12px; }
-.wa-inbox { display: grid; grid-template-columns: 320px 1fr; gap: 12px; min-height: 60vh; }
+.wa-inbox { display: grid; grid-template-columns: 340px 1fr; gap: 12px; min-height: 60vh; }
 .wa-conv-list { border: 1px solid var(--line, #e3e3e3); border-radius: 12px; overflow: auto; max-height: 78vh; background: var(--surface, #fff); }
 .wa-conv { display: block; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--line, #eee); background: transparent; padding: 10px 12px; cursor: pointer; color: inherit; font: inherit; }
 .wa-conv:hover { background: var(--hover, #f6f8fb); }
@@ -49,7 +54,7 @@
 .wa-reply textarea { flex: 1 1 200px; padding: 8px 10px; border: 1px solid #ccc; border-radius: 8px; font: inherit; resize: vertical; }
 .wa-sum { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px 14px; font-size: 13px; }
 .wa-ok { color: #15803d; } .wa-bad { color: #b91c1c; font-weight: 600; }
-.wa-body-cell { white-space: pre-wrap !important; min-width: 260px; max-width: 420px; font-size: 12px; }
+.wa-body-cell { white-space: pre-wrap; font-size: 12px; }
 @media (max-width: 800px) {
   .wa-inbox { grid-template-columns: 1fr; }
   .wa-show-thread .wa-conv-list { display: none; }
