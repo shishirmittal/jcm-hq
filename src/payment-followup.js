@@ -14,6 +14,10 @@ import { apiUrl } from './native.js'
 import { esc, formatMoney } from './utils.js'
 import { icon } from './icons.js'
 import './payment-followup.css'
+
+// Pop-ups here lock the page's scrolling (body.pf-modal-open). Leaving the page
+// must always lift it, or the next page would open frozen.
+window.addEventListener('hashchange', () => document.body.classList.remove('pf-modal-open'))
 import { renderPaymentReminders } from './payment-reminders.js'
 import { hqConfirm } from './hq-dialog.js'
 
@@ -410,7 +414,9 @@ export function renderPaymentFollowup(container, sub) {
       ov.querySelector('#pfWaNo').disabled = true
       try {
         const r = await call({ action: 'send-template', party_code: party.party_code })
-        ov.remove()
+        // close(), not ov.remove(): close() also lifts the page's scroll lock.
+        // Removing only the box left the page frozen after a send.
+        close()
         party.last_reminder = new Date().toISOString()
         toast(`✓ Reminder sent to ${r.name} (${r.tone === 'red' ? 'red' : 'amber'} · ${r.kind}). Saved in History.`)
         if (state.modal?.party === party) loadHistory(party)

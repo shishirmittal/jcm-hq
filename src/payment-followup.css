@@ -250,7 +250,7 @@ body.pf-modal-open { overflow: hidden; }
 .pfr-plan-row { display: flex; gap: 8px; align-items: center; font-size: 13px; }
 .pfr-plan-row .pfr-amount { margin-left: auto; }
 .pfr-preview-count { display: flex; gap: 6px; margin-top: 6px; }
-.pf-toast { position: fixed; left: 50%; bottom: calc(var(--app-nav-h, 0px) + 18px); transform: translateX(-50%); background: #17653a; color: #fff; padding: 10px 14px; border-radius: 10px; font-size: 14px; font-weight: 600; z-index: 1200; max-width: 92vw; box-shadow: 0 6px 20px rgba(0,0,0,.2); }
+.pf-toast { pointer-events: none; position: fixed; left: 50%; bottom: calc(var(--app-nav-h, 0px) + 18px); transform: translateX(-50%); background: #17653a; color: #fff; padding: 10px 14px; border-radius: 10px; font-size: 14px; font-weight: 600; z-index: 1200; max-width: 92vw; box-shadow: 0 6px 20px rgba(0,0,0,.2); }
 
 /* Phones: the automatic-reminder settings one per line (after the rules above so they win). */
 @media (max-width: 900px) {
