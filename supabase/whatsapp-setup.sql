@@ -102,3 +102,7 @@ notify pgrst, 'reload schema';
 
 -- Public bucket for PDFs that Meta fetches as a document header (quotations).
 insert into storage.buckets (id, name, public) values ('wa-docs', 'wa-docs', true) on conflict (id) do nothing;
+
+-- 2026-10-12: transaction messages go to the billed party (Busy Billing/Shipping Details); the ledger name is kept too.
+alter table wa_outbox add column if not exists ledger_name text;
+notify pgrst, 'reload schema';

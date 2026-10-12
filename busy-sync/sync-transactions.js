@@ -4,7 +4,8 @@
 // What it does
 //   1. Reads vouchers typed into Busy in the last LOOKBACK_HOURS (CheckList Action 1 = first save):
 //        9 Sales (invoice)  14 Receipt  18 Credit note  17 Debit note  19 Payment  2 Purchase  12 Sales order
-//      with party name + mobile / WhatsApp no. (Master1 + MasterAddressInfo), amount and item count.
+//      with the BILLED party's name + mobile from the voucher's Billing/Shipping Details (BillingDet), falling
+//      back to the ledger account (Master1 + MasterAddressInfo), plus amount and item count.
 //   2. Writes each one ONCE to wa_outbox in Supabase (JCM-Busysql project; unique on db + vch_code).
 //        Invoices wait until INVOICE_AT (20:30 India time) that day — one message after the material has
 //        gone, so nobody rings up asking to change the bill (Shishir). Entered after 20:30 → next evening.
@@ -103,6 +104,7 @@ async function readVouchers(pool) {
            CONVERT(VARCHAR(10), t1.[Date], 23) AS VchDate,
            t1.MasterCode1 AS PartyCode, p.Name AS PartyName,
            a.Mobile, a.WhatsAppNo,
+           bd.PartyName AS BilledName, bd.MobileNo AS BilledMobile,
            ISNULL(ps.Amt, 0) AS Amount,
            ISNULL(i.n, 0) AS Items,
            ISNULL(t1.Cancelled, 0) AS Cancelled, ISNULL(t1.VchCancelled, 0) AS VchCancelled,
@@ -111,6 +113,7 @@ async function readVouchers(pool) {
     JOIN Tran1 t1 ON t1.VchCode = e.Code
     LEFT JOIN Master1 p ON p.Code = t1.MasterCode1
     LEFT JOIN MasterAddressInfo a ON a.MasterCode = t1.MasterCode1
+    LEFT JOIN BillingDet bd ON bd.VchCode = t1.VchCode
     LEFT JOIN partyside ps ON ps.VchCode = t1.VchCode
     LEFT JOIN items i ON i.VchCode = t1.VchCode
     WHERE e.rn = 1 AND t1.VchType IN (${TYPES.join(',')})`);
@@ -128,8 +131,11 @@ function toRow(v) {
     vch_no: txt(v.VchNo),
     vch_date: v.VchDate,
     party_code: String(v.PartyCode),
-    party_name: txt(v.PartyName),
-    mobile: txt(v.WhatsAppNo) || txt(v.Mobile),
+    // The message goes to the BILLED party (Busy's Billing/Shipping Details on the voucher) — name and
+    // mobile — and only falls back to the ledger account when the voucher has none (Shishir, 2026-10-12).
+    party_name: txt(v.BilledName) || txt(v.PartyName),
+    ledger_name: txt(v.PartyName),
+    mobile: txt(v.BilledMobile) || txt(v.WhatsAppNo) || txt(v.Mobile),
     amount: r2(v.Amount),
     items: Number(v.Items) || 0,
     entered_by: txt(v.EnteredBy),
