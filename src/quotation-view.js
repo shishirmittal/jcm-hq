@@ -4,6 +4,7 @@ import { renderQuotationForm } from './quotation-form.js'
 import { IS_NATIVE } from './native.js'
 import { sharePdf, pdfFilename } from './share-pdf.js'
 import logoUrl from './assets/jcm-logo.png'
+import { hqConfirm, hqAlert } from './hq-dialog.js'
 
 // Fallback only — a payee-only code with no amount in it, shown if the QR library
 // failed to load. The real one is generated per quotation by qrDataUri() below.
@@ -410,7 +411,7 @@ export async function renderQuotationView(container, quotationId, onBack, autoAc
     btn.disabled = true
     btn.textContent = busyText
     return work().catch(err => {
-      alert(`Could not produce the PDF: ${err.message}`)
+      hqAlert(`Could not produce the PDF: ${err.message}`)
     }).finally(() => {
       btn.disabled = false
       btn.innerHTML = original
@@ -445,7 +446,7 @@ export async function renderQuotationView(container, quotationId, onBack, autoAc
       return
     }
 
-    if (!phone) { alert('No phone number on this quotation'); return }
+    if (!phone) { hqAlert('No phone number on this quotation'); return }
     // window.open must run synchronously in the click handler, before any await —
     // otherwise most browsers' popup blockers will silently swallow the new tab.
     window.open(waHref(phone, message), '_blank', 'noopener')
@@ -454,15 +455,15 @@ export async function renderQuotationView(container, quotationId, onBack, autoAc
     withBusy(btn, 'Generating PDF…', async () => {
       const doc = await generatePdfAtFullSize()
       await sharePdf(doc, fileName, { title: fileName })
-      alert('PDF downloaded — attach it in the WhatsApp chat that just opened, then hit send.')
+      hqAlert('PDF downloaded — attach it in the WhatsApp chat that just opened, then hit send.')
     })
   })
 
   // Official number: the quotation_sent template with the PDF attached, sent by HQ (api/whatsapp.js).
-  document.getElementById('jcmWaBtn').addEventListener('click', () => {
+  document.getElementById('jcmWaBtn').addEventListener('click', async () => {
     const phone = (quotation.phone || '').replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '')
-    if (!/^[6-9]\d{9}$/.test(phone)) { alert('No valid 10-digit mobile number on this quotation.'); return }
-    if (!window.confirm(`Send quotation ${quotation.quote_no} to ${quotation.client_name} (+91 ${phone}) from JCM's WhatsApp number? It cannot be taken back.`)) return
+    if (!/^[6-9]\d{9}$/.test(phone)) { hqAlert('No valid 10-digit mobile number on this quotation.'); return }
+    if (!await hqConfirm(`Send quotation ${quotation.quote_no} to ${quotation.client_name} (+91 ${phone}) from JCM's WhatsApp number? It cannot be taken back.`)) return
     const btn = document.getElementById('jcmWaBtn')
     withBusy(btn, 'Sending…', async () => {
       const doc = await generatePdfAtFullSize()
@@ -476,7 +477,7 @@ export async function renderQuotationView(container, quotationId, onBack, autoAc
       })
       const out = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(out.error || 'Could not send.')
-      alert('Sent from JCM\'s WhatsApp number. You can see it under WhatsApp → Log.')
+      hqAlert('Sent from JCM\'s WhatsApp number. You can see it under WhatsApp → Log.')
     })
   })
 

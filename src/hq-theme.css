@@ -206,3 +206,32 @@ body.dark-mode .app-tab.active .app-tab-icon { background: var(--hq-gold); color
 .hq-more-btn:hover { border-color: var(--blue); }
 .hq-more-count { color: var(--muted); font-size: 13px; }
 [hidden].project-card, tr[hidden] { display: none !important; }
+
+/* ---- HQ pop-ups (src/hq-dialog.js) — replace the browser's grey confirm / alert ---- */
+.hq-dlg-overlay { position: fixed; inset: 0; z-index: 3000; background: rgba(10, 19, 36, .55); display: flex; align-items: center; justify-content: center; padding: 16px; animation: hqDlgIn .14s ease-out; }
+.hq-dlg-overlay.is-leaving { opacity: 0; transition: opacity .12s; }
+.hq-dlg { width: 100%; max-width: 420px; background: var(--surface); color: var(--text); border-radius: var(--hq-radius); box-shadow: 0 18px 50px rgba(0,0,0,.35); padding: 22px 20px 16px; border-top: 4px solid var(--hq-gold); font-family: 'Inter', system-ui, sans-serif; }
+.hq-dlg-title { font-size: 18px; font-weight: 800; color: var(--ink); margin-bottom: 8px; }
+.hq-dlg-msg { font-size: 16px; line-height: 1.45; color: var(--text); white-space: pre-line; word-break: break-word; }
+.hq-dlg-input { width: 100%; box-sizing: border-box; margin-top: 12px; border: 1.5px solid var(--line); border-radius: 12px; padding: 10px 12px; font: inherit; font-size: 16px; background: var(--bg); color: var(--text); resize: vertical; }
+.hq-dlg-input:focus { outline: none; border-color: var(--blue); }
+.hq-dlg-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+.hq-dlg-btn { min-height: 44px; min-width: 96px; padding: 0 18px; border-radius: 12px; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; }
+.hq-dlg-cancel { background: transparent; color: var(--ink); border: 1.5px solid var(--line); }
+.hq-dlg-ok { background: var(--blue); color: var(--on-blue); border: 0; }
+.hq-dlg-ok.is-danger { background: #C0392B; color: #fff; }
+@keyframes hqDlgIn { from { opacity: 0; } to { opacity: 1; } }
+@media (max-width: 480px) { .hq-dlg-actions .hq-dlg-btn { flex: 1; } }
+
+/* ---- Page headers on phones: Inter title on one line; long header buttons shrink ---- */
+body.native-app .logo-small { font-family: 'Inter', system-ui, sans-serif; font-size: 18px; font-weight: 800; letter-spacing: -0.01em; }
+.app-header > div:first-child { min-width: 0; flex: 1 1 auto; }
+.app-header .logo-small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 8px; }
+.app-header .logo-small svg { flex: none; }
+.app-header .btn-small { white-space: nowrap; flex: none; }
+@media (max-width: 799px) {
+  /* Header buttons that carry an icon show only the icon on a phone. */
+  .app-header .btn-small:has(svg) { font-size: 0; gap: 0; padding: 0; width: 44px; min-width: 44px; height: 44px; justify-content: center; display: inline-flex; align-items: center; }
+  .app-header .btn-small:has(svg) svg { width: 20px; height: 20px; }
+  body.native-app .app-header .btn-small:has(svg) { border-color: rgba(255,255,255,.28); }
+}

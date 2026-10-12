@@ -19,6 +19,7 @@ import { canSee } from './permissions.js'
 import { apiUrl } from './native.js'
 import { esc, formatMoney } from './utils.js'
 import { icon } from './icons.js'
+import { hqConfirm } from './hq-dialog.js'
 
 export const STATUS_TABS = [
   { id: 'open', label: 'Open' },
@@ -729,7 +730,7 @@ export async function renderRedAlerts(container) {
   async function updateMatching(status) {
     if (state.busy) return
     const verb = status === 'ok' ? 'Clear' : 'Mark as seen'
-    if (!window.confirm(`${verb} all ${state.total.toLocaleString('en-IN')} alerts that match these filters?`)) return
+    if (!await hqConfirm(`${verb} all ${state.total.toLocaleString('en-IN')} alerts that match these filters?`)) return
     state.busy = true
     try {
       // `status` is the new status; the tab being looked at travels as filter_status.

@@ -14,6 +14,7 @@ import { openSidebar } from './sidebar.js'
 import { canSee } from './permissions.js'
 import { esc } from './utils.js'
 import { tokenMatch } from './catalog.js'
+import { hqConfirm, hqAlert } from './hq-dialog.js'
 
 // Same shape as supabase-busy.js's fetchAllBusyRows, but takes a configure()
 // callback so a .like()/.order() filter can be applied on every page of a
@@ -693,7 +694,7 @@ export async function renderItemsManagement(container) {
   async function discardAllChanges() {
     const count = pendingEdits.size
     if (count === 0) return
-    if (!confirm(`Discard all ${count} pending change${count === 1 ? '' : 's'}?`)) return
+    if (!await hqConfirm(`Discard all ${count} pending change${count === 1 ? '' : 's'}?`)) return
 
     const { error } = await supabaseBusy.from('item_pending_edits').update({
       new_group_code: null,
@@ -703,7 +704,7 @@ export async function renderItemsManagement(container) {
       remark3: null,
       edited_at: new Date().toISOString(),
     }).eq('exported', false)
-    if (error) { alert(`Failed to discard changes: ${error.message}`); return }
+    if (error) { hqAlert(`Failed to discard changes: ${error.message}`); return }
 
     pendingEdits.clear()
     undoStack = []
@@ -751,7 +752,7 @@ export async function renderItemsManagement(container) {
       .eq('exported', false)
 
     if (error || !edits || edits.length === 0) {
-      alert('Nothing to export.')
+      hqAlert('Nothing to export.')
       return
     }
 

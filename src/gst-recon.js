@@ -14,6 +14,7 @@ import { esc } from './utils.js'
 import { icon } from './icons.js'
 import * as XLSX from 'xlsx'
 import './gst-recon.css'
+import { hqConfirm, hqPrompt } from './hq-dialog.js'
 
 const TAB_ID = 'gst-recon'
 
@@ -290,7 +291,7 @@ export async function renderGstRecon(container) {
     if (!row) return
     let note = ''
     if (st) {
-      note = window.prompt(st === 'done' ? 'Mark as done. Any note? (optional)' : 'Ignore this row. Why? (optional)', '')
+      note = await hqPrompt(st === 'done' ? 'Mark as done. Any note? (optional)' : 'Ignore this row. Why? (optional)', '')
       if (note === null) return
     }
     el.disabled = true
@@ -382,7 +383,7 @@ export async function renderGstRecon(container) {
       if (!pickedKinds.length) return flash('Tick at least one red flag.')
       if (!pickedIds.length) return flash('Tick at least one person.')
       const items = pickedKinds.reduce((s, k) => s + (d.counts[k] || 0), 0)
-      if (!window.confirm(`Send the ${d.period} summary (${items} item${items === 1 ? '' : 's'}) to ${pickedIds.length} ${pickedIds.length === 1 ? 'person' : 'people'} on WhatsApp?`)) return
+      if (!await hqConfirm(`Send the ${d.period} summary (${items} item${items === 1 ? '' : 's'}) to ${pickedIds.length} ${pickedIds.length === 1 ? 'person' : 'people'} on WhatsApp?`)) return
       try { localStorage.setItem('gst-staff-picks', JSON.stringify({ kinds: pickedKinds, ids: pickedIds })) } catch { /* fine */ }
       btn.disabled = true
       try {

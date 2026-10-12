@@ -18,6 +18,7 @@ import { esc } from './utils.js'
 import {
   callCollections as call, pfTabsHtml, syncNoteHtml, rupees, shortRupees, fmtDateTime, daysBetween, store,
 } from './payment-followup.js'
+import { hqConfirm } from './hq-dialog.js'
 
 const BATCH = 10
 
@@ -212,7 +213,7 @@ export function renderPaymentReminders(container) {
       } catch (err) { out.innerHTML = `<div class="pf-error">${esc(err.message)}</div>` }
     }
     if (b.dataset.act === 'run') {
-      if (!window.confirm('Send today\'s automatic reminders now? This sends real WhatsApps to customers and cannot be taken back.')) return
+      if (!await hqConfirm('Send today\'s automatic reminders now? This sends real WhatsApps to customers and cannot be taken back.')) return
       b.disabled = true; b.textContent = 'Sending…'
       try {
         const r = await call({ action: 'daily-now', which: 'reminders' })

@@ -15,6 +15,7 @@ import { esc, formatMoney } from './utils.js'
 import { icon } from './icons.js'
 import './payment-followup.css'
 import { renderPaymentReminders } from './payment-reminders.js'
+import { hqConfirm } from './hq-dialog.js'
 
 const TAB_ID = 'payment-followup'
 
@@ -610,7 +611,7 @@ export function renderPaymentFollowup(container, sub) {
     const ask = which === 'morning'
       ? "Send each person their WhatsApp list now and make today's Task Board tasks (tasks are made only once a day)?"
       : 'Send the evening summary WhatsApp to admins now?'
-    if (!window.confirm(ask)) return
+    if (!await hqConfirm(ask)) return
     btn.disabled = true
     const out = $('pfSendResult')
     out.hidden = false

@@ -4,6 +4,7 @@ import { esc, slug, telHref, waHref, PROJECT_STATUSES, PRODUCT_STAGES, todayISO,
 import { uploadPhotos, deletePhoto } from './photos.js'
 import { renderQuotationForm } from './quotation-form.js'
 import { renderQuotationView } from './quotation-view.js'
+import { hqConfirm } from './hq-dialog.js'
 
 function stagePillClass(stage) {
   return 'stage-pill-' + String(stage).toLowerCase()
@@ -193,7 +194,7 @@ export async function renderProjectDetail(container, projectId, onBack) {
     renderProjectForm(projectId, () => renderProjectDetail(container, projectId, onBack))
   })
   document.getElementById('deleteBtn').addEventListener('click', async () => {
-    if (!confirm('Delete this project?')) return
+    if (!await hqConfirm('Delete this project?')) return
     const paths = (photos||[]).map(ph => ph.path)
     if (paths.length) await supabase.storage.from('project-photos').remove(paths)
     await supabase.from('projects').delete().eq('id', projectId)
@@ -281,7 +282,7 @@ export async function renderProjectDetail(container, projectId, onBack) {
   container.querySelectorAll('.photo-delete').forEach(btn => {
     btn.addEventListener('click', async e => {
       e.stopPropagation()
-      if (!confirm('Delete this photo?')) return
+      if (!await hqConfirm('Delete this photo?')) return
       const photo = photos.find(ph => ph.id === btn.dataset.id)
       if (!photo) return
       await deletePhoto(photo)

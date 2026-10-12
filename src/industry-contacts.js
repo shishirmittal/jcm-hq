@@ -3,6 +3,7 @@ import { showMore } from './show-more.js'
 import { esc, telHref, waHref, slug } from './utils.js'
 import { openSidebar } from './sidebar.js'
 import { renderProjectDetail } from './project-detail.js'
+import { hqConfirm } from './hq-dialog.js'
 
 const TYPE_LABEL = { architect: 'Architect', electrician: 'Electrician' }
 const ID_COLUMN = { architect: 'architect_id', electrician: 'electrician_id' }
@@ -189,7 +190,7 @@ async function renderContactDetail(container, contactType, contactId) {
     showContactForm(contactType, () => renderContactDetail(container, contactType, contactId), contact)
   })
   document.getElementById('deleteBtn').addEventListener('click', async () => {
-    if (!confirm(`Delete ${contact.name}? Projects that reference them will keep their history but show no ${label.toLowerCase()}.`)) return
+    if (!await hqConfirm(`Delete ${contact.name}? Projects that reference them will keep their history but show no ${label.toLowerCase()}.`)) return
     await supabase.from('industry_contacts').delete().eq('id', contactId)
     window.location.hash = `#${hashSegment}`
   })

@@ -3,6 +3,7 @@ import { supabase, getCurrentProfile } from './supabase.js'
 import { esc } from './utils.js'
 import { NAV_CONFIG } from './nav-config.js'
 import { icon } from './icons.js'
+import { hqAlert } from './hq-dialog.js'
 
 // The tab list is generated from NAV_CONFIG, never a second hardcoded copy --
 // add a tab to the nav and it shows up here to be granted, with no edit here.
@@ -305,7 +306,7 @@ export async function renderAdmin(container, onBack) {
         const nextActive = !(btn.dataset.active === 'true')
         btn.disabled = true
         const { error } = await supabase.from('profiles').update({ active: nextActive }).eq('id', btn.dataset.id)
-        if (error) { alert(error.message); btn.disabled = false; return }
+        if (error) { hqAlert(error.message); btn.disabled = false; return }
         loadUsers()
       })
     })

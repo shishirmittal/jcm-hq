@@ -9,6 +9,7 @@ import { openSidebar, refreshNavBadges } from './sidebar.js'
 import { canSee } from './permissions.js'
 import { esc } from './utils.js'
 import { renderWhatsappSettings } from './whatsapp-test.js'
+import { hqConfirm } from './hq-dialog.js'
 
 export async function callWhatsapp(payload) {
   const { data: { session } } = await supabase.auth.getSession()
@@ -253,7 +254,7 @@ function renderOutbox(el) {
     finally { $('waTick').disabled = false }
   })
   $('waOrdersNow').addEventListener('click', async () => {
-    if (!window.confirm('Send the orders / material message to all admins now?')) return
+    if (!await hqConfirm('Send the orders / material message to all admins now?')) return
     try { const d = await call({ action: 'tick', force: 'orders' }); const o = d.orders || {}; $('waTickResult').textContent = `Orders message: ${(o.sent || []).map(x => `${x.to} ${x.status}`).join(', ') || 'nobody to send to'}.` }
     catch (err) { $('waTickResult').textContent = '❌ ' + err.message }
   })

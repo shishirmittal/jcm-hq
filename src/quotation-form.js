@@ -5,6 +5,7 @@ import {
   loadCatalog, loadDiscountPresets, loadGenericItems, loadGenericItemMap,
   getMapEntriesFor, getPresetDiscount, tokenMatch
 } from './catalog.js'
+import { hqConfirm } from './hq-dialog.js'
 
 function matchKey(phone) {
   const d = digitsOnly(phone)
@@ -1065,11 +1066,11 @@ function showForm(container, ctx) {
   // rejoining the bucket snaps each row back onto the bucket's shared
   // Model/Colour/Discount. Confirmed first, because on a finished quotation that can
   // overwrite a lot of deliberately-set numbers at once.
-  function unlockAll() {
+  async function unlockAll() {
     const lockedCount = items.filter(it => it.locked).length
     if (!lockedCount) return
     const msg = `Unlock ${lockedCount} row(s)? Each one rejoins its bucket, which resets it to the bucket's current Model, Colour and Discount.`
-    if (!confirm(msg)) return
+    if (!await hqConfirm(msg)) return
     items.forEach((item, i) => { if (item.locked) setLock(i, false) })
     render()
   }

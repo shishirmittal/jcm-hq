@@ -14,6 +14,7 @@ import { canSee } from './permissions.js'
 import { apiUrl } from './native.js'
 import { esc } from './utils.js'
 import { icon } from './icons.js'
+import { hqConfirm } from './hq-dialog.js'
 
 const TAB_ID = 'purchases'
 
@@ -182,7 +183,7 @@ export async function renderPurchases(container) {
     if (resend) {
       e.stopPropagation()
       const bill = state.bills.find(b => b.vch_key === resend.dataset.resend)
-      if (!bill || !window.confirm(`Send the WhatsApp for ${bill.party_name || 'this bill'} again, to everyone ticked for "Every bill"?`)) return
+      if (!bill || !await hqConfirm(`Send the WhatsApp for ${bill.party_name || 'this bill'} again, to everyone ticked for "Every bill"?`)) return
       resend.disabled = true
       try {
         const r = await call({ action: 'send-bill', vch_key: bill.vch_key })

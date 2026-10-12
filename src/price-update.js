@@ -2,6 +2,7 @@ import { supabase, getCurrentProfile } from './supabase.js'
 import { esc } from './utils.js'
 import { loadCatalog, clearCatalogCache } from './catalog.js'
 import { isAdminProfile } from './permissions.js'
+import { hqConfirm } from './hq-dialog.js'
 
 // Bulk edit of catalog_items: pick the columns, pick the item group, change
 // what needs changing, save.
@@ -323,7 +324,7 @@ async function save(status) {
   for (const row of targets) for (const key of changedKeysFor(row.id)) columnsTouched.add(key)
 
   const columnNames = [...columnsTouched].map(k => COLUMN_BY_KEY.get(k).label).join(', ')
-  const ok = window.confirm(
+  const ok = await hqConfirm(
     `Update ${targets.length} row${targets.length === 1 ? '' : 's'}?\n\n` +
     `Columns changing: ${columnNames}\n\n` +
     'Existing quotations keep the prices they were made with.'
