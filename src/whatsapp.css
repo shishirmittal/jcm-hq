@@ -40,7 +40,7 @@
 .wa-day { align-self: center; background: #fff; color: #555; font-size: 11px; padding: 3px 10px; border-radius: 10px; margin: 6px 0; }
 .wa-msg { display: flex; }
 .wa-msg.wa-out { justify-content: flex-end; }
-.wa-bubble { max-width: 78%; padding: 7px 10px; border-radius: 10px; background: #fff; font-size: 14px; white-space: pre-wrap; word-break: break-word; box-shadow: 0 1px 1px rgba(0,0,0,.08); }
+.wa-bubble { max-width: 78%; padding: 7px 10px; border-radius: 10px; background: #fff; color: #111b21; font-size: 14px; white-space: pre-wrap; word-break: break-word; box-shadow: 0 1px 1px rgba(0,0,0,.08); }
 .wa-out .wa-bubble { background: #d9fdd3; }
 .wa-tpl .wa-bubble { background: #fff8e1; }
 .wa-template { font-weight: 600; }
@@ -63,6 +63,13 @@
   .wa-thread, .wa-conv-list { max-height: none; }
   .wa-msgs { min-height: 50vh; }
 }
-.wa-file { border: 1px solid var(--line, #ddd); background: #fff; border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 13px; cursor: pointer; text-align: left; }
+.wa-file { border: 1px solid #c9d2dc; background: #fff; color: #111b21; border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 13px; cursor: pointer; text-align: left; }
 .wa-file:hover { background: #f6f8fb; }
 .wa-img img { max-width: 100%; max-height: 320px; border-radius: 8px; margin-top: 6px; display: block; }
+
+/* Chat bubbles are always light (WhatsApp look), so their text must not inherit the dark theme's light colour. */
+.wa-bubble .wa-muted, .wa-bubble .wa-meta { color: #667781; }
+.wa-bubble .wa-template, .wa-bubble strong { color: #111b21; }
+.wa-bubble .wa-tap { color: #075e54; }
+.wa-day { color: #54656f; }
+.wa-file:disabled { opacity: .6; cursor: progress; }

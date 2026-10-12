@@ -216,7 +216,8 @@ export default async function handler(req, res) {
       try {
         const m = await fetchMedia(row.data.media_id)
         if (m.size > 4_000_000) return send(res, 413, { error: 'That file is over 4 MB — too big to pass through HQ. Open it on the WhatsApp phone.' })
-        const name = /\.\w{2,5}$/.test(row.data.text || '') ? row.data.text : `${row.data.kind || 'file'}-${body.id}.${(m.mime.split('/')[1] || 'bin').replace('jpeg', 'jpg')}`
+        const fileName = String(row.data.text || '').split(' — ')[0].split('\n')[0].replace(/^[^\w]+/, '').trim()
+        const name = /\.\w{2,5}$/.test(fileName) ? fileName : `${row.data.kind || 'file'}-${body.id}.${(m.mime.split('/')[1] || 'bin').replace('jpeg', 'jpg').replace(/;.*/, '')}`
         return send(res, 200, { mime: m.mime, filename: name, base64: m.buffer.toString('base64') })
       } catch (err) { return send(res, 502, { error: err.message }) }
     }

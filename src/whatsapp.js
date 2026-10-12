@@ -3,8 +3,9 @@
 //       Log (every send: sent / delivered / read / failed) · Outbox (customer messages waiting) ·
 //       Settings (connection, switches, samples). Server: api/whatsapp.js (+ _wa-inbox.js).
 // Access: admins, or 'whatsapp' ticked in Manage Users.
+import { shareBase64 } from './share-pdf.js'
 import { supabase } from './supabase.js'
-import { apiUrl } from './native.js'
+import { apiUrl, IS_NATIVE as IS_APP } from './native.js'
 import { openSidebar, refreshNavBadges } from './sidebar.js'
 import { canSee } from './permissions.js'
 import { esc } from './utils.js'
@@ -129,7 +130,7 @@ function renderInbox(el, number) {
         lastDay = day
         const st = m.direction === 'out' ? `<span class="wa-msg-status wa-st-${esc(m.status)}" title="${esc(m.error || m.status || '')}">${m.status === 'read' ? '✓✓' : m.status === 'delivered' ? '✓✓' : m.status === 'failed' || m.status === 'no_number' || m.status === 'off' ? '✕ ' + esc(STATUS_TEXT[m.status] || m.status) : '✓'}</span>` : ''
         const who = m.direction === 'out' ? `<span class="wa-muted">${esc(m.by || 'HQ')}</span>` : ''
-        const text = m.kind === 'template' ? `<span class="wa-template">📨 ${esc(m.template)}</span><div class="wa-muted">${esc((m.text || '').replace(/^\[[^\]]+\]\s*/, ''))}</div>` : m.kind === 'button' ? `<span class="wa-tap">↩ tapped <strong>${esc(m.text)}</strong></span>` : m.media && m.direction === 'in' ? `<button type="button" class="wa-file" data-media="${m.mid}">${m.kind === 'image' ? '🖼' : m.kind === 'video' ? '🎬' : m.kind === 'audio' ? '🎙' : '📎'} ${esc(m.text || m.kind)}<span class="wa-muted"> · tap to ${m.kind === 'image' ? 'view' : 'download'}</span></button>${m.kind === 'image' ? `<div class="wa-img" id="waImg${m.mid}"></div>` : ''}` : esc(m.text || '')
+        const text = m.kind === 'template' ? `<span class="wa-template">📨 ${esc(m.template)}</span><div class="wa-muted">${esc((m.text || '').replace(/^\[[^\]]+\]\s*/, ''))}</div>` : m.kind === 'button' ? `<span class="wa-tap">↩ tapped <strong>${esc(m.text)}</strong></span>` : m.media ? `<button type="button" class="wa-file" data-media="${m.mid}">${m.kind === 'image' ? '🖼' : m.kind === 'video' ? '🎬' : m.kind === 'audio' ? '🎙' : '📎'} ${esc(String(m.text || m.kind).replace(/^[🖼📄]\s*/u, ''))}<span class="wa-muted"> · tap to ${m.kind === 'image' ? 'view' : IS_APP ? 'open / save' : 'download'}</span></button>${m.kind === 'image' ? `<div class="wa-img" id="waImg${m.mid}"></div>` : ''}` : esc(m.text || '')
         return `${sep}<div class="wa-msg wa-${m.direction} ${m.kind === 'template' ? 'wa-tpl' : ''}"><div class="wa-bubble">${text}${m.error && m.direction === 'out' ? `<div class="wa-err">${esc(m.error)}</div>` : ''}<div class="wa-meta">${who} ${esc(timeOnly(m.at))} ${st}</div></div></div>`
       }).join('')
       th.innerHTML = `
@@ -154,12 +155,15 @@ function renderInbox(el, number) {
         b.disabled = true
         try {
           const d = await call({ action: 'media', id: Number(b.dataset.media) })
-          const bytes = Uint8Array.from(atob(d.base64), ch => ch.charCodeAt(0))
-          const blob = new Blob([bytes], { type: d.mime })
-          const url = URL.createObjectURL(blob)
           const img = el.querySelector(`#waImg${b.dataset.media}`)
-          if (img && d.mime.startsWith('image/')) { img.innerHTML = `<a href="${url}" target="_blank" rel="noopener"><img src="${url}" alt=""></a>` }
-          else { const a = document.createElement('a'); a.href = url; a.download = d.filename; document.body.appendChild(a); a.click(); a.remove() }
+          if (img && d.mime.startsWith('image/') && !img.innerHTML) {
+            // Photos show right in the chat; tap the photo to save / share it.
+            const url = `data:${d.mime};base64,${d.base64}`
+            img.innerHTML = `<img src="${url}" alt="" style="cursor:pointer">`
+            img.querySelector('img').addEventListener('click', () => shareBase64(d.base64, d.filename, d.mime).catch(err => alert(err.message)))
+          } else {
+            await shareBase64(d.base64, d.filename, d.mime)
+          }
         } catch (err) { alert(err.message) }
         finally { b.disabled = false }
       })

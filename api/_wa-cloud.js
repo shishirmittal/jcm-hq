@@ -107,10 +107,12 @@ export async function sendMedia(toPhone, buffer, { kind = 'image', mime = 'image
   const media = { id: up.id }
   if (caption) media.caption = caption
   if (kind === 'document') media.filename = filename
-  return graphPost(`${phoneId}/messages`, {
+  const res = await graphPost(`${phoneId}/messages`, {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ messaging_product: 'whatsapp', to, type: kind, [kind]: media }),
   })
+  // mediaId lets the Inbox fetch our own sent file again later (Meta keeps uploads ~30 days).
+  return { ...res, mediaId: up.id }
 }
 
 // Is our Meta app subscribed to this WhatsApp account's events (messages, button taps)?

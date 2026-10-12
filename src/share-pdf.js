@@ -69,3 +69,22 @@ export async function sharePdf(doc, filename, { title, text } = {}) {
     throw err
   }
 }
+
+// Any file we already hold as base64 (e.g. a WhatsApp attachment from the Inbox). On the web it downloads;
+// in the app it goes to the share sheet (Files, Drive, WhatsApp, a PDF viewer …) — the WebView has no
+// download manager, so an <a download> click does nothing there.
+export async function shareBase64(base64, filename, mime, { title } = {}) {
+  const safe = String(filename || 'file').replace(/[\/:*?"<>|\\]/g, '-').trim() || 'file'
+  if (!IS_NATIVE) {
+    const bytes = Uint8Array.from(atob(base64), ch => ch.charCodeAt(0))
+    const url = URL.createObjectURL(new Blob([bytes], { type: mime || 'application/octet-stream' }))
+    const a = document.createElement('a'); a.href = url; a.download = safe
+    document.body.appendChild(a); a.click(); a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 60000)
+    return 'downloaded'
+  }
+  const [{ Filesystem, Directory }, { Share }] = await Promise.all([import('@capacitor/filesystem'), import('@capacitor/share')])
+  const { uri } = await Filesystem.writeFile({ path: safe, data: base64, directory: Directory.Cache })
+  try { await Share.share({ title: title || safe, files: [uri] }); return 'shared' }
+  catch (err) { if (/cancel/i.test(err?.message || '')) return 'cancelled'; throw err }
+}

@@ -50,8 +50,8 @@ export async function recordStatuses(busy, value) {
 }
 
 // Our own replies (automatic from handleIncoming, or typed on the Inbox page).
-export async function recordOutgoing(busy, { number, kind = 'text', text, metaId = null, by = 'HQ auto', filename = null }) {
-  const r = await busy.from('wa_messages').insert({ number: toWaNumber(number) || String(number), direction: 'out', kind, text: String(text || filename || '').slice(0, 4000), meta_id: metaId, sent_by: by, status: metaId ? 'sent' : 'failed', created_at: new Date().toISOString() })
+export async function recordOutgoing(busy, { number, kind = 'text', text, metaId = null, by = 'HQ auto', filename = null, mediaId = null }) {
+  const r = await busy.from('wa_messages').insert({ number: toWaNumber(number) || String(number), direction: 'out', kind, text: String(text || filename || '').slice(0, 4000), meta_id: metaId, media_id: mediaId, sent_by: by, status: metaId ? 'sent' : 'failed', created_at: new Date().toISOString() })
   if (r.error) console.error('wa_messages out insert failed:', r.error.message)
 }
 
@@ -64,9 +64,10 @@ export async function replyText(busy, to, text, by = 'HQ auto') {
   return id
 }
 export async function replyMedia(busy, to, buffer, opts, by = 'HQ auto') {
-  let id = null, err = null
-  try { id = (await sendMedia(to, buffer, opts))?.messages?.[0]?.id || null } catch (e) { err = e }
-  await recordOutgoing(busy, { number: to, kind: opts.kind || 'document', text: `${opts.kind === 'image' ? '🖼' : '📄'} ${opts.filename || ''}${opts.caption ? ` — ${opts.caption.replace(/\*/g, '').split('\n')[0]}` : ''}${err ? `\n[not sent: ${err.message}]` : ''}`, metaId: id, by })
+  let id = null, mediaId = null, err = null
+  try { const r = await sendMedia(to, buffer, opts); id = r?.messages?.[0]?.id || null; mediaId = r?.mediaId || null } catch (e) { err = e }
+  // text starts with the file name so the Inbox download keeps it (e.g. JCM-Ledger-….pdf).
+  await recordOutgoing(busy, { number: to, kind: opts.kind || 'document', text: `${opts.filename || (opts.kind === 'image' ? 'image.png' : 'file.pdf')}${opts.caption ? ` — ${opts.caption.replace(/\*/g, '').split('\n')[0]}` : ''}${err ? `\n[not sent: ${err.message}]` : ''}`, metaId: id, mediaId, by })
   if (err) throw err
   return id
 }
