@@ -61,7 +61,6 @@ export function renderWhatsappSettings(container) {
           <div id="waSwitches" class="wa-switches">Loading…</div>
         </section>`
   const $ = id => container.querySelector('#' + id)
-  $('waMenu').addEventListener('click', () => openSidebar())
   const phone = () => $('waPhone').value.replace(/\D/g, '')
   const busy = (btn, on) => { btn.disabled = on }
 
