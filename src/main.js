@@ -168,6 +168,40 @@ function showNotice(message) {
   noticeTimer = setTimeout(() => el.remove(), 3000)
 }
 
+// Orders, Pending Material, Order Log, Warehouse and Control Centre are loaded
+// only when opened, from files whose names change with every new version of
+// HQ. A phone app or tab left open across an update still asks for the old
+// names, which no longer exist — the page used to stay blank. Now HQ reloads
+// itself once to pick up the new version; if that does not help, it says so
+// with a Reload button instead of a blank screen.
+const RELOAD_KEY = 'hq.lazyReloadAt'
+function reloadForNewVersion() {
+  try {
+    const last = Number(sessionStorage.getItem(RELOAD_KEY) || 0)
+    if (Date.now() - last < 60000) return false
+    sessionStorage.setItem(RELOAD_KEY, String(Date.now()))
+  } catch { /* storage blocked — still try one reload */ }
+  window.location.reload()
+  return true
+}
+window.addEventListener('vite:preloadError', e => { if (reloadForNewVersion()) e.preventDefault() })
+function lazyPageFailed(err, hash) {
+  console.error('Page failed to load:', err)
+  if (window.location.hash !== hash) return
+  if (reloadForNewVersion()) return
+  app.innerHTML = `
+    <div class="app-layout">
+      <header class="app-header"><span class="logo-small">JCM HQ</span></header>
+      <main class="app-main">
+        <div class="empty-state">
+          <p>This page could not load. Check the internet, then tap Reload.</p>
+          <button class="btn-primary" id="lazyReloadBtn">Reload</button>
+        </div>
+      </main>
+    </div>`
+  document.getElementById('lazyReloadBtn').addEventListener('click', () => window.location.reload())
+}
+
 function route() {
   const hash = window.location.hash
   // The React root Control Centre mounts into #app doesn't know when another
@@ -258,9 +292,9 @@ function route() {
       ordersModule = m
       // Still on the same page? (a fast second click elsewhere wins)
       if (window.location.hash === hash) m.renderOrdersPage(app, which, profile)
-    })
+    }).catch(err => lazyPageFailed(err, hash))
   } else if (hash === '#dashboard') {
-    import('./control-centre.js').then(m => { ccModule = m; m.renderControlCentre(app) })
+    import('./control-centre.js').then(m => { ccModule = m; m.renderControlCentre(app) }).catch(err => lazyPageFailed(err, hash))
   } else {
     renderDashboard(app)
   }

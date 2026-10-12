@@ -169,7 +169,7 @@ body.pf-modal-open { overflow: hidden; }
 .pfr-help { font-size: 12px; color: var(--muted); }
 .pfr-preview-label { font-size: 12px; font-weight: 600; color: var(--muted); }
 .pfr-preview {
-  white-space: pre-wrap; font-size: 13px; line-height: 1.5; color: #111b21; background: #d9fdd3;
+  white-space: normal; display: grid; gap: 6px; font-size: 13px; line-height: 1.5; color: #111b21; background: #d9fdd3;
   border-radius: 8px 8px 8px 2px; padding: 9px 11px; max-height: 260px; overflow-y: auto;
 }
 .pfr-send { height: 42px; border-radius: 10px; border: none; font-size: 14px; cursor: pointer; }
@@ -183,8 +183,15 @@ body.pf-modal-open { overflow: hidden; }
 .pfr-summary:empty { display: none; }
 
 @media (max-width: 900px) {
-  .pfr-layout { grid-template-columns: 1fr; }
+  /* minmax(0, …): a plain 1fr grows to fit its widest child (a long group name
+     in the select), which pushed the page past the phone screen, cut off. */
+  .pfr-layout { grid-template-columns: minmax(0, 1fr); }
   .pfr-right { position: static; }
+  .pfr-left, .pfr-right { min-width: 0; }
+  .pfr-left .pf-select { width: 100%; max-width: 100%; min-width: 0; }
+  /* The preview box scrolled inside itself and caught the finger, so the
+     page under it would not move. On phones it just grows. */
+  .pfr-preview { max-height: none; overflow: visible; }
 }
 .pfr-bulkbar { position: sticky; top: 56px; z-index: 4; }
 .pfr-jump { display: none; margin-left: auto; border: none; border-radius: 8px; background: #25D366; color: #fff; font-weight: 600; font-size: 12.5px; padding: 6px 10px; cursor: pointer; font-family: inherit; }
@@ -244,3 +251,11 @@ body.pf-modal-open { overflow: hidden; }
 .pfr-plan-row .pfr-amount { margin-left: auto; }
 .pfr-preview-count { display: flex; gap: 6px; margin-top: 6px; }
 .pf-toast { position: fixed; left: 50%; bottom: calc(var(--app-nav-h, 0px) + 18px); transform: translateX(-50%); background: #17653a; color: #fff; padding: 10px 14px; border-radius: 10px; font-size: 14px; font-weight: 600; z-index: 1200; max-width: 92vw; box-shadow: 0 6px 20px rgba(0,0,0,.2); }
+
+/* Phones: the automatic-reminder settings one per line (after the rules above so they win). */
+@media (max-width: 900px) {
+  .pfr-auto-grid { grid-template-columns: minmax(0, 1fr); }
+  .pfr-auto-grid label { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .pfr-auto-grid input[type=time], .pfr-auto-grid input[type=number] { width: 130px; margin-left: auto; flex-shrink: 0; }
+  .pfr-auto-row { align-items: flex-start; }
+}

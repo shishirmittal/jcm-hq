@@ -1,4 +1,5 @@
 import { supabase } from '../../supabase.js'
+import { apiUrl } from '../../native.js'
 
 // Every call to our own /api functions. The browser only ever talks to these,
 // never to Supabase directly for orders data.
@@ -29,7 +30,7 @@ export async function api(path, { method = 'GET', body, admin, device } = {}) {
     if (token) headers.Authorization = `Bearer ${token}`
   }
   if (device) headers['X-Device-Token'] = device
-  const res = await fetch(mapPath(path), { method, headers, body: body === undefined ? undefined : JSON.stringify(body), cache: 'no-store' })
+  const res = await fetch(apiUrl(mapPath(path)), { method, headers, body: body === undefined ? undefined : JSON.stringify(body), cache: 'no-store' })
   let data = {}
   try { data = await res.json() } catch { /* empty or not JSON */ }
   return { ok: res.ok, status: res.status, data }
