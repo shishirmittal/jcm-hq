@@ -353,8 +353,8 @@ Samples: 12 Oct 2026 · 9 · 4 · 7 · Badshah Electric (not all ordered), Nexus
 | 3 | txn_purchase | purchase.png | — | ☐ |
 | 4 | txn_payment | payment.png | — | ☐ |
 | 5 | txn_order | order.png | Call for changes · Order copy | ✅ |
-| 6a | txn_credit_note | credit-note.png | Ledger | ☐ |
-| 6b | txn_debit_note | debit-note.png | Ledger | ☐ |
+| 6a | txn_credit_note | credit-note.png | Ledger | ✅ (14 Oct) |
+| 6b | txn_debit_note | debit-note.png | Ledger | ✅ (14 Oct) |
 | 7 | quotation_sent | quotation.png | PDF Copy | ✅ |
 | 8 | order_dispatched_photo | dispatched.png (sample) | Invoice PDF | ✅ |
 | 9 | order_dispatched | dispatched.png | Invoice PDF | ✅ |
