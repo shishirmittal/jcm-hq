@@ -939,6 +939,26 @@ async function dueByPerson(busy, hq) {
 const reasonText = r => r.kind === 'date' ? 'date set'
   : `${r.every === 7 ? 'weekly' : 'fortnightly'}, ${r.days === null ? 'never called' : `last ${r.days} d ago`}`
 
+// One person's follow-ups for today with each party's phone (customers table), for the "Due List PDF" button on
+// staff_followup_morning (api/_duelist-pdf.js). personId = profiles.id.
+export async function dueListFor(busy, hq, personId) {
+  const { byPerson, people } = await dueByPerson(busy, hq)
+  const person = people.find(p => p.id === personId) || null
+  const list = (byPerson.get(personId) || []).map(x => ({ code: x.code, name: x.name, balance: x.balance, reason: reasonText(x.reason) }))
+  const phones = new Map()
+  const codes = list.map(x => Number(x.code)).filter(Number.isFinite)
+  if (codes.length) {
+    const rows = await inChunks(codes, 200, part => busy.from('customers').select('*').in('party_code', part).then(r => r.data || []))
+    for (const c of rows) {
+      const nums = [c.whatsapp_no, c.mobile, c.mobile_no, c.phone].filter(Boolean).join(',').split(/[,;/\s]+/)
+      const ten = nums.map(n => String(n).replace(/\D/g, '')).map(d => (d.length === 12 && d.startsWith('91') ? d.slice(2) : d.length === 11 && d.startsWith('0') ? d.slice(1) : d)).find(d => /^[6-9]\d{9}$/.test(d))
+      if (ten) phones.set(String(c.party_code), ten)
+    }
+  }
+  for (const x of list) x.phone = phones.get(String(x.code)) || null
+  return { person, list, total: list.reduce((s, x) => s + x.balance, 0), people }
+}
+
 async function runMorning(busy, hq, today) {
   const { byPerson, people } = await dueByPerson(busy, hq)
   const filer = people.find(p => p.isAdmin) || null
@@ -969,10 +989,11 @@ async function runMorning(busy, hq, today) {
         if (h.error) console.error('daily task history failed:', h.error)
       }
     }
-    // staff_followup_morning: {{1}} first name, {{2}} parties, {{3}} total due, {{4}} the biggest three. Button → Today's follow-ups.
+    // staff_followup_morning: {{1}} first name, {{2}} parties, {{3}} total due, {{4}} the biggest three.
+    // One quick reply "Due List PDF" (as created 2026-10-14) → payload duelist:<profiles.id> → api/_duelist-pdf.js (phones + Call buttons).
     const top3 = list.slice(0, 3).map(x => `${x.name} ₹${inr(x.balance)}`).join(', ') + (list.length > 3 ? ` and ${list.length - 3} more` : '')
     const wa = (await sendLogged(busy, { kind: 'staff_followup', to: person.whatsapp, template: 'staff_followup_morning',
-      params: [person.name.split(' ')[0], String(list.length), inr(total), top3], opts: { headerImageUrl: BANNER('staff-followup') },
+      params: [person.name.split(' ')[0], String(list.length), inr(total), top3], opts: { headerImageUrl: BANNER('staff-followup'), buttonPayloads: [`duelist:${person.id}`] },
       ref: person.id, refName: person.name, by: 'HQ timer' })).status
     const up = await busy.from('collection_daily_tasks').upsert({
       day: today, hq_user_id: person.id, due_count: list.length, whatsapp: wa,

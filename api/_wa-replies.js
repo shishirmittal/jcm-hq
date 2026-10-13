@@ -6,7 +6,8 @@ import { replyText, replyMedia, recordIncoming, recordStatuses } from './_wa-inb
 import { loadOrder, buildOrderPdf, loadInvoice, buildInvoicePdf } from './_doc-pdf.js'
 import { buildOrdersSummaryPdf } from './_orders-pdf.js'
 import { buildCollectionsSummaryPdf } from './_collections-pdf.js'
-import { eveningSummary } from './collections.js'
+import { eveningSummary, dueListFor } from './collections.js'
+import { buildDueListPdf } from './_duelist-pdf.js'
 import { materialOverview } from './_orders/lib/material.js'
 import { db as ordersDb } from './_orders/lib/db.js'
 
@@ -103,6 +104,7 @@ const WHICH = [
 //   "so:<code>:<order no>"        Order copy  (txn_order)         → PDF of the sales order from JCM Orders
 //   "invpdf:<code>:<invoice no>"  Invoice PDF (order_dispatched*) → PDF copy from the invoice portal's tables
 //   "orders:<YYYY-MM-DD>"         Summary PDF (staff_orders_pending, 17:30) → live orders & material report; staff numbers only
+//   "duelist:<profiles.id>"       Due List PDF (staff_followup_morning, 10:00) → that person's list with phones + Call; them or admins only
 //   "collect:<YYYY-MM-DD>"        Summary PDF (staff_followup_evening, 19:00) → live collections summary; staff numbers only
 function parsePayload(payload) {
   const p = String(payload || '')
@@ -110,6 +112,8 @@ function parsePayload(payload) {
   if (m) return { kind: m[1] === 'inv' ? 'invoices' : m[1], code: m[2] }
   m = /^(so|invpdf):(\d{1,9}):(.{1,60})$/.exec(p)
   if (m) return { kind: m[1], code: m[2], ref: m[3] }
+  m = /^duelist:([0-9a-f-]{36})$/i.exec(p)
+  if (m) return { kind: 'duelist', code: '0', ref: m[1] }
   m = /^(orders|collect):(\d{4}-\d{2}-\d{2})$/.exec(p)
   if (m) return { kind: m[1], code: '0', ref: m[2] }
   m = /^quote:(.{1,110})$/.exec(p)
@@ -145,6 +149,26 @@ export async function handleIncoming(value) {
         else for (const bucket of ['wa-docs', 'gst-reports']) { const d = await busy.storage.from(bucket).download(parsed.ref); if (!d.error && d.data) { pdf = Buffer.from(await d.data.arrayBuffer()); break } }
         if (!pdf) await sendText(from, 'Thank you. Our team will send the quotation PDF to you here shortly.')
         else await sendMedia(from, pdf, { kind: 'document', mime: 'application/pdf', filename: `JCM-${(parsed.ref.split('/').pop() || 'Quotation.pdf').replace(/-\d{13}\.pdf$/, '.pdf')}`, caption: '*Your quotation is attached.*\n*आपका कोटेशन संलग्न है।*' })
+        continue
+      }
+      if (parsed?.kind === 'duelist') {
+        // One person's follow-up list: only that person (their WhatsApp in Manage Users) or an admin gets it.
+        const hq = hqClient()
+        const ten = String(from).slice(-10)
+        const { data: people } = hq ? await hq.from('profiles').select('id, whatsapp, active, is_admin, role') : { data: [] }
+        const mine = p => p.active !== false && String(p.whatsapp || '').replace(/\D/g, '').slice(-10) === ten
+        const ok = (people || []).some(p => mine(p) && (p.id === parsed.ref || p.is_admin === true || p.role === 'admin'))
+        if (!ok) { await sendText(from, 'This list is for JCM staff only.'); continue }
+        try {
+          const data = await dueListFor(busy, hq, parsed.ref)
+          const pdf = await buildDueListPdf(data, new Date())
+          const first = (data.person?.name || 'Staff').split(' ')[0].replace(/[^A-Za-z0-9]+/g, '')
+          await sendMedia(from, pdf, { kind: 'document', mime: 'application/pdf', filename: `JCM-Followups-${first}-${new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10)}.pdf`,
+            caption: data.list.length ? `*${data.list.length} follow-ups, Rs. ${Math.round(data.total).toLocaleString('en-IN')} due.* Tap Call next to each party.` : '*Your list is clear today.*' })
+        } catch (err) {
+          console.error('due list pdf failed:', err)
+          await sendText(from, 'Could not make your list right now. Open Payment Follow-up in JCM HQ.')
+        }
         continue
       }
       if (parsed?.kind === 'orders' || parsed?.kind === 'collect') {

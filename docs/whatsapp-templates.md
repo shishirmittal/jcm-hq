@@ -456,7 +456,7 @@ Samples (one per variable box):
 | 9 | order_dispatched | dispatched.png | Invoice PDF | ✅ |
 | 10 | gstr1_filing_reminder | any (live = GST banner) | — | ☐ |
 | 11 | portal_login_otp | — (Authentication) | Copy code | ☐ only if needed |
-| 12 | staff_followup_morning | staff-followup.png | Open my list (URL) | ☐ |
+| 12 | staff_followup_morning | staff-followup.png | Due List PDF (quick reply → own list with Call buttons) | ✅ (14 Oct) |
 | 13 | staff_followup_evening | staff-evening.png | Summary PDF (quick reply → collections PDF) | ✅ (14 Oct) |
 | 14 | staff_red_alert | staff-red-alert.png | Visit website (fixed URL) — created 14 Oct with one button | ✅ |
 | 15 | staff_purchase_bill | staff-purchase.png | Open Purchase Summary (URL) | ☐ |

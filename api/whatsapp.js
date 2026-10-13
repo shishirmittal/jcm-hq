@@ -91,6 +91,8 @@ const EXPECTED = [
 // Sample sends for the WhatsApp page — one entry per template in docs/whatsapp-templates.md.
 const HQ = 'https://hq.jcmretails.com'
 const cust = (kind, extra) => ({ params: name => TXN[kind].params({ party_name: name, ...extra }), opts: code => ({ headerImageUrl: BANNER(TXN[kind].banner), buttonPayloads: TXN[kind].buttons(code, extra) }) })
+// Sample Due List PDF button: a made-up person id → the tap answers with an empty list (or 'staff only').
+const SAMPLE_PERSON = '00000000-0000-0000-0000-000000000000'
 const SAMPLES = {
   txn_invoice: cust('invoice', { vch_no: 'JCM/1234', vch_date: '2026-10-12', amount: 45600, items: 7 }),
   txn_invoice_revised: { params: name => TXN.invoice.params({ party_name: name, vch_no: 'JCM/1234', vch_date: '2026-10-13', amount: 41800, items: 6 }), opts: code => ({ headerImageUrl: BANNER('invoice'), buttonPayloads: [`invpdf:${code}:JCM/1234`] }) },
@@ -103,7 +105,7 @@ const SAMPLES = {
   quotation_sent: { params: name => [name, 'Q-2026-118', '12 Oct 2026', '1,85,000'], opts: () => ({ headerImageUrl: BANNER('quotation'), buttonPayloads: ['quote:sample'] }) },
   order_dispatched: { params: name => [name, '6', 'JCM/1234'], opts: code => ({ headerImageUrl: BANNER('dispatched'), buttonPayloads: [`invpdf:${code}:JCM/1234`] }) },
   order_dispatched_photo: { params: name => [name, '6', 'JCM/1234'], opts: code => ({ headerImageUrl: BANNER('dispatched'), buttonPayloads: [`invpdf:${code}:JCM/1234`] }) },
-  staff_followup_morning: { params: () => ['Keshav', '12', '4,85,000', 'Badshah Electric ₹1,20,000, Nexus Enterprises ₹95,000, Shree Traders ₹60,000 and 9 more'], opts: () => ({ headerImageUrl: BANNER('staff-followup') }) },
+  staff_followup_morning: { params: () => ['Keshav', '12', '4,85,000', 'Badshah Electric ₹1,20,000, Nexus Enterprises ₹95,000, Shree Traders ₹60,000 and 9 more'], opts: () => ({ headerImageUrl: BANNER('staff-followup'), buttonPayloads: [`duelist:${SAMPLE_PERSON}`] }) },
   staff_followup_evening: { params: () => ['12 Oct 2026', '18', '7', 'Keshav: 8 done of 12, 4 left · 3 promised ₹1,10,000; Ratan: 10 done of 13, 3 left', '2 parties, ₹85,000 — check they came in'], opts: () => ({ headerImageUrl: BANNER('staff-evening'), buttonPayloads: [`collect:${todayIST()}`] }) },
   staff_red_alert: { params: () => ['Priti', 'Shishir', '2', 'Bill deleted: JCM/1180 Badshah Electric ₹12,400 (11 Oct); ₹0 rate: JCM/1190 line 3 (12 Oct)', 'Why was this bill deleted after printing?'], opts: () => ({ headerImageUrl: BANNER('staff-red-alert') }) },
   staff_purchase_bill: { params: () => ['Lapp India Pvt Ltd', 'LAPP/88812', '11 Oct 2026', '12: Cable 2.5 sqmm 500 × ₹28; Cable 4 sqmm 300 × ₹44 and 10 more', '88,000', 'Ratan at 11:42, 12 Oct 2026'], opts: () => ({ headerImageUrl: BANNER('staff-purchase') }) },
