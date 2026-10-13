@@ -2,7 +2,7 @@
   "regions": ["hnd1"],
   "git": {
     "deploymentEnabled": {
-      "main": false
+      "main": true
     }
   }
 }
