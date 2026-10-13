@@ -69,6 +69,7 @@ async function sendOrdersDaily(busy, switches) {
 
 // Every template HQ uses — the Templates tab compares this with what WhatsApp Manager has.
 const EXPECTED = [
+  { name: 'ledger_statement', used: 'Customer Card → Send ledger (PDF attached, QR Code button)' },
   { name: 'payment_reminder_20d', used: 'Payment reminder — Dealer, amber (over 20 days)' },
   { name: 'payment_reminder_40d', used: 'Payment reminder — Dealer, red (over 40 days)' },
   { name: 'retail_reminder_20d', used: 'Payment reminder — Retail, amber' },

@@ -1,5 +1,9 @@
 import { applyCors } from './_cors.js'
 import { createClient } from '@supabase/supabase-js'
+import { waConfigured, sendLogged, toWaNumber, niceDate } from './_wa-cloud.js'
+import { loadStatement, buildLedgerPdf } from './_ledger-pdf.js'
+import { ledgerNameByCode } from './_wa-replies.js'
+import { replyMedia } from './_wa-inbox.js'
 
 // Customer Card (JCM HQ → Sales → #customers) — page src/customers.js.
 //
@@ -25,6 +29,12 @@ import { createClient } from '@supabase/supabase-js'
 //   card   { party_code }     everything for one customer
 //   bills  { party_code, page }  20 bills per page, newest first
 //   ledger { party_code, page }  50 entries per page (needs party_ledger)
+//   send-ledger { party_code, phone }  (2026-10-13) the ledger PDF (invoice-portal style, api/_ledger-pdf.js) on
+//              WhatsApp as Meta template `ledger_statement` — document header = the PDF, body {{1}} ledger name
+//              {{2}} statement date {{3}} closing balance, quick reply "QR Code" (qr:<code>). If the template is not
+//              approved yet but the customer wrote in the last 24 h, the PDF goes as a plain document instead.
+//              Name always = the customer's LEDGER name from the Busy code (Shishir's rule); ledger-only accounts
+//              (Nexus Enterprises, Silver Electric House, Cash) are refused. Logged in wa_log kind 'ledger'.
 
 const SUPABASE_URL = 'https://cmtnzmfuasniicsdxyle.supabase.co'
 const SUPABASE_BUSY_URL = 'https://jlkjjqnmhsgefpluemyz.supabase.co'
@@ -56,7 +66,7 @@ export default async function handler(req, res) {
   const { data: userData, error: userErr } = await hq.auth.getUser(token)
   if (userErr || !userData?.user) return send(res, 401, { error: 'Please sign in again.' })
   const { data: profile } = await hq.from('profiles')
-    .select('id, role, is_admin, active, allowed_tabs').eq('id', userData.user.id).maybeSingle()
+    .select('id, name, email, role, is_admin, active, allowed_tabs').eq('id', userData.user.id).maybeSingle()
   if (!profile || profile.active === false) return send(res, 403, { error: 'Your account is not active.' })
   const isAdmin = profile.is_admin === true || profile.role === 'admin'
   const granted = Array.isArray(profile.allowed_tabs) && profile.allowed_tabs.includes(TAB_ID)
@@ -69,6 +79,10 @@ export default async function handler(req, res) {
     if (body.action === 'card') return send(res, 200, { ...await card(busy, hq, body), canFollowUp })
     if (body.action === 'bills') return send(res, 200, await bills(busy, body))
     if (body.action === 'ledger') return send(res, 200, await ledger(busy, body))
+    if (body.action === 'send-ledger') {
+      const r = await sendLedger(busy, body, profile.name || profile.email || 'HQ')
+      return send(res, r.error ? 400 : 200, r)
+    }
     return send(res, 400, { error: 'Unknown request.' })
   } catch (err) {
     console.error('customers error:', err)
@@ -271,4 +285,59 @@ async function ledger(busy, body) {
     ready: true, total: rows.length, page, pageSize: LEDGER_PAGE, asOf,
     rows: rows.slice(page * LEDGER_PAGE, page * LEDGER_PAGE + LEDGER_PAGE),
   }
+}
+
+// ---------------------------------------------------------------------------
+// Send ledger on WhatsApp (2026-10-13)
+const LEDGER_ONLY_CODES = new Set(['40355', '65494', '56680'])
+const LEDGER_ONLY = /nexus enterprises|silver electric house|^cash\b/i
+const LEDGER_TEMPLATE = 'ledger_statement'
+const money2 = n => (Math.round(Math.abs(n) * 100) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+async function sendLedger(busy, body, by) {
+  if (!waConfigured()) return { error: 'WhatsApp is not set up in HQ yet.' }
+  const code = String(Number(body.party_code) || '')
+  if (!code || code === '0') return { error: 'No customer code.' }
+  const number = toWaNumber(body.phone)
+  if (!number) return { error: 'That is not a valid 10-digit mobile number.' }
+  const name = await ledgerNameByCode(busy, code)
+  if (!name) return { error: 'This customer is not in the Busy data.' }
+  if (LEDGER_ONLY_CODES.has(code) || LEDGER_ONLY.test(name)) return { error: `${name} is a ledger-only account — its statement is not sent to anyone.` }
+  const stmt = await loadStatement(busy, code)
+  if (!stmt || !stmt.rows?.length) return { error: 'The ledger for this customer is not in HQ yet.' }
+
+  const pdf = await buildLedgerPdf({ partyName: name, stmt })
+  const safe = name.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30) || 'Account'
+  const filename = `JCM-Ledger-${safe}.pdf`
+  const path = `ledgers/${code}-${Date.now()}.pdf`
+  let url = null
+  for (const bucket of ['wa-docs', 'gst-reports']) {
+    const up = await busy.storage.from(bucket).upload(path, pdf, { contentType: 'application/pdf', upsert: true })
+    if (!up.error) { url = busy.storage.from(bucket).getPublicUrl(path).data.publicUrl; break }
+  }
+  if (!url) return { error: 'Could not store the PDF (storage bucket wa-docs missing).' }
+
+  const closing = Number(stmt.closing) || 0
+  const balance = closing ? `${money2(closing)} ${closing > 0 ? 'Dr (payable to us)' : 'Cr (in your favour)'}` : '0.00 (nothing due)'
+  const asOf = niceDate(stmt.asOf || new Date().toISOString())
+  const out = await sendLogged(busy, {
+    kind: 'ledger', to: number, template: LEDGER_TEMPLATE, params: [name, asOf, balance],
+    opts: { headerDocumentUrl: url, headerDocumentName: filename, buttonPayloads: [`qr:${code}`] },
+    ref: `ledger:${code}`, refName: name, by,
+  })
+  if (out.status === 'sent') return { ok: true, via: 'template', to: number, name }
+
+  // Template missing / not approved: allowed only if the customer wrote to us in the last 24 hours.
+  const since = new Date(Date.now() - 24 * 3600e3).toISOString()
+  const w = await busy.from('wa_messages').select('id').eq('number', number).eq('direction', 'in').gte('created_at', since).limit(1)
+  if (!w.error && w.data?.length) {
+    try {
+      await replyMedia(busy, number, pdf, { kind: 'document', mime: 'application/pdf', filename, caption: `*${name}*\nYour ledger statement up to ${asOf} is attached.\nClosing balance: ₹${balance}` }, by)
+      return { ok: true, via: 'direct', to: number, name }
+    } catch (err) { return { error: `Could not send: ${err.message}` } }
+  }
+  const notReady = /template|132001|does not exist|not found/i.test(out.error || '')
+  return { error: notReady
+    ? 'The WhatsApp template "ledger_statement" is not approved yet, and this customer has not written to us in the last 24 hours. Create the template in WhatsApp Manager (wording on the WhatsApp → Templates tab), then try again.'
+    : `Not sent: ${out.error || out.status}` }
 }

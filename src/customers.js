@@ -201,6 +201,7 @@ async function renderCard(container, code) {
       ${nums[0] ? `<a class="cu-act" href="tel:${nums[0]}">${icon('phone', 18)}<span>Call</span></a>` : ''}
       ${wa ? `<a class="cu-act" href="https://wa.me/91${wa}" target="_blank" rel="noopener">${icon('message', 18)}<span>WhatsApp</span></a>` : ''}
       ${d.canFollowUp ? `<a class="cu-act" href="#payment-followup">${icon('rupee', 18)}<span>Follow-up</span></a>` : ''}
+      ${d.ledgerReady ? `<button type="button" class="cu-act" id="cuSendLedger">${icon('file', 18)}<span>Send ledger</span></button>` : ''}
     </div>
 
     <section class="cu-card cu-due ${d.dues.amount > 0 ? 'is-owing' : 'is-clear'}">
@@ -252,6 +253,7 @@ async function renderCard(container, code) {
     }
     const lp = e.target.closest('#cuLedger [data-page]')
     if (lp) loadLedger(Number(lp.dataset.page))
+    if (e.target.closest('#cuSendLedger')) sendLedgerBox(d, mobiles, wa)
   })
 
   async function loadLedger(page) {
@@ -333,4 +335,53 @@ function followHtml(rows) {
       ${f.promisedAmount || f.promisedDate ? `<div class="cu-small">Promised ${f.promisedAmount ? esc(formatMoney(f.promisedAmount)) : ''}${f.promisedDate ? ` by ${esc(day(f.promisedDate))}` : ''}</div>` : ''}
       ${f.next ? `<div class="cu-small cu-muted">Next follow-up ${esc(day(f.next))}</div>` : ''}
     </div>`).join('')}</div>`
+}
+
+// Send ledger on WhatsApp (2026-10-13): ask first (which number), then api/customers.js send-ledger
+// builds the PDF and sends it as the `ledger_statement` template.
+function sendLedgerBox(d, mobiles, preferred) {
+  const ov = document.createElement('div')
+  ov.className = 'modal-overlay'
+  const opts = mobiles.map(n => `<label class="cu-pick"><input type="radio" name="cuLedNum" value="${esc(n)}" ${n === preferred ? 'checked' : ''}> ${esc(pretty(n))}</label>`).join('')
+  ov.innerHTML = `
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-header"><h2>Send ledger on WhatsApp?</h2><button type="button" class="btn-ghost btn-small" aria-label="Close" id="cuLedCancel">✕</button></div>
+      <p class="cu-led-name"><b>${esc(d.name)}</b><br><span class="cu-muted">Ledger statement PDF for this financial year${d.dues.amount > 0 ? ` · outstanding ${esc(formatMoney(Math.round(d.dues.amount)))}` : ''}</span></p>
+      <div class="cu-led-nums">
+        ${opts}
+        <label class="cu-pick"><input type="radio" name="cuLedNum" value="other" ${mobiles.length ? '' : 'checked'}> Other number
+          <input type="tel" id="cuLedOther" inputmode="numeric" maxlength="10" placeholder="10-digit mobile"></label>
+      </div>
+      <p class="cu-error" id="cuLedErr" hidden></p>
+      <div class="cu-led-btns">
+        <button type="button" class="btn-ghost" id="cuLedNo">Cancel</button>
+        <button type="button" class="btn-primary" id="cuLedGo">Send</button>
+      </div>
+    </div>`
+  document.body.appendChild(ov)
+  const close = () => ov.remove()
+  ov.querySelector('#cuLedCancel').addEventListener('click', close)
+  ov.querySelector('#cuLedNo').addEventListener('click', close)
+  ov.addEventListener('click', e => { if (e.target === ov) close() })
+  ov.querySelector('#cuLedOther').addEventListener('focus', () => { ov.querySelector('input[value="other"]').checked = true })
+  ov.querySelector('#cuLedGo').addEventListener('click', async () => {
+    const err = ov.querySelector('#cuLedErr')
+    const pick = ov.querySelector('input[name="cuLedNum"]:checked')?.value
+    const phone = pick === 'other' ? ov.querySelector('#cuLedOther').value.replace(/\D/g, '') : pick
+    if (!/^[6-9]\d{9}$/.test(phone || '')) { err.textContent = 'Pick a mobile number, or type a 10-digit one.'; err.hidden = false; return }
+    const go = ov.querySelector('#cuLedGo')
+    go.disabled = true; go.textContent = 'Sending…'; err.hidden = true
+    try {
+      const r = await call({ action: 'send-ledger', party_code: d.code, phone })
+      ov.querySelector('.modal').innerHTML = `
+        <div class="modal-header"><h2>Ledger sent ✓</h2></div>
+        <p>${esc(d.name)}'s ledger went to <b>${esc(pretty(phone))}</b>${r.via === 'direct' ? ' (as a PDF in their open chat)' : ''}.</p>
+        <p class="cu-muted">You can see it in WhatsApp → Inbox or Log.</p>
+        <div class="cu-led-btns"><button type="button" class="btn-primary" id="cuLedDone" aria-label="Close">OK</button></div>`
+      ov.querySelector('#cuLedDone').addEventListener('click', close)
+    } catch (e) {
+      err.textContent = e.message; err.hidden = false
+      go.disabled = false; go.textContent = 'Send'
+    }
+  })
 }

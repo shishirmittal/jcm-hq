@@ -94,3 +94,11 @@ body.dark-mode .cu-due.is-owing .cu-due-amt { color: #FF8A80; }
   .cu-table { font-size: 13px; }
   .cu-table th, .cu-table td { padding: 8px 9px; }
 }
+
+/* Send ledger box (2026-10-13) */
+button.cu-act { border: 0; font-family: inherit; cursor: pointer; }
+.cu-led-name { margin: 0 0 12px; line-height: 1.5; }
+.cu-led-nums { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.cu-pick { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 15px; }
+.cu-pick input[type="tel"] { flex: 1 1 140px; min-width: 0; height: 38px; padding: 0 10px; border: 1px solid var(--line, #ccc); border-radius: 8px; background: var(--bg, #fff); color: var(--text, inherit); font: inherit; }
+.cu-led-btns { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }

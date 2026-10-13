@@ -368,3 +368,26 @@ Samples: 12 Oct 2026 · 9 · 4 · 7 · Badshah Electric (not all ordered), Nexus
 | 16 | staff_purchase_summary | staff-purchase.png | Open Purchase Summary (URL) | ☐ |
 | 17 | gst_mismatch_summary | — (Document header) | — | ☐ |
 | 18 | staff_orders_pending | staff-orders.png | Open Material (URL) | ☐ |
+
+---
+
+## ledger_statement  (added 2026-10-13 — Customer Card → "Send ledger")
+
+- **Category:** Utility · **Language:** English
+- **Header:** Document (sample: any small PDF)
+- **Body:**
+
+```
+Namaste {{1}},
+
+Please find attached your account statement with J.C. Mittal & Sons up to {{2}}.
+
+Closing balance: ₹{{3}}
+
+Tap "QR Code" below to pay. For any query, simply reply to this message.
+```
+
+- **Samples:** {{1}} `Bandhu Bafna & Co.` · {{2}} `13 Oct 2026` · {{3}} `24,580.00 Dr (payable to us)`
+- **Footer:** `J.C. Mittal & Sons, Ratlam`
+- **Button:** Quick reply — `QR Code`
+- HQ fills: {{1}} ledger name from the Busy code, {{2}} date of the last ledger sync, {{3}} closing balance with Dr / Cr; the PDF is the ledger statement in the invoice-portal style; the button sends that customer's UPI QR.
