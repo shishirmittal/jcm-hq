@@ -985,7 +985,8 @@ async function runMorning(busy, hq, today) {
   return { people: results, unassigned }
 }
 
-async function runEvening(busy, hq, today) {
+// The evening numbers, shared by the 19:00 WhatsApp and its "Summary PDF" button (api/_collections-pdf.js).
+export async function eveningSummary(busy, hq, today) {
   const { byPerson, people, owners } = await dueByPerson(busy, hq)
   const startIST = new Date(`${today}T00:00:00+05:30`).toISOString()
   const [done, morning, promisedToday] = await Promise.all([
@@ -1012,6 +1013,7 @@ async function runEvening(busy, hq, today) {
   for (const t of tasks) if (t.task_id && !(byPerson.get(t.hq_user_id) || []).length) await markTaskDone(hq, t.task_id, t.hq_user_id)
 
   const lines = []
+  const rows = []
   let tDone = 0
   let tLeft = 0
   for (const person of people) {
@@ -1020,20 +1022,29 @@ async function runEvening(busy, hq, today) {
     if (!s.done && !left && !morningCount.get(person.id)) continue
     tDone += s.done
     tLeft += left
+    rows.push({ name: person.name, done: s.done, of: morningCount.get(person.id) ?? null, left, promised: s.promised, promisedAmt: s.promisedAmt, noAnswer: s.noAnswer,
+      dueList: (byPerson.get(person.id) || []).map(x => ({ name: x.name, balance: x.balance, reason: reasonText(x.reason) })) })
     lines.push(`• ${person.name}: ${s.done} done${morningCount.has(person.id) ? ` of ${morningCount.get(person.id)}` : ''}, ${left} left` +
       `${s.promised ? ` · ${s.promised} promised ${rupeesText(s.promisedAmt)}` : ''}${s.noAnswer ? ` · ${s.noAnswer} no answer` : ''}`)
   }
   const none = (byPerson.get('none') || []).length
   if (none) lines.push(`• Nobody assigned: ${none} parties due — set them in Assign groups.`)
   const promiseTotal = promisedToday.reduce((s, p) => s + (Number(p.promised_amount) || 0), 0)
-  // staff_followup_evening: {{1}} date, {{2}} done, {{3}} still due, {{4}} per person, {{5}} promised for today. Button → Today's follow-ups.
+  const unassigned = (byPerson.get('none') || []).map(x => ({ name: x.name, balance: x.balance, reason: reasonText(x.reason) }))
+  return { today, tDone, tLeft, lines, rows, unassigned, promisedToday, promiseTotal, people }
+}
+
+async function runEvening(busy, hq, today) {
+  const { tDone, tLeft, lines, promisedToday, promiseTotal, people } = await eveningSummary(busy, hq, today)
+  // staff_followup_evening: {{1}} date, {{2}} done, {{3}} still due, {{4}} per person, {{5}} promised for today.
+  // One quick reply "Summary PDF" (as created 2026-10-14) → payload collect:<date> → api/_collections-pdf.js.
   const perPerson = lines.map(l => l.replace(/^• /, '')).join('; ') || 'nobody had follow-ups today'
   const promised = promisedToday.length ? `${promisedToday.length} part${promisedToday.length === 1 ? 'y' : 'ies'}, ₹${inr(promiseTotal)} — check they came in` : 'none'
   const sent = []
   const switches = await waSwitches(busy)
   for (const admin of people.filter(p => p.isAdmin)) {
     const r = await sendLogged(busy, { kind: 'staff_evening', to: admin.whatsapp, template: 'staff_followup_evening',
-      params: [niceDate(today), String(tDone), String(tLeft), perPerson, promised], opts: { headerImageUrl: BANNER('staff-evening') },
+      params: [niceDate(today), String(tDone), String(tLeft), perPerson, promised], opts: { headerImageUrl: BANNER('staff-evening'), buttonPayloads: [`collect:${today}`] },
       ref: admin.id, refName: admin.name, by: 'HQ timer', switches })
     sent.push({ to: admin.name, whatsapp: r.status })
   }

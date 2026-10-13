@@ -5,6 +5,8 @@ import { loadStatement, buildLedgerPdf } from './_ledger-pdf.js'
 import { replyText, replyMedia, recordIncoming, recordStatuses } from './_wa-inbox.js'
 import { loadOrder, buildOrderPdf, loadInvoice, buildInvoicePdf } from './_doc-pdf.js'
 import { buildOrdersSummaryPdf } from './_orders-pdf.js'
+import { buildCollectionsSummaryPdf } from './_collections-pdf.js'
+import { eveningSummary } from './collections.js'
 import { materialOverview } from './_orders/lib/material.js'
 import { db as ordersDb } from './_orders/lib/db.js'
 
@@ -101,14 +103,15 @@ const WHICH = [
 //   "so:<code>:<order no>"        Order copy  (txn_order)         → PDF of the sales order from JCM Orders
 //   "invpdf:<code>:<invoice no>"  Invoice PDF (order_dispatched*) → PDF copy from the invoice portal's tables
 //   "orders:<YYYY-MM-DD>"         Summary PDF (staff_orders_pending, 17:30) → live orders & material report; staff numbers only
+//   "collect:<YYYY-MM-DD>"        Summary PDF (staff_followup_evening, 19:00) → live collections summary; staff numbers only
 function parsePayload(payload) {
   const p = String(payload || '')
   let m = /^(qr|ledger|inv|portal):(\d{1,9})$/.exec(p)
   if (m) return { kind: m[1] === 'inv' ? 'invoices' : m[1], code: m[2] }
   m = /^(so|invpdf):(\d{1,9}):(.{1,60})$/.exec(p)
   if (m) return { kind: m[1], code: m[2], ref: m[3] }
-  m = /^orders:(\d{4}-\d{2}-\d{2})$/.exec(p)
-  if (m) return { kind: 'orders', code: '0', ref: m[1] }
+  m = /^(orders|collect):(\d{4}-\d{2}-\d{2})$/.exec(p)
+  if (m) return { kind: m[1], code: '0', ref: m[2] }
   m = /^quote:(.{1,110})$/.exec(p)
   return m ? { kind: 'quote', code: '0', ref: m[1] } : null
 }
@@ -144,19 +147,25 @@ export async function handleIncoming(value) {
         else await sendMedia(from, pdf, { kind: 'document', mime: 'application/pdf', filename: `JCM-${(parsed.ref.split('/').pop() || 'Quotation.pdf').replace(/-\d{13}\.pdf$/, '.pdf')}`, caption: '*Your quotation is attached.*\n*आपका कोटेशन संलग्न है।*' })
         continue
       }
-      if (parsed?.kind === 'orders') {
-        // Internal report: answer only numbers that belong to an active HQ person (Manage Users → WhatsApp).
+      if (parsed?.kind === 'orders' || parsed?.kind === 'collect') {
+        // Internal reports: answer only numbers that belong to an active HQ person (Manage Users → WhatsApp).
         const hq = hqClient()
         const ten = String(from).slice(-10)
         const { data: people } = hq ? await hq.from('profiles').select('whatsapp, active').not('whatsapp', 'is', null) : { data: [] }
         const staff = (people || []).some(p => p.active !== false && String(p.whatsapp || '').replace(/\D/g, '').slice(-10) === ten)
         if (!staff) { await sendText(from, 'This report is for JCM staff only.'); continue }
+        const day = new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10)
         try {
-          const pdf = await buildOrdersSummaryPdf(await materialOverview(ordersDb()), new Date())
-          await sendMedia(from, pdf, { kind: 'document', mime: 'application/pdf', filename: `JCM-Orders-Material-${new Date().toISOString().slice(0, 10)}.pdf`, caption: '*Orders & material — as on now.*' })
+          if (parsed.kind === 'orders') {
+            const pdf = await buildOrdersSummaryPdf(await materialOverview(ordersDb()), new Date())
+            await sendMedia(from, pdf, { kind: 'document', mime: 'application/pdf', filename: `JCM-Orders-Material-${day}.pdf`, caption: '*Orders & material — as on now.*' })
+          } else {
+            const pdf = await buildCollectionsSummaryPdf(await eveningSummary(busy, hq, day), new Date())
+            await sendMedia(from, pdf, { kind: 'document', mime: 'application/pdf', filename: `JCM-Collections-${day}.pdf`, caption: '*Collections summary — as on now.*' })
+          }
         } catch (err) {
-          console.error('orders summary pdf failed:', err)
-          await sendText(from, 'Could not make the summary right now. Open Material in JCM HQ.')
+          console.error(`${parsed.kind} summary pdf failed:`, err)
+          await sendText(from, `Could not make the summary right now. Open ${parsed.kind === 'orders' ? 'Material' : 'Payment Follow-up'} in JCM HQ.`)
         }
         continue
       }
