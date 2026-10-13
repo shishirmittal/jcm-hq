@@ -43,7 +43,13 @@ Your invoice has been generated.
 Thank you for your business.
 J.C. Mittal and Sons, Ratlam
 ```
-Samples: {{1}} Badshah Electric · {{2}} JCM/1234 · {{3}} 12 Oct 2026 · {{4}} 45,600 · {{5}} 7
+Samples (one per variable box):
+
+- {{1}} `Badshah Electric`
+- {{2}} `JCM/1234`
+- {{3}} `12 Oct 2026`
+- {{4}} `45,600`
+- {{5}} `7`
 
 ### 2. `txn_receipt` — Payment received  ✅ created by Shishir 12 Oct
 Header image: `receipt.png` · Buttons: Quick reply **Ledger**
@@ -61,7 +67,12 @@ It has been credited to your account with us. Tap Ledger below for your updated 
 
 J.C. Mittal and Sons, Ratlam
 ```
-Samples: Badshah Electric · 25,000 · 12 Oct 2026 · R/221
+Samples (one per variable box):
+
+- {{1}} `Badshah Electric`
+- {{2}} `25,000`
+- {{3}} `12 Oct 2026`
+- {{4}} `R/221`
 
 ### 3. `txn_purchase` — Your bill is entered (to the supplier)
 Header image: `purchase.png` · Buttons: none
@@ -80,7 +91,13 @@ If any detail on the bill differs from your records, please reply here within 2 
 
 J.C. Mittal and Sons, Ratlam
 ```
-Samples: Lapp India Pvt Ltd · INV-5521 · 12 Oct 2026 · 88,000 · 12
+Samples (one per variable box):
+
+- {{1}} `Lapp India Pvt Ltd`
+- {{2}} `INV-5521`
+- {{3}} `12 Oct 2026`
+- {{4}} `88,000`
+- {{5}} `12`
 
 ### 4. `txn_payment` — Payment sent (to the supplier)
 Header image: `payment.png` · Buttons: none
@@ -98,7 +115,12 @@ Kindly confirm once it reflects in your account, and share the receipt / adjustm
 
 J.C. Mittal and Sons, Ratlam
 ```
-Samples: Lapp India Pvt Ltd · 1,20,000 · 12 Oct 2026 · P/310
+Samples (one per variable box):
+
+- {{1}} `Lapp India Pvt Ltd`
+- {{2}} `1,20,000`
+- {{3}} `12 Oct 2026`
+- {{4}} `P/310`
 
 ### 5. `txn_order` — Order booked  ✅ created by Shishir 12 Oct
 Header image: `order.png` · Buttons: **Call phone number** "Call for changes" (+91 91091 05999), then Quick reply **Order copy** (HQ replies with a PDF of the order from JCM Orders)
@@ -117,7 +139,13 @@ We will message you again when the material is dispatched. If anything changes, 
 
 J.C. Mittal and Sons, Ratlam
 ```
-Samples: Badshah Electric · SO/261/45 · 12 Oct 2026 · 5 · 32,500
+Samples (one per variable box):
+
+- {{1}} `Badshah Electric`
+- {{2}} `SO/261/45`
+- {{3}} `12 Oct 2026`
+- {{4}} `5`
+- {{5}} `32,500`
 
 ### 6a. `txn_credit_note` — Credit note
 Header image: `credit-note.png` · Buttons: Quick reply **Ledger**
@@ -135,7 +163,12 @@ This amount has been credited to your account with us. Tap Ledger below for your
 
 J.C. Mittal and Sons, Ratlam
 ```
-Samples: Badshah Electric · CN/18 · 12 Oct 2026 · 1,800
+Samples (one per variable box):
+
+- {{1}} `Badshah Electric`
+- {{2}} `CN/18`
+- {{3}} `12 Oct 2026`
+- {{4}} `1,800`
 
 ### 6b. `txn_debit_note` — Debit note
 Header image: `debit-note.png` · Buttons: Quick reply **Ledger**
@@ -153,7 +186,12 @@ This amount has been debited to your account with us. Tap Ledger below for your 
 
 J.C. Mittal and Sons, Ratlam
 ```
-Samples: Badshah Electric · DN/7 · 12 Oct 2026 · 950
+Samples (one per variable box):
+
+- {{1}} `Badshah Electric`
+- {{2}} `DN/7`
+- {{3}} `12 Oct 2026`
+- {{4}} `950`
 
 ### 7. `quotation_sent` — Quotation  ✅ created by Shishir 12 Oct
 Header image: `quotation.png` · Buttons: Quick reply **PDF Copy** (HQ replies with the quotation PDF)
@@ -172,7 +210,12 @@ Prices are valid for 7 days. Reply here for any change in quantity or specificat
 
 J.C. Mittal and Sons, Ratlam
 ```
-Samples: Ronak Moonat · Q-2026-118 · 12 Oct 2026 · 1,85,000
+Samples (one per variable box):
+
+- {{1}} `Ronak Moonat`
+- {{2}} `Q-2026-118`
+- {{3}} `12 Oct 2026`
+- {{4}} `1,85,000`
 
 ---
 
@@ -191,7 +234,11 @@ Your material has been dispatched.
 
 J.C. Mittal and Sons, Ratlam
 ```
-Samples: Badshah Electric · 6 · JCM/1234
+Samples (one per variable box):
+
+- {{1}} `Badshah Electric`
+- {{2}} `6`
+- {{3}} `JCM/1234`
 
 ### 9. `order_dispatched` — Dispatched, no LR (self-pickup / local delivery)  ✅ created by Shishir 12 Oct
 Header image: `dispatched.png` · Buttons: Quick reply **Invoice PDF** · Same body as 8.
@@ -211,7 +258,11 @@ Please check your GSTR-1 and file or amend it so that we can claim the input tax
 
 Awaiting your reply in the next 3 working days on this.
 ```
-Samples: Lapp India Pvt Ltd · August 2026 · 1. INV-5521 dt 11 Aug 2026 (₹88,000); 2. INV-5602 dt 20 Aug 2026 (₹12,400)
+Samples (one per variable box):
+
+- {{1}} `Lapp India Pvt Ltd`
+- {{2}} `August 2026`
+- {{3}} `1. INV-5521 dt 11 Aug 2026 (₹88,000); 2. INV-5602 dt 20 Aug 2026 (₹12,400)`
 
 ### 11. `portal_login_otp` — Invoice-portal login code (only if the portal sends OTPs on WhatsApp)
 Category **Authentication** (not Utility). Meta builds the text itself; you only tick the options:
@@ -241,7 +292,12 @@ What to do:
 
 Reminders by WhatsApp are sent by HQ automatically — your job is the calls.
 ```
-Samples: Keshav · 12 · 4,85,000 · Badshah Electric ₹1,20,000, Nexus Enterprises ₹95,000, Shree Traders ₹60,000 and 9 more
+Samples (one per variable box):
+
+- {{1}} `Keshav`
+- {{2}} `12`
+- {{3}} `4,85,000`
+- {{4}} `Badshah Electric ₹1,20,000, Nexus Enterprises ₹95,000, Shree Traders ₹60,000 and 9 more`
 
 ### 13. `staff_followup_evening` — Collections summary (19:00, admins)
 Header image: `staff-evening.png` · Buttons: **Visit website** → `https://hq.jcmretails.com/#payment-followup/today`, button text "Open Today's follow-ups"
@@ -256,7 +312,13 @@ By person: {{4}}
 
 Promised for today: {{5}}
 ```
-Samples: 12 Oct 2026 · 18 · 7 · Keshav: 8 done of 12, 4 left · 3 promised ₹1,10,000; Ratan: 10 done of 13, 3 left · 2 parties, ₹85,000 — check they came in
+Samples (one per variable box):
+
+- {{1}} `12 Oct 2026`
+- {{2}} `18`
+- {{3}} `7`
+- {{4}} `Keshav: 8 done of 12, 4 left; Ratan: 10 done of 13, 3 left`
+- {{5}} `2 parties, ₹85,000 — check they came in`
 
 ### 14. `staff_red_alert` — Explanation needed (to the person who made the entry)  ✅ created 14 Oct with ONE button (Visit website, fixed link) — HQ no longer sends the Reply-to-admin link
 Header image: `staff-red-alert.png` · Buttons (two URL buttons):
@@ -272,7 +334,13 @@ Question: {{5}}
 
 Please answer today in JCM HQ → My Explanations (first button). To talk it over, the second button opens {{2}}'s WhatsApp. The task is also on your Task Board.
 ```
-Samples: Priti · Shishir · 2 · Bill deleted: JCM/1180 Badshah Electric ₹12,400 (11 Oct); ₹0 rate: JCM/1190 line 3 (12 Oct) · Why was this bill deleted after printing?
+Samples (one per variable box):
+
+- {{1}} `Priti`
+- {{2}} `Shishir`
+- {{3}} `2`
+- {{4}} `Bill deleted: JCM/1180 Badshah Electric ₹12,400 (11 Oct); ₹0 rate: JCM/1190 line 3 (12 Oct)`
+- {{5}} `Why was this bill deleted after printing?`
 
 ### 15. `staff_purchase_bill` — Purchase bill entered (one per bill)
 Header image: `staff-purchase.png` · Buttons: **Visit website** → `https://hq.jcmretails.com/#purchases`, text "Open Purchase Summary"
@@ -288,7 +356,14 @@ Entered by: {{6}}
 
 Check the items and rates against the goods received. Anything wrong → note it on the Task Board today.
 ```
-Samples: Lapp India Pvt Ltd · LAPP/88812 · 11 Oct 2026 · 12: Cable 2.5 sqmm 500 × ₹28; Cable 4 sqmm 300 × ₹44 and 10 more · 88,000 · Ratan at 11:42, 12 Oct 2026
+Samples (one per variable box):
+
+- {{1}} `Lapp India Pvt Ltd`
+- {{2}} `LAPP/88812`
+- {{3}} `11 Oct 2026`
+- {{4}} `12: Cable 2.5 sqmm 500 × ₹28; Cable 4 sqmm 300 × ₹44 and 10 more`
+- {{5}} `88,000`
+- {{6}} `Ratan at 11:42, 12 Oct 2026`
 
 ### 15b. `staff_purchase_pdf` — Purchase bill entered, with the bill PDF (replaces 15, 2026-10-13)
 Category **Utility** · Language **English** · Header: **Document** (sample: download https://hq.jcmretails.com/wa/sample-purchase.pdf and upload it) · Buttons: **Visit website** → `https://hq.jcmretails.com/#purchases`, text "Open Purchase Summary"
@@ -300,7 +375,12 @@ Entered by {{4}}
 
 Items, rates and GST are in the PDF above. Please check them against the goods received.
 ```
-Samples: Emechem (Indore) · 4892 · 58,620 · Ruchir Mittal at 8:47 pm, 12 Oct 2026
+Samples (one per variable box):
+
+- {{1}} `Emechem (Indore)`
+- {{2}} `4892`
+- {{3}} `58,620`
+- {{4}} `Ruchir Mittal at 8:47 pm, 12 Oct 2026`
 
 Until this one is approved, HQ keeps sending 15 (`staff_purchase_bill`) automatically. Once it is approved, 15 is no longer used.
 
@@ -316,7 +396,13 @@ Parties: {{5}}
 
 Open Purchase Summary to see every bill with its items.
 ```
-Samples: 12 Oct 2026 · 6 · 41 · 3,42,000 · Lapp India ₹88,000; Daikin ₹1,20,000; Atomberg ₹54,000 and 3 more
+Samples (one per variable box):
+
+- {{1}} `12 Oct 2026`
+- {{2}} `6`
+- {{3}} `41`
+- {{4}} `3,42,000`
+- {{5}} `Lapp India ₹88,000; Daikin ₹1,20,000; Atomberg ₹54,000 and 3 more`
 
 ### 17. `gst_mismatch_summary` — GSTR-2A mismatch report (PDF to staff)
 Header: **Document** (upload any small PDF as the sample; live = the report PDF) · Buttons: none
@@ -324,7 +410,11 @@ Header: **Document** (upload any small PDF as the sample; live = the report PDF)
 ```
 {{1}} has sent the GSTR-2A mismatch summary for {{2}} — see the attached PDF. Please go through every item and clear all of them within 2 days, by {{3}}. Reply here if anything is unclear.
 ```
-Samples: Shishir · August 2026 · 14 Oct 2026
+Samples (one per variable box):
+
+- {{1}} `Shishir`
+- {{2}} `August 2026`
+- {{3}} `14 Oct 2026`
 
 ### 18. `staff_orders_pending` — Orders & material (17:30, admins)  ✅ created by Shishir 14 Oct — one quick reply **Summary PDF** (HQ replies with the live orders & material PDF, staff numbers only)
 Header image: `staff-orders.png` · Buttons: **Visit website** → `https://hq.jcmretails.com/#material`, text "Open Material"
@@ -340,7 +430,13 @@ Waiting: {{5}}
 
 Open Material in JCM HQ to order what is short and set expected dates.
 ```
-Samples: 12 Oct 2026 · 9 · 4 · 7 · Badshah Electric (not all ordered), Nexus Enterprises, Shree Traders and 4 more
+Samples (one per variable box):
+
+- {{1}} `12 Oct 2026`
+- {{2}} `9`
+- {{3}} `4`
+- {{4}} `7`
+- {{5}} `Badshah Electric (not all ordered), Nexus Enterprises, Shree Traders and 4 more`
 
 ---
 
