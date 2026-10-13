@@ -47,7 +47,7 @@ async function tick(busy, force) {
 }
 
 // staff_orders_pending: {{1}} date, {{2}} items to order, {{3}} ordered but late, {{4}} parties waiting,
-// {{5}} who is waiting (flat). To admins. Button → Material page.
+// {{5}} who is waiting (flat). To admins. Quick reply "Summary PDF" (orders:<date>) → live report PDF (api/_orders-pdf.js).
 async function sendOrdersDaily(busy, switches) {
   const hq = createClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { autoRefreshToken: false, persistSession: false } })
   const ov = await materialOverview(ordersDb())
@@ -61,7 +61,7 @@ async function sendOrdersDaily(busy, switches) {
   for (const a of (admins || []).filter(p => p.active !== false && (p.is_admin === true || p.role === 'admin') && p.whatsapp)) {
     const r = await sendLogged(busy, { kind: 'staff_orders', to: a.whatsapp, template: 'staff_orders_pending',
       params: [niceDate(todayIST()), String(toOrder), String(late), String(parties.length), who || 'nobody'],
-      opts: { headerImageUrl: BANNER('staff-orders') }, ref: todayIST(), refName: a.name, by: 'HQ timer', switches })
+      opts: { headerImageUrl: BANNER('staff-orders'), buttonPayloads: [`orders:${todayIST()}`] }, ref: todayIST(), refName: a.name, by: 'HQ timer', switches })
     sent.push({ to: a.name, status: r.status })
   }
   return { toOrder, late, waiting: parties.length, sent }
@@ -109,7 +109,7 @@ const SAMPLES = {
   staff_purchase_bill: { params: () => ['Lapp India Pvt Ltd', 'LAPP/88812', '11 Oct 2026', '12: Cable 2.5 sqmm 500 × ₹28; Cable 4 sqmm 300 × ₹44 and 10 more', '88,000', 'Ratan at 11:42, 12 Oct 2026'], opts: () => ({ headerImageUrl: BANNER('staff-purchase') }) },
   staff_purchase_pdf: { params: () => ['Emechem (Indore)', '4892', '58,620', 'Ruchir Mittal at 8:47 pm, 12 Oct 2026'], opts: () => ({ headerDocumentUrl: `${HQ_URL}/wa/sample-purchase.pdf`, headerDocumentName: 'Purchase-4892-Emechem-Indore.pdf' }) },
   staff_purchase_summary: { params: () => ['12 Oct 2026', '6', '41', '3,42,000', 'Lapp India ₹88,000; Daikin ₹1,20,000; Atomberg ₹54,000 and 3 more'], opts: () => ({ headerImageUrl: BANNER('staff-purchase') }) },
-  staff_orders_pending: { params: () => ['12 Oct 2026', '9', '4', '2,15,000', 'Badshah Electric (3 days), Nexus Enterprises (2 days), Shree Traders (today) and 6 more'], opts: () => ({ headerImageUrl: BANNER('staff-orders') }) },
+  staff_orders_pending: { params: () => ['12 Oct 2026', '9', '4', '2,15,000', 'Badshah Electric (3 days), Nexus Enterprises (2 days), Shree Traders (today) and 6 more'], opts: () => ({ headerImageUrl: BANNER('staff-orders'), buttonPayloads: [`orders:${todayIST()}`] }) },
 }
 
 function send(res, status, body) {

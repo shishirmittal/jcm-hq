@@ -326,7 +326,7 @@ Header: **Document** (upload any small PDF as the sample; live = the report PDF)
 ```
 Samples: Shishir · August 2026 · 14 Oct 2026
 
-### 18. `staff_orders_pending` — Orders & material (17:30, admins)
+### 18. `staff_orders_pending` — Orders & material (17:30, admins)  ✅ created by Shishir 14 Oct — one quick reply **Summary PDF** (HQ replies with the live orders & material PDF, staff numbers only)
 Header image: `staff-orders.png` · Buttons: **Visit website** → `https://hq.jcmretails.com/#material`, text "Open Material"
 
 ```
@@ -367,7 +367,7 @@ Samples: 12 Oct 2026 · 9 · 4 · 7 · Badshah Electric (not all ordered), Nexus
 | 15b | staff_purchase_pdf | — (Document header) | Open Purchase Summary (URL) | ☐ |
 | 16 | staff_purchase_summary | staff-purchase.png | Open Purchase Summary (URL) | ☐ |
 | 17 | gst_mismatch_summary | — (Document header) | — | ☐ |
-| 18 | staff_orders_pending | staff-orders.png | Open Material (URL) | ☐ |
+| 18 | staff_orders_pending | staff-orders.png | Summary PDF (quick reply → live report PDF) | ✅ |
 
 ---
 

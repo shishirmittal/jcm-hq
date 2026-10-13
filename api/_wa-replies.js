@@ -4,6 +4,9 @@ import { qrCardPng } from './_qr-card.js'
 import { loadStatement, buildLedgerPdf } from './_ledger-pdf.js'
 import { replyText, replyMedia, recordIncoming, recordStatuses } from './_wa-inbox.js'
 import { loadOrder, buildOrderPdf, loadInvoice, buildInvoicePdf } from './_doc-pdf.js'
+import { buildOrdersSummaryPdf } from './_orders-pdf.js'
+import { materialOverview } from './_orders/lib/material.js'
+import { db as ordersDb } from './_orders/lib/db.js'
 
 // Answers the quick-reply buttons on the payment-reminder templates (QR Code / Ledger / Last 3 Invoices).
 // Called from the WhatsApp webhook in api/whatsapp.js. Never throws to the caller.
@@ -97,12 +100,15 @@ const WHICH = [
 //   "qr:<code>", "ledger:<code>", "inv:<code>", "portal:<code>"   (code = the customer's Busy account code)
 //   "so:<code>:<order no>"        Order copy  (txn_order)         → PDF of the sales order from JCM Orders
 //   "invpdf:<code>:<invoice no>"  Invoice PDF (order_dispatched*) → PDF copy from the invoice portal's tables
+//   "orders:<YYYY-MM-DD>"         Summary PDF (staff_orders_pending, 17:30) → live orders & material report; staff numbers only
 function parsePayload(payload) {
   const p = String(payload || '')
   let m = /^(qr|ledger|inv|portal):(\d{1,9})$/.exec(p)
   if (m) return { kind: m[1] === 'inv' ? 'invoices' : m[1], code: m[2] }
   m = /^(so|invpdf):(\d{1,9}):(.{1,60})$/.exec(p)
   if (m) return { kind: m[1], code: m[2], ref: m[3] }
+  m = /^orders:(\d{4}-\d{2}-\d{2})$/.exec(p)
+  if (m) return { kind: 'orders', code: '0', ref: m[1] }
   m = /^quote:(.{1,110})$/.exec(p)
   return m ? { kind: 'quote', code: '0', ref: m[1] } : null
 }
@@ -136,6 +142,22 @@ export async function handleIncoming(value) {
         else for (const bucket of ['wa-docs', 'gst-reports']) { const d = await busy.storage.from(bucket).download(parsed.ref); if (!d.error && d.data) { pdf = Buffer.from(await d.data.arrayBuffer()); break } }
         if (!pdf) await sendText(from, 'Thank you. Our team will send the quotation PDF to you here shortly.')
         else await sendMedia(from, pdf, { kind: 'document', mime: 'application/pdf', filename: `JCM-${(parsed.ref.split('/').pop() || 'Quotation.pdf').replace(/-\d{13}\.pdf$/, '.pdf')}`, caption: '*Your quotation is attached.*\n*आपका कोटेशन संलग्न है।*' })
+        continue
+      }
+      if (parsed?.kind === 'orders') {
+        // Internal report: answer only numbers that belong to an active HQ person (Manage Users → WhatsApp).
+        const hq = hqClient()
+        const ten = String(from).slice(-10)
+        const { data: people } = hq ? await hq.from('profiles').select('whatsapp, active').not('whatsapp', 'is', null) : { data: [] }
+        const staff = (people || []).some(p => p.active !== false && String(p.whatsapp || '').replace(/\D/g, '').slice(-10) === ten)
+        if (!staff) { await sendText(from, 'This report is for JCM staff only.'); continue }
+        try {
+          const pdf = await buildOrdersSummaryPdf(await materialOverview(ordersDb()), new Date())
+          await sendMedia(from, pdf, { kind: 'document', mime: 'application/pdf', filename: `JCM-Orders-Material-${new Date().toISOString().slice(0, 10)}.pdf`, caption: '*Orders & material — as on now.*' })
+        } catch (err) {
+          console.error('orders summary pdf failed:', err)
+          await sendText(from, 'Could not make the summary right now. Open Material in JCM HQ.')
+        }
         continue
       }
       const name = parsed && busy ? await ledgerNameByCode(busy, parsed.code) : ''
