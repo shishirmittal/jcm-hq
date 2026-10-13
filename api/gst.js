@@ -349,7 +349,7 @@ export function reconcile(rows2a, rowsPur, parties, marks, from, to = from) {
   const partyByCode = new Map(parties.map(p => [p.party_code, p]))
   const partyByGstin = groupBy(parties, p => p.gstin)
   for (const r of rows) {
-    if (r.bucket !== 'not_in_2a' || contacts[r.gstin]) continue
+    if (contacts[r.gstin]) continue
     const c = partyByCode.get(r.party_code) || (partyByGstin.get(r.gstin) || [])[0]
     if (c) contacts[r.gstin] = { name: c.party_name, mobile: c.mobile, whatsapp: c.whatsapp, email: c.email, station: c.station }
   }

@@ -15,15 +15,15 @@ const LINE = '#e3e7ee', RED = '#b42318'
 
 export const BUCKET_LABEL = {
   missing_busy: 'Missing in Busy', not_in_2a: 'Not in GSTR-2A', amount: 'Amount mismatch',
-  docno: 'Document no. mismatch', sequence: 'Odd numbering', zero: '₹0 value (FOC / scheme)',
+  docno: 'Document no. mismatch', sequence: 'Odd numbering', zero: 'Rs. 0 value (FOC / scheme)',
 }
 const BUCKET_HINT = {
   missing_busy: 'In the GST portal (2A) but not entered in Busy — get these bills to the accountant and enter them.',
   not_in_2a: 'Booked in Busy but the supplier has not filed it in GSTR-1 — follow up with the supplier.',
-  amount: 'Same invoice on both sides, but taxable or tax differs by more than ₹1 — check the bill and correct Busy or ask the supplier.',
+  amount: 'Same invoice on both sides, but taxable or tax differs by more than Rs. 1 — check the bill and correct Busy or ask the supplier.',
   docno: 'Same invoice (amounts match), invoice number typed differently — correct the number in Busy. Low priority.',
   sequence: 'A supplier invoice number booked twice, or a later bill with a smaller number — check the date or number typed.',
-  zero: '₹0 purchase vouchers (FOC, replacement, scheme) — confirm each one is genuine.',
+  zero: 'Rs. 0 purchase vouchers (FOC, replacement, scheme) — confirm each one is genuine.',
 }
 
 const monthName = m => new Date(`${m}-01T00:00:00+05:30`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' })
@@ -41,6 +41,13 @@ const dmy = s => {
   if (!s) return ''
   const d = new Date(`${String(s).slice(0, 10)}T00:00:00+05:30`)
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
+}
+// Indian mobile written any usual way → { digits: 10 digits, display: '98765 43210' }, or null.
+function telNumber(raw) {
+  let d = String(raw || '').replace(/\D/g, '')
+  if (d.length === 12 && d.startsWith('91')) d = d.slice(2)
+  if (d.length === 11 && d.startsWith('0')) d = d.slice(1)
+  return /^[6-9]\d{9}$/.test(d) ? { digits: d, display: `${d.slice(0, 5)} ${d.slice(5)}` } : null
 }
 const longDate = d => new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' })
 
@@ -146,8 +153,17 @@ export function buildMismatchPdf({ period, kinds, rows, counts, totals, sender, 
         ensure(64)
         const c = contacts[r0.gstin]
         const sub = [r0.gstin, c?.station, (c?.whatsapp || c?.mobile) ? String(c.whatsapp || c.mobile) : null].filter(Boolean).join('  ·  ')
-        doc.fillColor(INK).font('SB').fontSize(9).text(r0.party || (r0.new_party ? '(not in Busy party master)' : r0.gstin), L, y, { lineBreak: false })
-        doc.fillColor(GREY).font('M').fontSize(6.5).text(sub, L, y + 12, { lineBreak: false })
+        doc.fillColor(INK).font('SB').fontSize(9).text(r0.party || (r0.new_party ? '(not in Busy party master)' : r0.gstin), L, y, { lineBreak: false, width: FULL - 120 })
+        doc.fillColor(GREY).font('M').fontSize(6.5).text(sub, L, y + 12, { lineBreak: false, width: FULL - 120 })
+        // Tap-to-call pill (tel: link) for parties that have a mobile in Busy, so staff can ring
+        // the supplier straight from the PDF on their phone.
+        const tel = telNumber(c?.whatsapp || c?.mobile)
+        if (tel) {
+          const bw = 104, bh = 16, bx = R - bw, by = y + 1
+          doc.roundedRect(bx, by, bw, bh, 8).fill('#0f7b4a')
+          doc.fillColor('#ffffff').font('SB').fontSize(7.5).text(`Call  ${tel.display}`, bx, by + 4.5, { width: bw, align: 'center', lineBreak: false })
+          doc.link(bx, by, bw, bh, `tel:+91${tel.digits}`)
+        }
         y += 24
         let x = L
         for (const [t, w, al] of cols) { label(t, x + 2, y, { width: w * scale - 6, align: al === 'r' ? 'right' : 'left' }); x += w * scale }
