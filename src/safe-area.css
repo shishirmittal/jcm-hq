@@ -26,3 +26,12 @@ body.native-app .pur-drawer { padding-top: calc(16px + env(safe-area-inset-top, 
 
 /* Pop-ups that are nearly full screen: keep them inside the two bars. */
 body.native-app .modal-overlay { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); box-sizing: border-box; }
+
+/* The Orders tab (staff tablet screen inside HQ) has its own name bar instead of
+   .app-header: step it down below the status bar too. */
+body.native-app .tb-hq .tb-head,
+body.native-app .tb-hq .tb-sheethead { box-sizing: border-box; padding-top: env(safe-area-inset-top, 0px); }
+body.native-app .tb-hq .tb-head,
+body.native-app .tb-hq .tb-sheethead { height: calc(88px + env(safe-area-inset-top, 0px)); }
+body.native-app .tb-hq .tb-phone .tb-head,
+body.native-app .tb-hq .tb-phone .tb-sheethead { height: calc(60px + env(safe-area-inset-top, 0px)); }

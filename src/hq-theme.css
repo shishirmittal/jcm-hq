@@ -239,6 +239,11 @@ body.native-app .logo-small { font-family: 'Inter', system-ui, sans-serif; font-
 .app-header > div:first-child { min-width: 0; flex: 1 1 auto; }
 .app-header .logo-small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 8px; }
 .app-header .logo-small svg { flex: none; }
+/* The left group (☰ + title) may shrink so a long title ends in "…" instead of
+   running into the bell / Refresh on a phone; the buttons on the right keep their size. */
+.app-header > div:first-child:has(.logo-small) { min-width: 0; flex: 1 1 auto; }
+.app-header > div:first-child:has(.logo-small) ~ * { flex: none; }
+.app-header > .logo-small { min-width: 0; flex: 1 1 auto; }
 .app-header .btn-small { white-space: nowrap; flex: none; }
 @media (max-width: 799px) {
   /* Header buttons that carry an icon show only the icon on a phone. */

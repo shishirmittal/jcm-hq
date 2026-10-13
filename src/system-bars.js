@@ -10,7 +10,7 @@
 import { SystemBars, SystemBarsStyle } from '@capacitor/core'
 import { IS_NATIVE } from './native.js'
 
-const TOP_SOURCES = '.app-header, .jo-hqhead, .stock-header, .im-topbar, .login-page'
+const TOP_SOURCES = '.app-header, .jo-hqhead, .stock-header, .tb-sheethead, .tb-head, .im-topbar, .login-page'
 const BOTTOM_SOURCES = '.app-tabs'
 
 function visible(el) {
