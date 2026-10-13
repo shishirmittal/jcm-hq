@@ -106,3 +106,9 @@ insert into storage.buckets (id, name, public) values ('wa-docs', 'wa-docs', tru
 -- 2026-10-12: transaction messages go to the billed party (Busy Billing/Shipping Details); the ledger name is kept too.
 alter table wa_outbox add column if not exists ledger_name text;
 notify pgrst, 'reload schema';
+
+-- 2026-10-13: edits / deletes after first save (busy-sync/sync-transactions.js) — run already.
+alter table wa_outbox add column if not exists revision int not null default 0;  -- 1+ = corrected copy
+alter table wa_outbox add column if not exists sent_amount numeric;              -- amount in the first message
+alter table wa_outbox add column if not exists after_send text;                  -- 'changed' / 'deleted' after it went
+alter table wa_outbox add column if not exists changed_at timestamptz;

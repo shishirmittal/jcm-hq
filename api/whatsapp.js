@@ -68,7 +68,9 @@ async function sendOrdersDaily(busy, switches) {
 }
 
 // Every template HQ uses — the Templates tab compares this with what WhatsApp Manager has.
+const PAUSE_KEY = 'pause:customers'
 const EXPECTED = [
+  { name: 'txn_invoice_revised', used: 'Corrected invoice (invoice changed in Busy after its message went)' },
   { name: 'ledger_statement', used: 'Customer Card → Send ledger (PDF attached, QR Code button)' },
   { name: 'payment_reminder_20d', used: 'Payment reminder — Dealer, amber (over 20 days)' },
   { name: 'payment_reminder_40d', used: 'Payment reminder — Dealer, red (over 40 days)' },
@@ -292,10 +294,37 @@ export default async function handler(req, res) {
     }
     if (body.action === 'outbox') {
       let q = busy.from('wa_outbox').select('*').order('send_after', { ascending: false }).limit(200)
-      if (body.status) q = q.eq('status', String(body.status))
-      const r = await q
+      if (body.status === 'after_send') q = q.not('after_send', 'is', null)
+      else if (body.status === 'revised') q = q.gt('revision', 0)
+      else if (body.status) q = q.eq('status', String(body.status))
+      const [r, p] = await Promise.all([q, busy.from('wa_settings').select('value').eq('key', PAUSE_KEY).maybeSingle()])
       if (r.error) return send(res, 500, { error: r.error.message })
-      return send(res, 200, { rows: r.data || [] })
+      return send(res, 200, { rows: r.data || [], paused: p.data?.value === 'true' })
+    }
+    if (body.action === 'outbox-pause') {
+      // One switch for every customer transaction message (invoice, receipt, notes, payment, purchase, order).
+      const on = body.on === true
+      const r = await busy.from('wa_settings').upsert({ key: PAUSE_KEY, value: on ? 'true' : 'false', updated_at: new Date().toISOString() }, { onConflict: 'key' })
+      if (r.error) return send(res, 500, { error: r.error.message })
+      return send(res, 200, { ok: true, paused: on })
+    }
+    if (body.action === 'outbox-op') {
+      // Per-row control while a message is waiting: hold (stop the clock), release, cancel, send now.
+      const id = Number(body.id), op = String(body.op || '')
+      const row = await busy.from('wa_outbox').select('id, status').eq('id', id).maybeSingle()
+      if (row.error || !row.data) return send(res, 404, { error: 'Not found.' })
+      const st = row.data.status
+      const by = me.name, at = new Date().toISOString()
+      let patch = null
+      if (op === 'hold' && st === 'queued') patch = { status: 'held', error: `held by ${by}`, changed_at: at }
+      else if (op === 'release' && st === 'held') patch = { status: 'queued', error: null, send_after: at, changed_at: at }
+      else if (op === 'cancel' && ['queued', 'held', 'failed', 'no_billing'].includes(st)) patch = { status: 'cancelled', error: `cancelled by ${by}`, changed_at: at }
+      else if (op === 'send-now' && ['queued', 'held', 'failed'].includes(st)) patch = { status: 'queued', error: null, send_after: at, changed_at: at }
+      if (!patch) return send(res, 400, { error: `Cannot ${op.replace('-', ' ')} a message that is ${st}.` })
+      const u = await busy.from('wa_outbox').update(patch).eq('id', id).eq('status', st)
+      if (u.error) return send(res, 500, { error: u.error.message })
+      if (op === 'send-now') { const t = await runOutbox(busy, { onlyId: id }); return send(res, 200, { ok: true, ...t }) }
+      return send(res, 200, { ok: true })
     }
     if (body.action === 'sample-all') {
       // Every template that exists in WhatsApp Manager, one after another, to one number (customer ones need a Busy code).

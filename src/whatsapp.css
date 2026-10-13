@@ -106,3 +106,11 @@
 .pv-pages.pv-zoomed { align-items: flex-start; }
 .pv-page { flex: none; }
 .pv-msg { color: #cfd6dd; font-size: 14px; text-align: center; padding: 20px; }
+
+/* Outbox controls (2026-10-13) */
+.wa-ops { white-space: nowrap; }
+.wa-ops .btn-small { margin: 0 4px 4px 0; }
+.wa-flag { margin-top: 4px; font-size: 12.5px; font-weight: 600; color: #b54708; }
+.wa-pause { margin: 4px 0 10px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.wa-paused { background: #fff4e5; color: #7a4100; border: 1px solid #f5c38b; border-radius: 8px; padding: 8px 12px; font-size: 14px; }
+@media (max-width: 640px) { .wa-ops { white-space: normal; } }

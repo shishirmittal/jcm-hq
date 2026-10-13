@@ -44,8 +44,8 @@ export const KIND_LABEL = {
   staff_followup: 'Staff: morning list', staff_evening: 'Admins: evening summary', staff_red_alert: 'Staff: Red Alert', staff_purchase: 'Staff: purchase bill',
   staff_purchase_summary: 'Staff: purchases summary', staff_gst: 'Staff: GST report', staff_orders: 'Admins: orders 17:30', test: 'Sample / test',
 }
-const TONE = { sent: 'blue', delivered: 'grn', read: 'grn', received: 'grey', failed: 'red', no_number: 'grey', no_billing: 'grey', off: 'grey', queued: 'amb', sending: 'amb', cancelled: 'grey', expired: 'grey', skipped: 'grey', APPROVED: 'grn', PENDING: 'amb', REJECTED: 'red', MISSING: 'red', PAUSED: 'red', DISABLED: 'red' }
-const STATUS_TEXT = { sent: 'Sent', delivered: 'Delivered', read: 'Read ✓✓', failed: 'Failed', no_number: 'No number', no_billing: 'No billed party (ledger only)', off: 'Switched off', received: 'Received' }
+const TONE = { sent: 'blue', delivered: 'grn', read: 'grn', received: 'grey', failed: 'red', no_number: 'grey', no_billing: 'grey', off: 'grey', queued: 'amb', held: 'amb', deleted: 'grey', sending: 'amb', cancelled: 'grey', expired: 'grey', skipped: 'grey', APPROVED: 'grn', PENDING: 'amb', REJECTED: 'red', MISSING: 'red', PAUSED: 'red', DISABLED: 'red' }
+const STATUS_TEXT = { sent: 'Sent', delivered: 'Delivered', read: 'Read ✓✓', failed: 'Failed', no_number: 'No number', no_billing: 'No billed party (ledger only)', queued: 'Waiting', held: 'On hold', deleted: 'Deleted in Busy', off: 'Switched off', received: 'Received' }
 const when = iso => iso ? new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }) : ''
 const timeOnly = iso => iso ? new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }) : ''
 const dayOf = iso => new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
@@ -280,9 +280,10 @@ function renderLog(el) {
 function renderOutbox(el) {
   el.innerHTML = `
     <div class="wa-card">
-      <p class="wa-muted">Customer messages queued from Busy by JCM Sync; they go within 5 minutes. A kind that is switched off (Settings) stays queued for 24 h and then expires.</p>
+      <p class="wa-muted">Customer messages from Busy wait <b>15 minutes</b> after the first save. While waiting, edits in Busy are picked up, and a deleted or cancelled voucher is never sent. If an invoice changes after its message went, a corrected copy goes automatically. Use <b>Hold</b> to stop the clock on one message, or pause everything below.</p>
+      <div class="wa-pause" id="waPauseBox"></div>
       <div class="wa-row">
-        <select id="waOutboxFilter"><option value="queued">Queued</option><option value="sent">Sent</option><option value="failed">Failed</option><option value="no_number">No number</option><option value="no_billing">No billed party (ledger only)</option><option value="expired">Expired</option><option value="cancelled">Cancelled</option><option value="skipped">Loaded as history</option><option value="">All</option></select>
+        <select id="waOutboxFilter"><option value="queued">Waiting to go</option><option value="held">On hold</option><option value="sent">Sent</option><option value="after_send">Changed / deleted after sending</option><option value="revised">Corrected copies</option><option value="deleted">Deleted in Busy before sending</option><option value="failed">Failed</option><option value="no_number">No number</option><option value="no_billing">No billed party (ledger only)</option><option value="expired">Expired</option><option value="cancelled">Cancelled</option><option value="skipped">Loaded as history</option><option value="">All</option></select>
         <button class="btn-ghost btn-small" id="waTick">Send what is due now</button>
         <button class="btn-ghost btn-small" id="waOrdersNow">Send the 17:30 orders message now</button>
       </div>
@@ -290,15 +291,51 @@ function renderOutbox(el) {
       <div id="waOutbox" class="wa-table">Loading…</div>
     </div>`
   const $ = id => el.querySelector('#' + id)
+  const rupees = n => `₹${Number(n || 0).toLocaleString('en-IN')}`
+  const ops = r => {
+    const b = (op, label, cls = 'btn-ghost') => `<button type="button" class="${cls} btn-small" data-op="${op}" data-id="${r.id}">${label}</button>`
+    if (r.status === 'queued') return b('send-now', 'Send now') + b('hold', 'Hold') + b('cancel', 'Cancel')
+    if (r.status === 'held') return b('release', 'Release') + b('send-now', 'Send now') + b('cancel', 'Cancel')
+    if (r.status === 'failed') return b('send-now', 'Try again') + b('cancel', 'Cancel')
+    return ''
+  }
+  const note = r => [
+    r.revision > 0 ? `Corrected copy ${r.revision}${r.sent_amount != null ? ` — the first message said ${rupees(r.sent_amount)}` : ''}` : '',
+    r.after_send === 'changed' && !(r.revision > 0) ? 'Changed in Busy after this message went (not resent)' : '',
+    r.after_send === 'deleted' ? 'Deleted / cancelled in Busy after this message went' : '',
+  ].filter(Boolean).map(t => `<div class="wa-flag">${esc(t)}</div>`).join('')
+  function drawPause(paused) {
+    $('waPauseBox').innerHTML = paused
+      ? `<div class="wa-paused">⏸ Customer messages are <b>paused</b>. Nothing from Busy is being sent; it waits here.</div><button class="btn-primary btn-small" id="waPauseBtn" data-on="0">Resume sending</button>`
+      : `<button class="btn-ghost btn-small" id="waPauseBtn" data-on="1">⏸ Pause all customer messages</button>`
+    $('waPauseBtn').addEventListener('click', async e => {
+      const on = e.target.dataset.on === '1'
+      if (on && !await hqConfirm('Pause all customer WhatsApp messages from Busy? They will wait here until you resume (anything waiting over 24 h expires).')) return
+      try { await call({ action: 'outbox-pause', on }); load() } catch (err) { $('waTickResult').textContent = '❌ ' + err.message }
+    })
+  }
   async function load() {
     try {
       const d = await call({ action: 'outbox', status: $('waOutboxFilter').value })
+      drawPause(d.paused)
       if (!d.rows.length) { $('waOutbox').innerHTML = '<div class="wa-muted">Nothing here.</div>'; return }
-      $('waOutbox').innerHTML = `<table><thead><tr><th>Kind</th><th>Party</th><th>No.</th><th>Amount</th><th>Goes at</th><th>Status</th></tr></thead><tbody>
-        ${d.rows.map(r => `<tr><td>${esc(KIND_LABEL[r.kind] || r.kind)}</td><td>${esc(r.party_name || r.party_code)}<div class="wa-muted">${esc(r.mobile || 'no number')}</div></td><td>${esc(r.vch_no || '')}<div class="wa-muted">${esc(r.vch_date || '')}</div></td><td>₹${Number(r.amount || 0).toLocaleString('en-IN')}</td><td>${esc(when(r.send_after))}</td><td>${pill(r.status)}${r.error ? `<div class="wa-muted">${esc(r.error)}</div>` : ''}</td></tr>`).join('')}
+      $('waOutbox').innerHTML = `<table><thead><tr><th>Kind</th><th>Party</th><th>No.</th><th>Amount</th><th>Goes at</th><th>Status</th><th></th></tr></thead><tbody>
+        ${d.rows.map(r => `<tr><td>${esc(KIND_LABEL[r.kind] || r.kind)}</td><td>${esc(r.party_name || r.party_code)}<div class="wa-muted">${esc(r.mobile || 'no number')}</div></td><td>${esc(r.vch_no || '')}<div class="wa-muted">${esc(r.vch_date || '')}</div></td><td>${rupees(r.amount)}</td><td>${esc(when(r.send_after))}</td><td>${pill(r.status)}${r.error ? `<div class="wa-muted">${esc(r.error)}</div>` : ''}${note(r)}</td><td class="wa-ops">${ops(r)}</td></tr>`).join('')}
         </tbody></table>`
     } catch (err) { $('waOutbox').textContent = err.message }
   }
+  $('waOutbox').addEventListener('click', async e => {
+    const b = e.target.closest('[data-op]')
+    if (!b) return
+    const op = b.dataset.op
+    if (op === 'cancel' && !await hqConfirm('Cancel this message? It will never be sent.')) return
+    b.disabled = true
+    try {
+      const d = await call({ action: 'outbox-op', id: Number(b.dataset.id), op })
+      $('waTickResult').textContent = op === 'send-now' ? (d.sent ? '✓ Sent.' : d.no_number ? 'No number — not sent.' : d.failed ? '❌ Failed — see the row.' : d.skipped || 'Done.') : '✓ Done.'
+      load()
+    } catch (err) { $('waTickResult').textContent = '❌ ' + err.message; b.disabled = false }
+  })
   $('waOutboxFilter').addEventListener('change', load)
   $('waTick').addEventListener('click', async () => {
     $('waTick').disabled = true; $('waTickResult').textContent = 'Sending…'

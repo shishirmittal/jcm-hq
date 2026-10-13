@@ -391,3 +391,29 @@ Tap "QR Code" below to pay. For any query, simply reply to this message.
 - **Footer:** `J.C. Mittal & Sons, Ratlam`
 - **Button:** Quick reply — `QR Code`
 - HQ fills: {{1}} ledger name from the Busy code, {{2}} date of the last ledger sync, {{3}} closing balance with Dr / Cr; the PDF is the ledger statement in the invoice-portal style; the button sends that customer's UPI QR.
+
+---
+
+## txn_invoice_revised  (added 2026-10-13 — invoice changed in Busy after its message went)
+
+- **Category:** Utility · **Language:** English
+- **Header:** Image — `invoice.png` (same as txn_invoice)
+- **Body:**
+
+```
+Namaste {{1}},
+
+Your invoice has been revised. Please refer to this message and ignore the earlier one.
+
+🧾 Invoice No.: {{2}}
+📅 Date: {{3}}
+💰 Revised amount: ₹{{4}}
+📦 Items: {{5}}
+
+Thank you for your business.
+J.C. Mittal and Sons, Ratlam
+```
+
+- **Samples:** {{1}} Badshah Electric · {{2}} JCM/1234 · {{3}} 13 Oct 2026 · {{4}} 45,600 · {{5}} 7
+- **Buttons:** Quick reply **QR Code**, Quick reply **PDF Copy** (same order as txn_invoice)
+- Until it is approved, HQ sends the corrected copy with `txn_invoice` instead.
