@@ -258,7 +258,7 @@ Promised for today: {{5}}
 ```
 Samples: 12 Oct 2026 · 18 · 7 · Keshav: 8 done of 12, 4 left · 3 promised ₹1,10,000; Ratan: 10 done of 13, 3 left · 2 parties, ₹85,000 — check they came in
 
-### 14. `staff_red_alert` — Explanation needed (to the person who made the entry)
+### 14. `staff_red_alert` — Explanation needed (to the person who made the entry)  ✅ created 14 Oct with ONE button (Visit website, fixed link) — HQ no longer sends the Reply-to-admin link
 Header image: `staff-red-alert.png` · Buttons (two URL buttons):
 1. **Visit website** → `https://hq.jcmretails.com/#explain`, text "Answer in HQ"
 2. **Visit website**, URL type **Dynamic** → `https://wa.me/{{1}}`, text "Reply to admin" — sample for the variable: `919109105999`
@@ -362,7 +362,7 @@ Samples: 12 Oct 2026 · 9 · 4 · 7 · Badshah Electric (not all ordered), Nexus
 | 11 | portal_login_otp | — (Authentication) | Copy code | ☐ only if needed |
 | 12 | staff_followup_morning | staff-followup.png | Open my list (URL) | ☐ |
 | 13 | staff_followup_evening | staff-evening.png | Open Today's follow-ups (URL) | ☐ |
-| 14 | staff_red_alert | staff-red-alert.png | Answer in HQ (URL) · Reply to admin (dynamic URL) | ☐ |
+| 14 | staff_red_alert | staff-red-alert.png | Visit website (fixed URL) — created 14 Oct with one button | ✅ |
 | 15 | staff_purchase_bill | staff-purchase.png | Open Purchase Summary (URL) | ☐ |
 | 15b | staff_purchase_pdf | — (Document header) | Open Purchase Summary (URL) | ☐ |
 | 16 | staff_purchase_summary | staff-purchase.png | Open Purchase Summary (URL) | ☐ |

@@ -390,12 +390,11 @@ async function handleAsk(busy, hq, me, body, res) {
     if (hErr) console.error('red-alerts task history failed:', hErr)
 
     // staff_red_alert: {{1}} first name, {{2}} asked by, {{3}} how many, {{4}} what (flat), {{5}} question.
-    // Buttons: "Answer in HQ" (fixed link) and "Reply to admin" = https://wa.me/{{1}} → the admin's own number.
-    const adminWa = toWaNumber(me.whatsapp) || '919109105999'
+    // One button, as Shishir created the template (2026-10-14): "Visit website" — a fixed link to HQ, no parameter.
     const what = flat(list.slice(0, 4).map(a => alertLine(a).replace(/^• /, '')).join('; ') + (list.length > 4 ? ` and ${list.length - 4} more` : ''), 600)
     const waStatus = (await sendLogged(busy, { kind: 'staff_red_alert', to: phoneByHqId.get(hqUserId), template: 'staff_red_alert',
       params: [name.split(' ')[0], me.name, String(list.length), what, question || 'Please explain these entries'],
-      opts: { headerImageUrl: BANNER('staff-red-alert'), buttonUrlParams: { 1: adminWa } },
+      opts: { headerImageUrl: BANNER('staff-red-alert') },
       ref: String(list[0]?.id || ''), refName: name, by: me.name })).status
 
     const { error: uErr } = await busy.from('red_alerts').update({
