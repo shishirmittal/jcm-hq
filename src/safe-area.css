@@ -35,3 +35,8 @@ body.native-app .tb-hq .tb-head,
 body.native-app .tb-hq .tb-sheethead { height: calc(88px + env(safe-area-inset-top, 0px)); }
 body.native-app .tb-hq .tb-phone .tb-head,
 body.native-app .tb-hq .tb-phone .tb-sheethead { height: calc(60px + env(safe-area-inset-top, 0px)); }
+
+/* Orders pages (React, mounted without .app-main) never left room for the app's
+   bottom tab bar, so the end of the page — e.g. the last item on an order, under
+   the sticky READY / PICK bar — could not be scrolled into view. */
+body.native-app.has-tabbar .jo-hq { padding-bottom: var(--app-nav-h, 0px); }
