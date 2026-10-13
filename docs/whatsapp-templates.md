@@ -415,5 +415,5 @@ J.C. Mittal and Sons, Ratlam
 ```
 
 - **Samples:** {{1}} Badshah Electric · {{2}} JCM/1234 · {{3}} 13 Oct 2026 · {{4}} 45,600 · {{5}} 7
-- **Buttons:** Quick reply **QR Code**, Quick reply **PDF Copy** (same order as txn_invoice)
+- **Button (as created 14 Oct):** one Quick reply **Revised Invoice PDF** (HQ replies with the current invoice PDF)
 - Until it is approved, HQ sends the corrected copy with `txn_invoice` instead.

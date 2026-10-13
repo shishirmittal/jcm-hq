@@ -7,7 +7,7 @@
 //   debit_note   txn_debit_note   {{1}} name {{2}} note no {{3}} date {{4}} amount                button Ledger
 //   payment      txn_payment      {{1}} name {{2}} amount {{3}} date {{4}} voucher no             (to a supplier; no buttons)
 //   purchase     txn_purchase     {{1}} name {{2}} bill no {{3}} bill date {{4}} amount {{5}} items   (to a supplier)
-//   invoice, changed after it went (revision > 0) → txn_invoice_revised (same params/buttons; txn_invoice until approved)
+//   invoice, changed after it went (revision > 0) → txn_invoice_revised (same params; one button Revised Invoice PDF → invpdf:; txn_invoice until approved)
 //   order        txn_order        {{1}} name {{2}} order no {{3}} date {{4}} items {{5}} amount   buttons Call (phone) / Order copy (→ SO PDF)
 // Everything goes at the next tick after it is queued (the 20:30 wait for invoices was dropped 2026-10-12).
 // A row older than EXPIRE_HOURS past its send time is never sent (marked expired) — so switching a
@@ -68,7 +68,8 @@ export async function runOutbox(busy, { onlyId = null } = {}) {
     const revised = r.kind === 'invoice' && (r.revision || 0) > 0
     const msg = tpl => ({
       kind: r.kind, to: r.mobile, template: tpl, params: spec.params(r),
-      opts: { headerImageUrl: BANNER(spec.banner), buttonPayloads: spec.buttons(code, r) },
+      // txn_invoice_revised (as Shishir made it, 2026-10-14) has ONE quick reply, "Revised Invoice PDF".
+      opts: { headerImageUrl: BANNER(spec.banner), buttonPayloads: tpl === REVISED ? [`invpdf:${code}:${r.vch_no || ''}`] : spec.buttons(code, r) },
       ref: `${r.kind}:${r.vch_no || r.vch_code}${revised ? `:rev${r.revision}` : ''}`, refName: r.party_name, by: revised ? 'HQ outbox (corrected)' : 'HQ outbox', switches,
     })
     let out = await sendLogged(busy, msg(revised ? REVISED : spec.template))

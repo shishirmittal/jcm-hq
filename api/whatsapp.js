@@ -93,6 +93,7 @@ const HQ = 'https://hq.jcmretails.com'
 const cust = (kind, extra) => ({ params: name => TXN[kind].params({ party_name: name, ...extra }), opts: code => ({ headerImageUrl: BANNER(TXN[kind].banner), buttonPayloads: TXN[kind].buttons(code, extra) }) })
 const SAMPLES = {
   txn_invoice: cust('invoice', { vch_no: 'JCM/1234', vch_date: '2026-10-12', amount: 45600, items: 7 }),
+  txn_invoice_revised: { params: name => TXN.invoice.params({ party_name: name, vch_no: 'JCM/1234', vch_date: '2026-10-13', amount: 41800, items: 6 }), opts: code => ({ headerImageUrl: BANNER('invoice'), buttonPayloads: [`invpdf:${code}:JCM/1234`] }) },
   txn_receipt: cust('receipt', { vch_no: 'R/221', vch_date: '2026-10-12', amount: 25000 }),
   txn_credit_note: cust('credit_note', { vch_no: 'CN/18', vch_date: '2026-10-12', amount: 1800 }),
   txn_debit_note: cust('debit_note', { vch_no: 'DN/7', vch_date: '2026-10-12', amount: 950 }),
