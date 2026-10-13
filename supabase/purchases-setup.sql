@@ -90,3 +90,10 @@ create table if not exists purchase_notify_log (
 );
 create index if not exists purchase_notify_log_vch_idx on purchase_notify_log (vch_key);
 alter table purchase_notify_log enable row level security;
+
+-- 2026-10-13: GST %, GST amount and discount per line (sync-purchases.js reads Busy D9 / D11 /
+-- VchGSTSumItemWise like the invoice sync). Safe to run again.
+alter table purchase_lines add column if not exists list_rate numeric;     -- pre-tax, before discount
+alter table purchase_lines add column if not exists discount_pct numeric;
+alter table purchase_lines add column if not exists gst_rate numeric;
+alter table purchase_lines add column if not exists tax_amount numeric;

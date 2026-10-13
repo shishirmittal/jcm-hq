@@ -115,11 +115,19 @@ async function readBills(pool) {
 
 async function readLines(pool) {
   const r = await pool.request().query(`
+    -- Same fields the invoice sync uses (sync-invoices-live.js): D2 = rate as typed (with or
+    -- without GST, depending on how the bill was entered), D9 = discount %, D11 = GST amount,
+    -- Value3 = line amount after discount, before GST; GST % from Busy's GST summary per item.
     SELECT t2.VchCode, t2.SrNo, t2.MasterCode1 AS ItemCode, m.Name AS ItemName,
-           t2.D1 AS Qty, t2.D2 AS Rate, t2.D6 AS RateBeforeGst, t2.Value3 AS Taxable
+           t2.D1 AS Qty, t2.D2 AS Rate, t2.D6 AS RateBeforeGst, t2.Value3 AS Taxable,
+           t2.D9 AS DiscountPct, t2.D11 AS TaxAmount, gst.TaxRate + gst.TaxRate1 AS GstRate
     FROM Tran2 t2
     JOIN Tran1 t1 ON t1.VchCode = t2.VchCode
     LEFT JOIN Master1 m ON m.Code = t2.MasterCode1
+    OUTER APPLY (
+      SELECT TOP 1 g.TaxRate, g.TaxRate1 FROM VchGSTSumItemWise g
+      WHERE g.VchCode = t2.VchCode AND g.ItemCode = t2.MasterCode1 AND ROUND(g.TaxableAmt, 2) = ROUND(ABS(t2.Value3), 2)
+    ) gst
     WHERE t1.VchType = ${PURCHASE} AND t2.RecType = 2
       AND ISNULL(t1.Cancelled, 0) = 0 AND ISNULL(t1.VchCancelled, 0) = 0
     ORDER BY t2.VchCode, t2.SrNo`);
@@ -132,17 +140,29 @@ function buildRows(bills, lines) {
     const key = `${DB}|${l.VchCode}`;
     if (!linesBy.has(key)) linesBy.set(key, []);
     const qty = Math.abs(Number(l.Qty || 0));
-    const rate = Math.abs(Number(l.Rate || 0));
+    const taxable = Math.abs(Number(l.Taxable || 0));          // after discount, before GST
+    let gstRate = l.GstRate == null ? null : Number(l.GstRate);
+    let tax = Math.abs(Number(l.TaxAmount || 0));
+    if (gstRate == null && tax && taxable) gstRate = Math.round((tax / taxable) * 1000) / 10;
+    if (!tax && gstRate) tax = taxable * gstRate / 100;
+    const disc = Math.abs(Number(l.DiscountPct || 0));
+    const net = qty ? taxable / qty : 0;                        // pre-tax rate after discount
+    const list = disc > 0 && disc < 100 ? net / (1 - disc / 100) : net; // pre-tax rate before discount
+    const amount = taxable + tax;                               // what was paid for the line, GST included
     linesBy.get(key).push({
       vch_key: key,
       sr_no: l.SrNo,
       item_code: l.ItemCode == null ? null : String(l.ItemCode),
       item_name: txt(l.ItemName),
       qty: r3(qty),
-      rate: r2(rate),
-      rate_before_gst: r2(Math.abs(Number(l.RateBeforeGst || 0))),
-      amount: r2(qty * rate),
-      taxable: r2(Math.abs(Number(l.Taxable || 0))),
+      list_rate: r2(list),                                      // pre-tax, before discount
+      discount_pct: r2(disc),
+      rate_before_gst: r2(net),                                 // pre-tax, after discount
+      gst_rate: gstRate == null ? null : r2(gstRate),
+      tax_amount: r2(tax),
+      rate: r2(qty ? amount / qty : 0),                         // tax-paid rate (after discount, with GST)
+      amount: r2(amount),
+      taxable: r2(taxable),
     });
   }
 
