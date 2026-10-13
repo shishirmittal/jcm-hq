@@ -195,6 +195,13 @@ body.dark-mode .app-tab.active .app-tab-icon { background: var(--hq-gold); color
    navy, which vanished on the night-navy bar. White at night, navy by day. */
 body.dark-mode .app-tab.active, body.native-app.dark-mode .app-tab.active { color: #FFFFFF; }
 body.native-app:not(.dark-mode) .app-tab.active { color: var(--ink); }
+/* The app's card / page colours (style.css, body.native-app) were day-only: at
+   night the Stock cards stayed white while their text turned white. Night now
+   points them at the night palette. */
+body.native-app.dark-mode {
+  --app-card: var(--surface); --app-card-line: var(--line);
+  --app-page: var(--bg); --app-muted: var(--muted);
+}
 @media (max-width: 799px) {
   body.has-tabbar:not(.native-app) #app { padding-bottom: var(--app-nav-h, 0px); }
   body.has-tabbar.keyboard-open .app-tabs { transform: translateY(100%); }
