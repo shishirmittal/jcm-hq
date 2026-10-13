@@ -63,7 +63,9 @@ export function buildInvoicePdf({ partyName, invoice, items }) {
     blocks: [
       { label: 'Billed to', lines: [invoice.customer_name || partyName, invoice.customer_address, invoice.customer_gst_no ? `GSTIN ${invoice.customer_gst_no}` : null, invoice.customer_mobile] },
       { label: 'Supply', rows: [['Place of supply', invoice.place_of_supply_code ? `State code ${invoice.place_of_supply_code}` : '—'], ['Transport', invoice.transport || '—'], ['Station', invoice.station || '—'], ['Vehicle', invoice.vehicle_no || '—'], ['LR / GR', invoice.gr_no || '—']] },
-      { label: 'e-Invoice', rows: [['IRN', invoice.einvoice_irn ? String(invoice.einvoice_irn).slice(0, 18) + '…' : 'Not generated', { mono: true, muted: !invoice.einvoice_irn }], ['Ack no.', invoice.einvoice_ack_no || '—', { mono: true }], ['Ack date', invoice.einvoice_ack_date ? dmy(invoice.einvoice_ack_date) : '—', { mono: true }]] },
+      // Busy stores "no date" as 01-01-1900, so an Ack date before 2017 (GST) counts as empty. With
+      // no e-invoice at all, only "IRN — Not generated" is shown; Ack no. / Ack date only when generated.
+      { label: 'e-Invoice', rows: einvoiceRows(invoice) },
     ],
     table: { cols: [{ k: 'n', t: '#', w: 18 }, { k: 'item', t: 'Item', w: 0 }, { k: 'hsn', t: 'HSN', w: 48, mono: true }, { k: 'code', t: 'Code', w: 40, mono: true }, { k: 'qty', t: 'Qty', w: 44, right: true }, { k: 'list', t: 'List price', w: 56, right: true }, { k: 'disc', t: 'Discount', w: 46, right: true }, { k: 'gst', t: 'GST', w: 34, right: true }, { k: 'price', t: 'Price', w: 56, right: true }, { k: 'amount', t: 'Amount', w: 62, right: true, bold: true }], rows },
     words: rupeesInWords(total),
@@ -78,4 +80,14 @@ export function buildInvoicePdf({ partyName, invoice, items }) {
     rightNote: { label: 'Pay to', rows: [['Bank', 'State Bank of India'], ['Account no.', '38596845721'], ['IFSC', 'SBIN0009452'], ['Branch', 'SME Branch, Ratlam']], pill: ['Customer care', '910 910 8258'] },
     footerLeft: 'E. & O.E. · Computer-generated copy of the invoice; the signed tax invoice travels with the goods.',
   })
+}
+
+function einvoiceRows(invoice) {
+  const ackDate = invoice.einvoice_ack_date && Number(String(invoice.einvoice_ack_date).slice(0, 4)) >= 2017 ? invoice.einvoice_ack_date : null
+  const ackNo = invoice.einvoice_ack_no && !/^0*$/.test(String(invoice.einvoice_ack_no).trim()) ? invoice.einvoice_ack_no : null
+  if (!invoice.einvoice_irn && !ackNo && !ackDate) return [['IRN', 'Not generated', { mono: true, muted: true }]]
+  const rows = [['IRN', invoice.einvoice_irn ? String(invoice.einvoice_irn).slice(0, 18) + '…' : 'Not generated', { mono: true, muted: !invoice.einvoice_irn }]]
+  if (ackNo) rows.push(['Ack no.', ackNo, { mono: true }])
+  if (ackDate) rows.push(['Ack date', dmy(ackDate), { mono: true }])
+  return rows
 }
