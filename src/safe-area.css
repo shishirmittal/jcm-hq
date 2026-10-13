@@ -1,0 +1,28 @@
+/* ---- Phone app: the areas behind the phone's own top and bottom bars ----
+   index.html has viewport-fit=cover, so in the Android app the page runs under
+   the status bar (clock, battery) and the gesture / button bar. src/system-bars.js
+   sets --sysbar-top / --sysbar-bottom to the colour of the header and the tab
+   bar, and these two strips paint those areas in it, so the app looks like one
+   piece. Everything below makes sure no page puts content underneath them. */
+html.sysbars body.native-app::before,
+html.sysbars body.native-app::after {
+  content: ''; position: fixed; left: 0; right: 0; pointer-events: none;
+}
+html.sysbars body.native-app::before {
+  top: 0; height: env(safe-area-inset-top, 0px); background: var(--sysbar-top, #12213B); z-index: 90; /* under pop-ups (100+) so they dim it too */
+}
+html.sysbars body.native-app::after {
+  bottom: 0; height: env(safe-area-inset-bottom, 0px); background: var(--sysbar-bottom, #0A1324); z-index: 65;
+}
+/* Headers that did not already step down below the status bar. */
+body.native-app .jo-hq .jo-hqhead { height: calc(64px + env(safe-area-inset-top, 0px)); padding-top: env(safe-area-inset-top, 0px); }
+body.native-app .im-topbar { height: calc(48px + env(safe-area-inset-top, 0px)); padding-top: env(safe-area-inset-top, 0px); }
+
+/* Panels that slide in from a side, full height. */
+body.native-app .sidebar-panel { padding-top: calc(12px + env(safe-area-inset-top, 0px)); padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
+body.native-app .gst-drawer,
+body.native-app .ra-drawer,
+body.native-app .pur-drawer { padding-top: calc(16px + env(safe-area-inset-top, 0px)); padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
+
+/* Pop-ups that are nearly full screen: keep them inside the two bars. */
+body.native-app .modal-overlay { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); box-sizing: border-box; }

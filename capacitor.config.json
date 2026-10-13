@@ -5,5 +5,11 @@
   "server": {
     "url": "https://hq.jcmretails.com",
     "errorPath": "offline.html"
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "css",
+      "initialViewportFitValueHint": "cover"
+    }
   }
 }

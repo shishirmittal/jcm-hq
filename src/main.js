@@ -1,5 +1,7 @@
 import './style.css'
 import './hq-theme.css'
+import './safe-area.css'
+import { startSystemBars } from './system-bars.js'
 import { initTheme } from './theme.js'
 import { supabase, getCurrentProfile } from './supabase.js'
 import { renderLogin } from './login.js'
@@ -330,4 +332,5 @@ window.addEventListener('offline', syncOnlineBanner)
 syncOnlineBanner()
 
 initTheme()
+startSystemBars()
 init()
