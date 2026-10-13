@@ -1,7 +1,8 @@
 import PDFDocument from 'pdfkit'
 import { createCanvas, loadImage, GlobalFonts } from '@napi-rs/canvas'
-import { FONT_REG, FONT_BOLD, LOGO_PNG } from './_ledger-assets.js'
-import { jcmKit, INK, GREY } from './_jcm-doc.js'
+import { LOGO_PNG } from './_ledger-assets.js'
+import { SANS_REG, SANS_MED, MONO_MED } from './_jcm-fonts.js'
+import { jcmKit, INK, GREY, PILL_BG, PILL_FG, COMPANY } from './_jcm-doc.js'
 
 // GSTR-2A reconciliation — the two things the WhatsApp messages carry:
 //   bannerPng(month)   the header image of the supplier reminder template ("GST MISMATCH /
@@ -10,7 +11,7 @@ import { jcmKit, INK, GREY } from './_jcm-doc.js'
 //                      deadline, counts) and one section per red-flag type, party-wise
 // Fonts and logo are the ledger PDF's (api/_ledger-assets.js).
 
-const NAVY = '#12213B', GOLD = '#D9AE55', LINE = '#e3e7ee', RED = '#b42318'
+const LINE = '#e3e7ee', RED = '#b42318'
 
 export const BUCKET_LABEL = {
   missing_busy: 'Missing in Busy', not_in_2a: 'Not in GSTR-2A', amount: 'Amount mismatch',
@@ -43,38 +44,38 @@ const dmy = s => {
 }
 const longDate = d => new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' })
 
-// ---------- banner (1200 × 628, like public/wa/reminder-*.png) ----------
+// ---------- banner (1200 × 628) — template header for gstr1_filing_reminder ----------
+// JCM document style (white, black logo, Instrument Sans + IBM Plex Mono). No navy / gold (Shishir, 2026-10-13).
 let fontsReady = false
 function fonts() {
   if (fontsReady) return
-  GlobalFonts.register(Buffer.from(FONT_BOLD, 'base64'), 'JCMBold')
-  GlobalFonts.register(Buffer.from(FONT_REG, 'base64'), 'JCMReg')
+  GlobalFonts.register(Buffer.from(SANS_REG, 'base64'), 'GSans')
+  GlobalFonts.register(Buffer.from(SANS_MED, 'base64'), 'GSansMed')
+  GlobalFonts.register(Buffer.from(MONO_MED, 'base64'), 'GMonoMed')
   fontsReady = true
 }
 export async function bannerPng(month, to = null) {
-  const period = periodLabel(month, to).toUpperCase()
+  const period = periodLabel(month, to)
   fonts()
-  const W = 1200, H = 628
+  const W = 1200, H = 628, X = 470
   const canvas = createCanvas(W, H)
   const ctx = canvas.getContext('2d')
-  const g = ctx.createLinearGradient(0, 0, W, 0)
-  g.addColorStop(0, '#F3B21A'); g.addColorStop(1, '#F9CB4A')
-  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H)
-  ctx.fillStyle = NAVY; ctx.fillRect(0, H - 14, W, 14)
-  // logo in a navy circle with a gold ring
-  const cx = 275, cy = 300, r = 160
-  ctx.beginPath(); ctx.arc(cx, cy, r + 6, 0, Math.PI * 2); ctx.fillStyle = GOLD; ctx.fill()
-  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fillStyle = NAVY; ctx.fill()
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H)
   const logo = await loadImage(Buffer.from(LOGO_PNG, 'base64'))
-  ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, r - 2, 0, Math.PI * 2); ctx.clip()
-  ctx.drawImage(logo, cx - (r - 2), cy - (r - 2), (r - 2) * 2, (r - 2) * 2); ctx.restore()
-  // text
-  ctx.fillStyle = NAVY; ctx.textBaseline = 'alphabetic'
-  const fit = (text, size, maxW) => { do { ctx.font = `${size}px JCMBold`; size -= 2 } while (ctx.measureText(text).width > maxW && size > 20) }
-  const X = 500, MAXW = W - X - 50
-  fit('GST MISMATCH', 86, MAXW); ctx.fillText('GST MISMATCH', X, 262)
-  fit(period, 66, MAXW); ctx.fillText(period, X, 350)
-  fit('J.C. MITTAL AND SONS, RATLAM', 32, MAXW); ctx.fillText('J.C. MITTAL AND SONS, RATLAM', X, 420)
+  ctx.drawImage(logo, 110, 164, 280, 280)
+  ctx.strokeStyle = LINE; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(X - 40, 150); ctx.lineTo(X - 40, 478); ctx.stroke()
+  const fit = (text, font, size, maxW) => { do { ctx.font = `${size}px ${font}`; size -= 2 } while (ctx.measureText(text).width > maxW && size > 20) }
+  const MAXW = W - X - 60
+  // pill
+  ctx.font = '22px GSansMed'; ctx.letterSpacing = '2px'
+  const pill = 'GSTR-1 FILING', pw = ctx.measureText(pill).width + 40
+  ctx.fillStyle = PILL_BG; ctx.beginPath(); ctx.roundRect(X, 168, pw, 44, 22); ctx.fill()
+  ctx.fillStyle = PILL_FG; ctx.textBaseline = 'middle'; ctx.fillText(pill, X + 20, 191)
+  ctx.letterSpacing = '0px'; ctx.textBaseline = 'alphabetic'
+  ctx.fillStyle = INK; fit('GST mismatch', 'GSans', 92, MAXW); ctx.fillText('GST mismatch', X, 318)
+  fit(period, 'GMonoMed', 46, MAXW); ctx.fillText(period, X, 388)
+  ctx.fillStyle = GREY; fit(`${COMPANY.name}, Ratlam · GSTIN ${COMPANY.gstin}`, 'GSans', 26, MAXW); ctx.fillText(`${COMPANY.name}, Ratlam · GSTIN ${COMPANY.gstin}`, X, 448)
+  ctx.fillStyle = '#f6f7fb'; ctx.fillRect(0, H - 22, W, 22)
   return canvas.toBuffer('image/png')
 }
 

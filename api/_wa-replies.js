@@ -1,7 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import QRCode from 'qrcode'
-import { createCanvas, loadImage, GlobalFonts } from '@napi-rs/canvas'
-import { FRAME_PNG, NAME_FONT } from './_qr-assets.js'
+import { qrCardPng } from './_qr-card.js'
 import { loadStatement, buildLedgerPdf } from './_ledger-pdf.js'
 import { replyText, replyMedia, recordIncoming, recordStatuses } from './_wa-inbox.js'
 import { loadOrder, buildOrderPdf, loadInvoice, buildInvoicePdf } from './_doc-pdf.js'
@@ -36,21 +35,9 @@ export async function qrPlain(partyName, width = 700) {
   return QRCode.toBuffer(upiString(partyName), { type: 'png', width, margin: 0, errorCorrectionLevel: 'M' })
 }
 
-// The decorated payment card: navy + gold frame, logo, QR, payment note (billed party name).
-let fontReady = false
+// The payment card (api/_qr-card.js): the customer's own UPI QR + bank details, in the JCM document style.
 export async function qrPng(partyName) {
-  if (!fontReady) { GlobalFonts.register(Buffer.from(NAME_FONT, 'base64'), 'JCMName'); fontReady = true }
-  const frame = await loadImage(Buffer.from(FRAME_PNG, 'base64'))
-  const canvas = createCanvas(frame.width, frame.height)
-  const ctx = canvas.getContext('2d')
-  ctx.drawImage(frame, 0, 0)
-  ctx.drawImage(await loadImage(await qrPlain(partyName, 700)), 190, 570, 700, 700)
-  const note = noteName(partyName)
-  let size = 40
-  ctx.fillStyle = '#12213B'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-  do { ctx.font = `${size}px JCMName`; size -= 2 } while (ctx.measureText(note).width > 820 && size > 20)
-  ctx.fillText(note, canvas.width / 2, 1362)
-  return canvas.toBuffer('image/png')
+  return qrCardPng({ upi: upiString(partyName), note: noteName(partyName), upiId: UPI.pa })
 }
 
 function busyClient() {
@@ -160,8 +147,8 @@ export async function handleIncoming(value) {
       if (parsed.kind === 'qr') {
         const png = await qrPng(name)
         await sendMedia(from, png, {
-          kind: 'image', mime: 'image/png', filename: 'JCM-payment-QR.png',
-          caption: '*Please share payment details with us after payment.*\n*भुगतान के बाद कृपया भुगतान की जानकारी हमें भेजें।*',
+          kind: 'image', mime: 'image/png', filename: 'JCM-payment-details.png',
+          caption: '*Scan the QR to pay, or use the bank details.*\nAfter paying, please send the payment screenshot here.\n*भुगतान के बाद कृपया भुगतान की जानकारी यहाँ भेजें।*',
         })
       } else if (parsed.kind === 'ledger') {
         const stmt = await loadStatement(busy, parsed.code)

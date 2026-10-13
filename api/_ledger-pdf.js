@@ -3,7 +3,6 @@ import { jcmDoc, money as inr2 } from './_jcm-doc.js'
 // Ledger statement PDF for the WhatsApp "Ledger" button. Same numbers as the Customer Card ledger:
 // this financial year's postings from party_ledger, running balance worked back from today's outstanding.
 
-const NAVY = '#12213B', GOLD = '#D9AE55', GREY = '#5b6678', LINE = '#e3e7ee', TINT = '#f6f8fb'
 
 async function duesRunAt(busy) {
   const r = await busy.from('party_dues').select('synced_at').order('synced_at', { ascending: false }).limit(1)

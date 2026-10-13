@@ -25,12 +25,12 @@ export function buildEmail(overview) {
   const toOrder = all.filter(i => !i.orderedAt)
   const late = all.filter(i => i.orderedAt && i.late)
   const red = parties.filter(p => p.status === 'red')
-  const th = 'style="text-align:left;padding:6px 10px;background:#F1ECE0;font-size:12px;letter-spacing:.04em;color:#3E4553"'
-  const td = 'style="padding:6px 10px;border-top:1px solid #ECE6D8;font-size:14px;vertical-align:top"'
-  const h2 = t => `<h2 style="font-size:18px;color:#12213B;margin:24px 0 8px">${t}</h2>`
+  const th = 'style="text-align:left;padding:6px 10px;background:#F6F7FB;font-size:12px;letter-spacing:.04em;color:#6B7280"'
+  const td = 'style="padding:6px 10px;border-top:1px solid #E5E7EB;font-size:14px;vertical-align:top"'
+  const h2 = t => `<h2 style="font-size:18px;color:#111111;font-weight:600;margin:24px 0 8px">${t}</h2>`
   const who = i => (i.orders.length ? i.orders.map(o => o.name) : i.forParties).join(', ')
-  const parts = [`<div style="font-family:Arial,sans-serif;color:#0C111B;max-width:720px">
-    <div style="background:#12213B;color:#FFFFFF;padding:14px 18px;border-bottom:3px solid #D9AE55;font-size:20px;font-weight:bold">JCM Orders — ${esc(fmtDay(today))}</div>`]
+  const parts = [`<div style="font-family:Arial,sans-serif;color:#111111;max-width:720px">
+    <div style="color:#111111;padding:14px 0;border-bottom:1px solid #E5E7EB;font-size:22px;font-weight:600">JCM Orders — ${esc(fmtDay(today))}</div>`]
 
   parts.push(h2('Items to order'))
   if (!toOrder.length) parts.push('<p style="font-size:14px">Nothing left to order.</p>')
@@ -38,14 +38,14 @@ export function buildEmail(overview) {
   for (const i of toOrder) bySupplier.set(i.supplier, [...(bySupplier.get(i.supplier) || []), i])
   for (const [supplier, list] of bySupplier) {
     parts.push(`<p style="font-size:15px;font-weight:bold;margin:14px 0 4px">${esc(supplier)}</p>
-      <table style="border-collapse:collapse;width:100%;border:1px solid #E2DCCD"><tr><th ${th}>ITEM</th><th ${th}>SHORT</th><th ${th}>FOR</th></tr>
+      <table style="border-collapse:collapse;width:100%;border:1px solid #E5E7EB"><tr><th ${th}>ITEM</th><th ${th}>SHORT</th><th ${th}>FOR</th></tr>
       ${list.map(i => `<tr><td ${td}>${esc(i.item)}</td><td ${td}>${esc(i.short)}</td><td ${td}>${esc(who(i))}</td></tr>`).join('')}
       </table>`)
   }
 
   parts.push(h2('Ordered but late'))
   parts.push(late.length
-    ? `<table style="border-collapse:collapse;width:100%;border:1px solid #E2DCCD"><tr><th ${th}>ITEM</th><th ${th}>SUPPLIER</th><th ${th}>EXPECTED</th><th ${th}>FOR</th></tr>
+    ? `<table style="border-collapse:collapse;width:100%;border:1px solid #E5E7EB"><tr><th ${th}>ITEM</th><th ${th}>SUPPLIER</th><th ${th}>EXPECTED</th><th ${th}>FOR</th></tr>
       ${late.map(i => `<tr><td ${td}>${esc(i.item)}</td><td ${td}>${esc(i.supplier)}</td><td ${td}>${esc(fmtDay(i.expectedDate))}</td><td ${td}>${esc(who(i))}</td></tr>`).join('')}</table>`
     : '<p style="font-size:14px">None.</p>')
 
