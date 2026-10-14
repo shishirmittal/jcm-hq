@@ -97,3 +97,13 @@ body.has-tabbar .tb-hq .tb-sheet { padding-bottom: calc(var(--app-nav-h, 64px) +
 .tb-hq .tb-mat-undo { font-size: 18px; }
 .tb-hq .tb-mat-date { height: 52px; padding: 0 10px; border: 2px solid var(--line); border-radius: 10px; font: inherit; font-size: 18px; background: var(--surface); color: var(--text); }
 .tb-hq .tb-phone .tb-mat-date { height: 44px; font-size: 16px; }
+
+/* Item list: billed / cleared lines folded under the lines to pick (2026-10-14). */
+.tb-items-past { border-top: 1px solid var(--line); }
+.tb-items-past > summary { cursor: pointer; list-style: none; padding: 12px 24px; font-size: 22px; font-weight: 700; color: var(--muted); background: var(--hq-head); }
+.tb-items-past > summary::-webkit-details-marker { display: none; }
+.tb-items-past > summary::before { content: '▸'; display: inline-block; width: 1.1em; transition: transform .15s; }
+.tb-items-past[open] > summary::before { transform: rotate(90deg); }
+.tb-items-past > summary small { font-weight: 500; font-size: .8em; }
+.tb-items-past .tb-item { opacity: .7; }
+.tb-phone .tb-items-past > summary { padding: 9px 12px; font-size: 15px; }

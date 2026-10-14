@@ -458,30 +458,47 @@ function OrderScreen({ order, me, now, notice, call, onBack, onAction, onReprint
 
 // The order's items with Busy's stock: "12 lines · 2 short", then one row per
 // line: green In stock, red Short: 3 of 5, grey Cleared (in the portal) / Billed.
+// Lines still to send come first; when there are any, the billed / cleared ones are
+// folded underneath as "Already billed (N)" so pickers see only what to pick
+// (Shishir, 2026-10-14 — SO 763 / 766 mixed both).
+function ItemRow({ l }) {
+  const m = T.stockMarker(l)
+  return (
+    <div className={`tb-item${l.stock === 'cleared' ? ' tb-item-cleared' : ''}`}>
+      <div className="tb-item-main">
+        <span className="tb-item-name">{l.item || 'Item'}</span>
+        <span className="tb-item-code">Code {l.itemCode}</span>
+      </div>
+      <span className="tb-item-qty">{T.qtyText(l.ordered)}</span>
+      <span className={`tb-mark tb-mark-${m.kind}`}>{m.text}{m.note && <small>{m.note}</small>}</span>
+    </div>
+  )
+}
+
 function ItemList({ detail, error }) {
   if (error) return <div className="tb-error">{error}</div>
   if (!detail) return <div className="tb-items"><div className="tb-items-head"><span>Items</span><span>loading…</span></div></div>
   const sum = detail.stockSummary
+  const lines = detail.lines || []
+  const done = l => l.stock === 'billed' || l.stock === 'cleared'
+  const open = lines.filter(l => !done(l))
+  const past = lines.filter(done)
+  const fold = open.length > 0 && past.length > 0
+  const anyCleared = past.some(l => l.stock === 'cleared')
   return (
     <div className="tb-items" id="tb-items">
       <div className="tb-items-head">
-        <span>Items</span>
+        <span>{fold ? 'Items to pick' : 'Items'}</span>
         <span className={sum && sum.short ? 'tb-items-short' : ''}>{T.stockLine(sum)}</span>
       </div>
-      {(detail.lines || []).map(l => {
-        const m = T.stockMarker(l)
-        return (
-          <div className={`tb-item${l.stock === 'cleared' ? ' tb-item-cleared' : ''}`} key={l.lineNo}>
-            <div className="tb-item-main">
-              <span className="tb-item-name">{l.item || 'Item'}</span>
-              <span className="tb-item-code">Code {l.itemCode}</span>
-            </div>
-            <span className="tb-item-qty">{T.qtyText(l.ordered)}</span>
-            <span className={`tb-mark tb-mark-${m.kind}`}>{m.text}{m.note && <small>{m.note}</small>}</span>
-          </div>
-        )
-      })}
-      {!(detail.lines || []).length && <p className="tb-p">No item lines on this order.</p>}
+      {(fold ? open : lines).map(l => <ItemRow l={l} key={l.lineNo} />)}
+      {fold && (
+        <details className="tb-items-past">
+          <summary>{anyCleared ? 'Already billed or cleared' : 'Already billed'} ({past.length}) <small>— nothing to pick</small></summary>
+          {past.map(l => <ItemRow l={l} key={l.lineNo} />)}
+        </details>
+      )}
+      {!lines.length && <p className="tb-p">No item lines on this order.</p>}
     </div>
   )
 }

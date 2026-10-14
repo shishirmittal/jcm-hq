@@ -130,10 +130,12 @@ export const secondary = (o, me) => (o.stage === 'new' && can(me, 'pick') ? { la
 export function arrived(o) {
   if (o.stage !== 'new' || !o.grownReason) return ''
   if (o.grownReason === 'stock') return `Stock arrived ${shortDate(o.grownAt)} — pick today`
+  // Came back on its expected date, and Busy now has the stock too (checked live).
+  if (o.grownReason === 'date' && o.stockNow) return 'Stock arrived — pick today'
   if (o.grownReason === 'manual') return `Pick anyway — send what is in stock (${shortDate(o.grownAt)})`
   return `Expected ${shortDate(o.expectedDate || o.grownAt)} — not in Busy stock yet. Check and pick today`
 }
-export const arrivedRed = o => o.stage === 'new' && o.grownReason === 'date'
+export const arrivedRed = o => o.stage === 'new' && o.grownReason === 'date' && !o.stockNow
 
 // The item list on the order screen: one marker per line from Busy's stock.
 const fmtQ = q => (Number.isInteger(Number(q)) ? String(Number(q)) : String(Math.round(Number(q) * 1000) / 1000))

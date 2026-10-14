@@ -78,6 +78,25 @@ function view(o, who) {
     invoiceNo: o.invoice_vch_no || '', invoiceValue: o.invoice_value, boxes: o.boxes,
     pickerId: o.picker_id, picker: who.get(o.picker_id) || '', checker: who.get(o.checker_id) || '',
     packer: who.get(o.packerId) || '', expectedDate: o.expected_date, grownAt: o.grown_at, grownReason: o.grown_reason,
+    stockNow: o.stockNow ?? null,
+  }
+}
+
+// Orders that came back on their expected date (grown_reason 'date') before Busy had
+// the stock: has the stock arrived since? true = every line still to send is covered
+// now, so the card says "Stock arrived — pick today" instead of the red strip
+// (Shishir, 2026-10-14). Same per-order rule as the item list (lineStock).
+async function markStockNow(dbc, rows) {
+  const ids = rows.filter(o => o.stage === 'new' && o.grown_reason === 'date').map(o => o.id)
+  if (!ids.length) return
+  const lines = await must(selectTolerant(cols => dbc.from('order_lines').select(cols).in('order_id', ids).order('line_no'), `order_id, ${LINE_COLS}, cleared_at, cleared_qty`, `order_id, ${LINE_COLS}`), 'reading lines')
+  const stock = await readStock(dbc, lines.map(l => l.item_code))
+  const byOrder = new Map()
+  for (const l of lines) (byOrder.get(l.order_id) || byOrder.set(l.order_id, []).get(l.order_id)).push(l)
+  for (const o of rows) {
+    if (!ids.includes(o.id)) continue
+    const sum = lineStock(byOrder.get(o.id) || [], stock).summary
+    o.stockNow = sum.open > 0 && sum.short === 0
   }
 }
 
@@ -93,7 +112,7 @@ async function homeData(dbc, me) {
   const rows = all
   const pk = await packers(dbc, rows.filter(o => o.stage === 'in_bay').map(o => o.id))
   for (const o of rows) o.packerId = pk.get(o.id)
-  const who = await nameMap(dbc, rows.flatMap(o => [o.picker_id, o.checker_id, o.packerId]))
+  const [who] = await Promise.all([nameMap(dbc, rows.flatMap(o => [o.picker_id, o.checker_id, o.packerId])), markStockNow(dbc, rows).catch(() => {})])
   return { me: meView(me), orders: rows.map(o => view(o, who)), materialCount }
 }
 
@@ -134,6 +153,7 @@ async function handler(req, res) {
       // Busy's stock per line (stock_cache, kept fresh by the 3-minute sync).
       const [who, stockByItem] = await Promise.all([nameMap(dbc, [o.picker_id, o.checker_id, o.packerId]), readStock(dbc, lines.map(l => l.item_code))])
       const stock = lineStock(lines, stockByItem)
+      if (o.stage === 'new' && o.grown_reason === 'date') o.stockNow = stock.summary.open > 0 && stock.summary.short === 0
       return send(res, 200, {
         order: {
           ...view(o, who), address: o.party_address || '', mobile: o.party_mobile || '', gstin: o.party_gstin || '',
