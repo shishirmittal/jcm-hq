@@ -13,9 +13,15 @@ export function waConfigured() {
 
 // Any Indian mobile written the usual ways → 91XXXXXXXXXX (digits only), or null.
 export function toWaNumber(raw) {
+  // Busy often holds two numbers in one field ("7879220315,9893428554", "98270 12345 / 94250 67890"):
+  // try each piece and take the first valid Indian mobile. (2026-10-14: one field read as 20 digits
+  // was rejected as "no valid mobile" for real customers.)
+  const pieces = String(raw || '').split(/[,\/;|&]|\s{2,}|\band\b/i)
+  if (pieces.length > 1) { for (const p of pieces) { const n = toWaNumber(p); if (n) return n } return null }
   let d = String(raw || '').replace(/\D/g, '')
   if (d.length === 12 && d.startsWith('91')) d = d.slice(2)
   if (d.length === 11 && d.startsWith('0')) d = d.slice(1)
+  if (d.length === 20 || d.length === 24) return toWaNumber(d.slice(0, d.length / 2)) || toWaNumber(d.slice(d.length / 2))
   return /^[6-9]\d{9}$/.test(d) ? `91${d}` : null
 }
 
@@ -185,7 +191,17 @@ export async function sendLogged(busy, { kind, to, template, lang = 'en', params
       const d = await sendTemplate(number, template, lang, params.map(p => flat(p)), opts)
       out = { status: 'sent', id: d?.messages?.[0]?.id || null }
     } catch (err) {
-      out = { status: 'failed', error: String(err.message || err).slice(0, 400) }
+      const msg = String(err.message || err)
+      // The template in WhatsApp Manager has no buttons (or fewer) than the code expects (#132018
+      // "Template does not contain button component") → send it without button payloads rather
+      // than fail every message (receipts failed 71 times on 13–14 Oct for this).
+      if (/132018/.test(msg) && /button/i.test(msg) && (opts.buttonPayloads?.length || opts.buttonUrlParams?.length)) {
+        try {
+          const { buttonPayloads, buttonUrlParams, ...rest } = opts
+          const d = await sendTemplate(number, template, lang, params.map(p => flat(p)), rest)
+          out = { status: 'sent', id: d?.messages?.[0]?.id || null, error: 'sent without buttons: ' + msg.slice(0, 200) }
+        } catch (err2) { out = { status: 'failed', error: String(err2.message || err2).slice(0, 400) } }
+      } else out = { status: 'failed', error: msg.slice(0, 400) }
     }
   }
   const ins = await busy.from('wa_log').insert({ ...row, status: out.status, error: out.error || null, meta_id: out.id || null })
