@@ -1,8 +1,22 @@
 {
-  "regions": ["hnd1"],
+  "regions": [
+    "hnd1"
+  ],
   "git": {
     "deploymentEnabled": {
       "main": false
     }
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/api/cron/daily-email",
+      "destination": "/api/orders?h=email"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/daily-email",
+      "schedule": "0 12 * * *"
+    }
+  ]
 }

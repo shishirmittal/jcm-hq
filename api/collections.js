@@ -1,6 +1,7 @@
 import { applyCors } from './_cors.js'
 import { createClient } from '@supabase/supabase-js'
 import { waConfigured, sendLogged, waSwitches, BANNER, HQ_URL, inr, niceDate } from './_wa-cloud.js'
+import { sendLedger } from './_send-docs.js'
 
 // Payment Follow-up (JCM HQ → Collections) — page src/payment-followup.js.
 //
@@ -144,6 +145,7 @@ export default async function handler(req, res) {
     if (action === 'history') return await handleHistory(busy, body, res)
     if (action === 'save') return await handleSave(busy, hq, body, me, res)
     if (action === 'send-template') return await handleSendTemplate(busy, body, me, res)
+    if (action === 'send-ledger') { const r = await sendLedger(busy, body, me.name || me.email || 'HQ'); return send(res, r.error ? 400 : 200, r) }
     if (action === 'reminder-plan') return await handleReminderPlan(busy, body, me, res)
     if (action === 'reminder-settings') return await handleReminderSettings(busy, me, body, res, false)
     if (action === 'reminder-settings-save') return await handleReminderSettings(busy, me, body, res, true)

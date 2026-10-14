@@ -102,3 +102,7 @@ button.cu-act { border: 0; font-family: inherit; cursor: pointer; }
 .cu-pick { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 15px; }
 .cu-pick input[type="tel"] { flex: 1 1 140px; min-width: 0; height: 38px; padding: 0 10px; border: 1px solid var(--line, #ccc); border-radius: 8px; background: var(--bg, #fff); color: var(--text, inherit); font: inherit; }
 .cu-led-btns { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+
+/* Send button per bill (2026-10-15) */
+.cu-bill-act { text-align: right; white-space: nowrap; }
+.cu-bill-act .pf-link { display: inline-flex; align-items: center; gap: 4px; color: #17653a; font-weight: 600; }

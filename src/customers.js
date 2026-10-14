@@ -242,6 +242,8 @@ async function renderCard(container, code) {
       if (box.dataset.id === 'ledger' && d.ledgerReady && !box.dataset.loaded) { box.dataset.loaded = '1'; loadLedger(0) }
       return
     }
+    const si = e.target.closest('#cuBills [data-send-inv]')
+    if (si) { sendInvoiceBox(d, mobiles, wa, si.dataset.sendInv); return }
     const bp = e.target.closest('#cuBills [data-page]')
     if (bp) {
       const el = main.querySelector('#cuBills')
@@ -287,8 +289,8 @@ function fold(id, title, count, open, inner) {
 function billsHtml(b) {
   if (!b.rows.length) return '<div class="cu-muted cu-pad">No bills in Busy for this customer.</div>'
   return `<table class="cu-table">
-      <thead><tr><th>Date</th><th>Bill</th><th class="num">Amount</th></tr></thead>
-      <tbody>${b.rows.map(r => `<tr><td>${esc(day(r.date))}</td><td>${esc(String(r.no))}</td><td class="num">${r.amount === null ? '' : esc(formatMoney(r.amount))}</td></tr>`).join('')}</tbody>
+      <thead><tr><th>Date</th><th>Bill</th><th class="num">Amount</th><th></th></tr></thead>
+      <tbody>${b.rows.map(r => `<tr><td>${esc(day(r.date))}</td><td>${esc(String(r.no))}</td><td class="num">${r.amount === null ? '' : esc(formatMoney(r.amount))}</td><td class="cu-bill-act"><button type="button" class="pf-link" data-send-inv="${esc(String(r.no))}" title="Send this invoice on WhatsApp">${WA_ICON} Send</button></td></tr>`).join('')}</tbody>
     </table>${pager(b)}`
 }
 
@@ -337,16 +339,22 @@ function followHtml(rows) {
     </div>`).join('')}</div>`
 }
 
+const WA_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18a8 8 0 0 1-4.1-1.1l-.3-.2-3 .8.8-2.9-.2-.3A8 8 0 1 1 12 20zm4.4-6c-.2-.1-1.4-.7-1.6-.8s-.4-.1-.5.1l-.8.9c-.1.2-.3.2-.5.1a6.5 6.5 0 0 1-3.3-2.9c-.2-.4.3-.4.8-1.3.1-.2 0-.3 0-.4l-.7-1.7c-.2-.5-.4-.4-.5-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.7 11.8 11.8 0 0 0 4.5 4c1.7.7 2.3.8 3.1.6a2.6 2.6 0 0 0 1.7-1.2 2 2 0 0 0 .2-1.2c-.1-.1-.3-.2-.5-.3z"/></svg>'
+
 // Send ledger on WhatsApp (2026-10-13): ask first (which number), then api/customers.js send-ledger
 // builds the PDF and sends it as the `ledger_statement` template.
-function sendLedgerBox(d, mobiles, preferred) {
+// Send invoice copy (2026-10-15): same box, api/customers.js send-invoice (PDF straight into the chat when the
+// customer wrote in the last 24 h, else the txn_invoice template with the PDF Copy button).
+function sendInvoiceBox(d, mobiles, preferred, vchNo) { return sendLedgerBox(d, mobiles, preferred, vchNo) }
+function sendLedgerBox(d, mobiles, preferred, vchNo = null) {
+  const isInv = !!vchNo
   const ov = document.createElement('div')
   ov.className = 'modal-overlay'
   const opts = mobiles.map(n => `<label class="cu-pick"><input type="radio" name="cuLedNum" value="${esc(n)}" ${n === preferred ? 'checked' : ''}> ${esc(pretty(n))}</label>`).join('')
   ov.innerHTML = `
     <div class="modal" role="dialog" aria-modal="true">
-      <div class="modal-header"><h2>Send ledger on WhatsApp?</h2><button type="button" class="btn-ghost btn-small" aria-label="Close" id="cuLedCancel">✕</button></div>
-      <p class="cu-led-name"><b>${esc(d.name)}</b><br><span class="cu-muted">Ledger statement PDF for this financial year${d.dues.amount > 0 ? ` · outstanding ${esc(formatMoney(Math.round(d.dues.amount)))}` : ''}</span></p>
+      <div class="modal-header"><h2>${isInv ? `Send invoice ${esc(vchNo)} on WhatsApp?` : 'Send ledger on WhatsApp?'}</h2><button type="button" class="btn-ghost btn-small" aria-label="Close" id="cuLedCancel">✕</button></div>
+      <p class="cu-led-name"><b>${esc(d.name)}</b><br><span class="cu-muted">${isInv ? 'Invoice copy (PDF). If the customer has not written to us in the last 24 h, the invoice message goes with a PDF Copy button instead.' : `Ledger statement PDF for this financial year${d.dues.amount > 0 ? ` · outstanding ${esc(formatMoney(Math.round(d.dues.amount)))}` : ''}`}</span></p>
       <div class="cu-led-nums">
         ${opts}
         <label class="cu-pick"><input type="radio" name="cuLedNum" value="other" ${mobiles.length ? '' : 'checked'}> Other number
@@ -372,10 +380,10 @@ function sendLedgerBox(d, mobiles, preferred) {
     const go = ov.querySelector('#cuLedGo')
     go.disabled = true; go.textContent = 'Sending…'; err.hidden = true
     try {
-      const r = await call({ action: 'send-ledger', party_code: d.code, phone })
+      const r = await call(isInv ? { action: 'send-invoice', party_code: d.code, phone, vch_no: vchNo } : { action: 'send-ledger', party_code: d.code, phone })
       ov.querySelector('.modal').innerHTML = `
-        <div class="modal-header"><h2>Ledger sent ✓</h2></div>
-        <p>${esc(d.name)}'s ledger went to <b>${esc(pretty(phone))}</b>${r.via === 'direct' ? ' (as a PDF in their open chat)' : ''}.</p>
+        <div class="modal-header"><h2>${isInv ? 'Invoice sent ✓' : 'Ledger sent ✓'}</h2></div>
+        <p>${isInv ? `Invoice ${esc(vchNo)}` : `${esc(d.name)}'s ledger`} went to <b>${esc(pretty(phone))}</b>${r.via === 'direct' ? ' (as a PDF in their open chat)' : isInv ? ' (invoice message with a PDF Copy button)' : ''}.</p>
         <p class="cu-muted">You can see it in WhatsApp → Inbox or Log.</p>
         <div class="cu-led-btns"><button type="button" class="btn-primary" id="cuLedDone" aria-label="Close">OK</button></div>`
       ov.querySelector('#cuLedDone').addEventListener('click', close)

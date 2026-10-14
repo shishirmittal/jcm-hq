@@ -4,7 +4,7 @@ import { send, fail, findAdmin } from '../lib/auth.js'
 import { materialOverview } from '../lib/material.js'
 import { runDailyEmail, buildEmail, emailSettings } from '../lib/email.js'
 
-// The 17:30 IST email. Vercel's scheduler calls GET /api/cron/daily-email
+// The 17:30 IST email. Vercel's scheduler calls GET /api/cron/daily-email (vercel.json rewrite → /api/orders?h=email; moved here from jcm-orders 2026-10-15)
 // (vercel.json "crons": 12:00 UTC = 17:30 IST) with "Authorization: Bearer
 // <CRON_SECRET>". Without CRON_SECRET set in Vercel, scheduled runs are refused.
 //

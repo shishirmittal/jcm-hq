@@ -375,12 +375,14 @@ export function renderPaymentFollowup(container, sub) {
     const act = btn.dataset.act
     if (act === 'call') setTimeout(() => openModal(party, 'call'), 400)
     else if (act === 'send-wa') confirmWhatsApp(party)
+    else if (act === 'send-ledger') confirmLedger(party)
     else if (act === 'log') openModal(party, 'call')
     else if (act === 'history') openModal(party, 'call', true)
   })
 
   $('pfModalContact').addEventListener('click', e => {
     if (e.target.closest('[data-modal-wa]') && state.modal) confirmWhatsApp(state.modal.party)
+    if (e.target.closest('[data-modal-ledger]') && state.modal) confirmLedger(state.modal.party)
   })
 
   // ---- WhatsApp reminder: ask first, send the approved template; the send is logged by itself ----
@@ -391,6 +393,48 @@ export function renderPaymentFollowup(container, sub) {
     document.body.appendChild(t)
     setTimeout(() => t.remove(), 5000)
   }
+  // Ledger statement PDF on WhatsApp (2026-10-15): same as the Customer Card's Send ledger
+  // (api/_send-docs.js via api/collections.js action send-ledger).
+  function confirmLedger(party) {
+    if (document.getElementById('pfWaConfirm')) return
+    const ov = document.createElement('div')
+    ov.className = 'modal-overlay pf-overlay'; ov.id = 'pfWaConfirm'
+    ov.innerHTML = `
+      <div class="modal pf-modal pf-wa-confirm" role="dialog" aria-modal="true">
+        <h2>Send ledger on WhatsApp?</h2>
+        <div class="pf-wa-lines">
+          <div><strong>${esc(party.party_name)}</strong></div>
+          <div>To: <strong>${esc(String(party.whatsapp).replace(/(\d{5})(\d{5})/, '+91 $1 $2'))}</strong></div>
+          <div class="pf-muted">Ledger statement PDF for this financial year with a QR Code button. It cannot be taken back.</div>
+        </div>
+        <div class="pf-error" id="pfWaErr" hidden></div>
+        <div class="pf-modal-actions">
+          <button type="button" class="btn-ghost btn-small" id="pfWaNo">Cancel</button>
+          <button type="button" class="btn-primary btn-small" id="pfWaYes">Yes, send ledger</button>
+        </div>
+      </div>`
+    document.body.appendChild(ov)
+    document.body.classList.add('pf-modal-open')
+    const close = () => { ov.remove(); if (!state.modal && $('pfOwners').hidden) document.body.classList.remove('pf-modal-open') }
+    ov.querySelector('#pfWaNo').addEventListener('click', close)
+    ov.addEventListener('click', e => { if (e.target === ov) close() })
+    ov.querySelector('#pfWaYes').addEventListener('click', async () => {
+      const yes = ov.querySelector('#pfWaYes')
+      yes.disabled = true; yes.textContent = 'Sending…'
+      ov.querySelector('#pfWaNo').disabled = true
+      try {
+        const r = await call({ action: 'send-ledger', party_code: party.party_code, phone: party.whatsapp })
+        close()
+        toast(`✓ Ledger sent to ${r.name}${r.via === 'direct' ? ' (PDF in their open chat)' : ''}. See WhatsApp → Log.`)
+      } catch (err) {
+        const el = ov.querySelector('#pfWaErr')
+        el.textContent = err.message; el.hidden = false
+        yes.hidden = true
+        const no = ov.querySelector('#pfWaNo'); no.disabled = false; no.textContent = 'Close'
+      }
+    })
+  }
+
   function confirmWhatsApp(party) {
     if (document.getElementById('pfWaConfirm')) return
     const ov = document.createElement('div')
@@ -955,6 +999,7 @@ export function renderPaymentFollowup(container, sub) {
           <div class="pf-actions">
             ${phone ? `<a class="btn-contact btn-call" href="tel:+91${phone}" data-act="call" data-code="${code}">${PHONE_SVG} Call</a>` : ''}
             ${wa ? `<button type="button" class="btn-contact btn-whatsapp" data-act="send-wa" data-code="${code}">${WA_SVG} WhatsApp</button>` : ''}
+            ${wa ? `<button type="button" class="btn-ghost btn-small" data-act="send-ledger" data-code="${code}" title="Send the ledger statement PDF on WhatsApp">Ledger</button>` : ''}
             <button type="button" class="btn-ghost btn-small" data-act="log" data-code="${code}">Save outcome</button>
             <button type="button" class="pf-link" data-act="history" data-code="${code}">History</button>
           </div>
@@ -970,6 +1015,7 @@ export function renderPaymentFollowup(container, sub) {
     $('pfModalContact').innerHTML = [
       ...party.phones.map(ph => `<a class="btn-contact btn-call" href="tel:+91${ph}">${PHONE_SVG} ${esc(ph)}</a>`),
       party.whatsapp ? `<button type="button" class="btn-contact btn-whatsapp" data-modal-wa>${WA_SVG} WhatsApp</button>` : '',
+      party.whatsapp ? `<button type="button" class="btn-ghost btn-small" data-modal-ledger>Ledger</button>` : '',
     ].join('')
     $('pfPromisedAmount').value = ''
     $('pfPromisedDate').value = ''
