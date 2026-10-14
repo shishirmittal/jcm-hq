@@ -21,6 +21,13 @@ window.addEventListener('hashchange', () => document.body.classList.remove('pf-m
 import { renderPaymentReminders } from './payment-reminders.js'
 import { hqConfirm } from './hq-dialog.js'
 
+// Wording for the bulk "Send WhatsApp to N" result (statuses from api/collections.js send-reminders).
+const BULK_TEXT = {
+  sent: 'Sent', failed: 'Failed', no_number: 'No number', off: 'Switched off', dnd: 'DND — not sent',
+  needs_review: 'Check balance — not sent', nothing_due: 'Nothing due — not sent', recent_credit: 'Nothing over 20 days',
+  under_40: 'Nothing over 40 days', recent: 'Already reminded today',
+}
+
 const TAB_ID = 'payment-followup'
 
 export const OUTCOMES = [
@@ -189,6 +196,8 @@ export function renderPaymentFollowup(container, sub) {
     scope: 20,          // 20 / 40 (days) or 'all'
     graceDays: 20,
     graceSteps: [20, 40],
+    picked: new Set(),   // ticked parties (party_code) for "Send WhatsApp to N"
+    bulkSending: false,
   }
 
   container.innerHTML = `
@@ -220,6 +229,7 @@ export function renderPaymentFollowup(container, sub) {
           </div>
           <span class="pf-muted" id="pfScopeNote"></span>
         </div>
+        <div class="pf-pickbar" id="pfPickBar" hidden></div>
         <div id="pfList" class="pf-list"><div class="loading-state">Loading…</div></div>
         <section class="pf-done" id="pfDone" hidden></section>
       </main>
@@ -768,6 +778,72 @@ export function renderPaymentFollowup(container, sub) {
       return
     }
     listEl.innerHTML = sorted(list).map(rowHtml).join('')
+    drawPickBar()
+  }
+
+  // ---- Tick boxes → "Send WhatsApp to N" (same server rules as the reminders tab) ----
+  function pickableList() {
+    return state.parties.filter(p => p.whatsapp && p.balance > 0 && !p.dnd && !p.needs_review)
+  }
+  function drawPickBar() {
+    const bar = $('pfPickBar')
+    const n = state.picked.size
+    const all = pickableList().length
+    if (!state.parties.length || !all) { bar.hidden = true; bar.innerHTML = ''; return }
+    bar.hidden = false
+    const total = state.parties.filter(p => state.picked.has(p.party_code)).reduce((s, p) => s + p.balance, 0)
+    bar.innerHTML = `
+      <span class="pf-pick-count"><strong>${n}</strong> of ${all} ticked${n ? ` · ${esc(rupees(total))} due` : ''}</span>
+      <button type="button" class="pf-link" data-pick-all="1">Tick all ${all}</button>
+      <button type="button" class="pf-link" data-pick-none="1" ${n ? '' : 'hidden'}>Untick all</button>
+      <button type="button" class="btn-contact btn-whatsapp pf-pick-send" id="pfPickSend" ${n && !state.bulkSending ? '' : 'disabled'}>
+        ${WA_SVG} ${state.bulkSending ? 'Sending…' : n ? `Send WhatsApp to ${n}` : 'Tick parties to send'}</button>`
+  }
+  $('pfPickBar').addEventListener('click', e => {
+    if (e.target.closest('[data-pick-all]')) { pickableList().forEach(p => state.picked.add(p.party_code)); drawList() }
+    else if (e.target.closest('[data-pick-none]')) { state.picked.clear(); drawList() }
+    else if (e.target.closest('#pfPickSend')) confirmBulkWhatsApp()
+  })
+  $('pfList').addEventListener('change', e => {
+    const cb = e.target.closest('input[data-pick]')
+    if (!cb) return
+    if (cb.checked) state.picked.add(cb.dataset.pick); else state.picked.delete(cb.dataset.pick)
+    cb.closest('.pf-row')?.classList.toggle('is-picked', cb.checked)
+    drawPickBar()
+  })
+  async function confirmBulkWhatsApp() {
+    const codes = state.parties.filter(p => state.picked.has(p.party_code)).map(p => p.party_code)
+    if (!codes.length || state.bulkSending) return
+    const total = state.parties.filter(p => state.picked.has(p.party_code)).reduce((s, p) => s + p.balance, 0)
+    const ok = await hqConfirm(`Send the WhatsApp payment reminder to ${codes.length} part${codes.length === 1 ? 'y' : 'ies'} (${rupees(total)} due)? Each gets the approved JCM message with the QR Code, Ledger and Invoices buttons. It cannot be taken back.`)
+    if (!ok) return
+    state.bulkSending = true
+    drawPickBar()
+    const tier = state.view === 'due' ? 20 : state.scope === 'all' ? 20 : state.scope
+    const counts = {}
+    let handled = 0
+    try {
+      for (let i = 0; i < codes.length; i += 10) {
+        if (!container.isConnected) return
+        const btn = $('pfPickSend'); if (btn) btn.textContent = `Sending ${Math.min(i + 10, codes.length)} of ${codes.length}…`
+        const data = await call({ action: 'send-reminders', party_codes: codes.slice(i, i + 10), tier, respect_gap: false })
+        for (const r of data.results || []) {
+          counts[r.status] = (counts[r.status] || 0) + 1
+          state.picked.delete(r.party_code)
+          const p = state.parties.find(x => x.party_code === r.party_code)
+          if (p && r.status === 'sent') p.last_reminder = data.sentAt
+          handled++
+        }
+      }
+    } catch (err) {
+      toast(`✗ ${err.message} — ${handled} of ${codes.length} were handled before this stopped.`)
+    } finally {
+      state.bulkSending = false
+      const text = Object.entries(counts).map(([k, v]) => `${v} ${(BULK_TEXT[k] || k).toLowerCase()}`).join(' · ')
+      if (text) toast(`✓ Done: ${text}. Each one is saved in that party's History.`)
+      drawList()
+      if (state.mode === 'today') loadList(true)
+    }
   }
 
   function ageingHtml(p) {
@@ -856,8 +932,12 @@ export function renderPaymentFollowup(container, sub) {
       p.owner_name && !(state.mode === 'today' && state.person !== 'all') ? `<span class="pf-tag pf-tag-owner" title="Follows up this group">${esc(p.owner_name)}</span>` : '',
       p.needs_review ? '<span class="pf-tag pf-tag-review" title="Balance flagged for checking in the dues sync">Check balance</span>' : '',
     ].join('')
+    const pickable = !!wa && p.balance > 0 && !p.dnd && !p.needs_review
     return `
-      <article class="pf-row">
+      <article class="pf-row ${state.picked.has(p.party_code) ? 'is-picked' : ''}">
+        <label class="pf-pick" title="${pickable ? 'Tick to include in Send WhatsApp' : 'No WhatsApp number, DND or check balance — cannot be sent'}">
+          <input type="checkbox" data-pick="${code}" ${pickable ? '' : 'disabled'} ${state.picked.has(p.party_code) ? 'checked' : ''}>
+        </label>
         <div class="pf-row-main">
           <div class="pf-row-top">
             <span class="pf-name">${esc(p.party_name)}</span>${tags}

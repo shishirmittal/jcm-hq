@@ -259,3 +259,19 @@ body.pf-modal-open { overflow: hidden; }
   .pfr-auto-grid input[type=time], .pfr-auto-grid input[type=number] { width: 130px; margin-left: auto; flex-shrink: 0; }
   .pfr-auto-row { align-items: flex-start; }
 }
+
+/* Tick boxes on the calls list → "Send WhatsApp to N" (2026-10-14) */
+.pf-pick { display: flex; align-items: flex-start; padding-top: 2px; flex-shrink: 0; }
+.pf-pick input { width: 20px; height: 20px; accent-color: #17653a; cursor: pointer; margin: 0; }
+.pf-pick input:disabled { opacity: .35; cursor: not-allowed; }
+.pf-row.is-picked { border-color: #17653a; box-shadow: inset 3px 0 0 #17653a; }
+.pf-pickbar { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; margin-bottom: 10px; padding: 8px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; font-size: 13px; }
+.pf-pick-count { color: var(--body); }
+.pf-pick-send { margin-left: auto; height: 34px; padding: 0 14px; font-weight: 700; }
+.pf-pick-send:disabled { opacity: .5; cursor: not-allowed; }
+@media (max-width: 640px) {
+  .pf-row { flex-direction: row; flex-wrap: wrap; }
+  .pf-row .pf-row-main { flex: 1 1 calc(100% - 32px); }
+  .pf-row .pf-row-side { flex: 1 1 100%; }
+  .pf-pick-send { margin-left: 0; width: 100%; justify-content: center; }
+}
