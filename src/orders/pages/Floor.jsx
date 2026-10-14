@@ -457,7 +457,7 @@ function OrderScreen({ order, me, now, notice, call, onBack, onAction, onReprint
 }
 
 // The order's items with Busy's stock: "12 lines · 2 short", then one row per
-// line: green In stock, red Short: 3 of 5, grey Cleared (in the portal) / Billed.
+// line: green In stock, green "In stock 2" + red "Not in stock 3" on short lines, grey Cleared (in the portal) / Billed.
 // Lines still to send come first; when there are any, the billed / cleared ones are
 // folded underneath as "Already billed (N)" so pickers see only what to pick
 // (Shishir, 2026-10-14 — SO 763 / 766 mixed both).
@@ -470,7 +470,12 @@ function ItemRow({ l }) {
         <span className="tb-item-code">Code {l.itemCode}</span>
       </div>
       <span className="tb-item-qty">{T.qtyText(l.ordered)}</span>
-      <span className={`tb-mark tb-mark-${m.kind}`}>{m.text}{m.note && <small>{m.note}</small>}</span>
+      {m.kind === 'split'
+        ? <span className="tb-marks">
+            {m.inStock && <span className="tb-mark tb-mark-green">In stock {m.inStock}</span>}
+            <span className="tb-mark tb-mark-red">Not in stock {m.notInStock}</span>
+          </span>
+        : <span className={`tb-mark tb-mark-${m.kind}`}>{m.text}{m.note && <small>{m.note}</small>}</span>}
     </div>
   )
 }
@@ -542,7 +547,7 @@ function ShortItems({ call, order }) {
   return (
     <div className="tb-sheet-note">
       {short.length
-        ? <>Short in Busy: {short.map((l, i) => <span key={l.lineNo}>{i ? ', ' : ''}<strong>{l.item || 'Item'}</strong> ({T.stockMarker(l).text.replace('Short: ', 'short ')})</span>)}.</>
+        ? <>Short in Busy: {short.map((l, i) => <span key={l.lineNo}>{i ? ', ' : ''}<strong>{l.item || 'Item'}</strong> ({T.qtyText(l.short)} not in stock)</span>)}.</>
         : <>Busy shows stock for every line ({T.stockLine(detail.stockSummary)}), so it will come back to NEW at the next sync, within 3 minutes.</>}
     </div>
   )

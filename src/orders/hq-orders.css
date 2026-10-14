@@ -107,3 +107,7 @@ body.has-tabbar .tb-hq .tb-sheet { padding-bottom: calc(var(--app-nav-h, 64px) +
 .tb-items-past > summary small { font-weight: 500; font-size: .8em; }
 .tb-items-past .tb-item { opacity: .7; }
 .tb-phone .tb-items-past > summary { padding: 9px 12px; font-size: 15px; }
+/* Short line: green "In stock N" + red "Not in stock N" side by side (2026-10-14). */
+.tb-marks { justify-self: start; display: inline-flex; flex-wrap: wrap; gap: 8px; }
+.tb-phone .tb-marks { grid-area: mark; gap: 6px; }
+.tb-hq .tb-item { grid-template-columns: minmax(0, 1fr) 90px auto; }

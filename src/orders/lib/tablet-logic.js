@@ -142,7 +142,8 @@ const fmtQ = q => (Number.isInteger(Number(q)) ? String(Number(q)) : String(Math
 export function stockMarker(l) {
   switch (l.stock) {
     case 'in_stock': return { text: 'In stock', kind: 'green' }
-    case 'short': return { text: `Short: ${fmtQ(l.short)} of ${fmtQ(l.pending)}`, kind: 'red', note: Number(l.available) > 0 ? `${fmtQ(l.available)} in stock` : 'none in stock' }
+    // Two chips side by side (Shishir, 2026-10-14): green "In stock 3", red "Not in stock 2".
+    case 'short': return { text: `Not in stock ${fmtQ(l.short)}`, kind: 'split', inStock: Number(l.available) > 0 ? fmtQ(l.available) : '', notInStock: fmtQ(l.short) }
     case 'cleared': return { text: 'Cleared', kind: 'grey' }
     case 'billed': return { text: 'Billed', kind: 'grey' }
     default: return { text: '', kind: 'grey' }
