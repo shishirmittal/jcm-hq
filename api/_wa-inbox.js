@@ -8,6 +8,9 @@
 // sent there, else a customer whose mobile matches (shown as "maybe").
 import { sendText, sendMedia, toWaNumber } from './_wa-cloud.js'
 
+// Ledger-only accounts (Nexus Enterprises, Silver Electric House, Cash) are never a chat's customer.
+const LEDGER_ONLY_CODES = new Set(['40355', '65494', '56680'])
+
 const WINDOW_H = 24
 
 export async function recordIncoming(busy, value) {
@@ -94,8 +97,24 @@ export async function listConversations(busy, { limit = 200 } = {}) {
   const numbers = list.map(c => c.number)
   const names = new Map()
   if (numbers.length) {
-    const l = await busy.from('wa_log').select('to_number, ref_name, kind, created_at').in('to_number', numbers).not('ref_name', 'is', null).order('created_at', { ascending: false }).limit(2000)
+    const l = await busy.from('wa_log').select('to_number, ref, ref_name, kind, created_at').in('to_number', numbers).not('ref_name', 'is', null).order('created_at', { ascending: false }).limit(2000)
     for (const x of l.data || []) if (!names.has(x.to_number)) names.set(x.to_number, { name: x.ref_name, how: x.kind })
+    // Busy code for the Customer card / reminder scheduler (2026-10-16): from what we sent that number —
+    // reminder ref = code, ledger ref = ledger:<code>; else the newest transaction message (wa_outbox) to it.
+    for (const x of l.data || []) {
+      const n = names.get(x.to_number)
+      if (!n || n.code) continue
+      const code = x.kind === 'reminder' && /^\d{1,9}$/.test(x.ref || '') ? x.ref : (/^(?:ledger|qr):(\d{1,9})$/.exec(x.ref || '') || [])[1]
+      if (code && !LEDGER_ONLY_CODES.has(code)) n.code = code
+    }
+    const noCode = numbers.filter(n => names.has(n) && !names.get(n).code)
+    if (noCode.length) {
+      const ob = await busy.from('wa_outbox').select('mobile, party_code, created_at').in('mobile', noCode.flatMap(n => [n, n.slice(-10)])).not('party_code', 'is', null).order('created_at', { ascending: false }).limit(500)
+      for (const x of ob.data || []) {
+        const n = names.get(toWaNumber(x.mobile) || '')
+        if (n && !n.code && !LEDGER_ONLY_CODES.has(String(x.party_code))) n.code = String(x.party_code)
+      }
+    }
     // Fallback: a customer whose mobile matches (display only, marked "maybe").
     const missing = numbers.filter(n => !names.has(n))
     if (missing.length) {

@@ -13,6 +13,7 @@ import { esc } from './utils.js'
 import { renderWhatsappSettings } from './whatsapp-test.js'
 import { hqConfirm } from './hq-dialog.js'
 import { renderInvoiceAlerts } from './whatsapp-alerts.js'
+import { openScheduler, scheduleChip } from './wa-schedule.js'
 
 export async function callWhatsapp(payload) {
   const { data: { session } } = await supabase.auth.getSession()
@@ -148,7 +149,11 @@ function renderInbox(el, number) {
         <div class="wa-thread-head">
           <button type="button" class="btn-ghost btn-small wa-back" id="waBack">‹ Back</button>
           <div><div class="wa-conv-name">${esc(c.name || c.display || number)}</div><div class="wa-muted">${esc(c.display || number)}${c.nameHow ? ` · name from ${esc(c.nameHow === 'maybe' ? 'a matching customer record (maybe)' : c.nameHow === 'whatsapp profile' ? 'their WhatsApp profile' : 'the last ' + (KIND_LABEL[c.nameHow] || c.nameHow).toLowerCase() + ' we sent')}` : ''}</div></div>
-          ${c.code ? `<a class="btn-ghost btn-small" href="#customers/${esc(c.code)}">Customer card</a>` : ''}
+          <div class="wa-head-acts">
+            ${c.code ? `<a class="btn-ghost btn-small" href="#customers/${esc(c.code)}">👤 Customer card</a>` : ''}
+            <button type="button" class="btn-primary btn-small" id="waSched">⏰ Schedule reminder</button>
+            <div class="wa-sched-chip" id="waSchedChip"></div>
+          </div>
         </div>
         <div class="wa-msgs" id="waMsgs">${rows || '<div class="empty-state">Nothing here yet.</div>'}</div>
         <div class="wa-reply">
@@ -182,6 +187,8 @@ function renderInbox(el, number) {
         }
         finally { b.disabled = false }
       })
+      th.querySelector('#waSched').addEventListener('click', () => openScheduler({ number, code: c.code, name: c.name, onSaved: sch => { const chip = th.querySelector('#waSchedChip'); if (chip) chip.textContent = scheduleChip(sch) } }))
+      if (c.code) call({ action: 'schedule-list', party_code: c.code }).then(d => { const a = d.schedules.find(x => x.status === 'active'); const chip = th.querySelector('#waSchedChip'); if (a && chip) chip.textContent = scheduleChip(a) }).catch(() => {})
       th.querySelector('#waReplySend')?.addEventListener('click', sendReply)
       th.querySelector('#waReplyText')?.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) sendReply() })
     } catch (err) { th.innerHTML = `<div class="empty-state">${esc(err.message)}</div>` }

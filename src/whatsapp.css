@@ -123,3 +123,33 @@
 .wal-side { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .wal-switch { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
 @media (max-width: 560px) { .wal-rule { flex-direction: column; } }
+
+/* Inbox thread: Customer card + Schedule reminder (2026-10-16) — classes wa-head-acts / ws-* (src/wa-schedule.js) */
+.wa-thread-head > div.wa-head-acts { flex: 0 1 auto; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; }
+.wa-sched-chip { flex-basis: 100%; text-align: right; font-size: 12px; color: var(--grn-dk, #166534); }
+.wa-sched-chip:empty { display: none; }
+@media (max-width: 640px) { .wa-thread-head { flex-wrap: wrap; } .wa-thread-head > div.wa-head-acts { flex-basis: 100%; justify-content: flex-start; } .wa-sched-chip { text-align: left; } }
+.ws-modal { width: min(560px, calc(100vw - 24px)); max-height: 90vh; overflow-y: auto; }
+.ws-sub { font-size: 12.5px; color: var(--muted); }
+.ws-party { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 4px; }
+.ws-due { font-size: 14px; }
+.ws-links { font-size: 13px; }
+.ws-link { background: none; border: 0; padding: 0; font: inherit; color: var(--blue, #2563eb); cursor: pointer; text-decoration: none; font-weight: 600; }
+.ws-find { margin-bottom: 10px; }
+.ws-find input { width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: var(--surface); color: var(--text); box-sizing: border-box; }
+.ws-results { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.ws-results button { text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font: inherit; cursor: pointer; color: var(--text); }
+.ws-f { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--muted); margin-bottom: 10px; }
+.ws-f input, .ws-f textarea { padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 14px; background: var(--surface); color: var(--text); }
+.ws-grid { display: grid; grid-template-columns: 1.2fr 1fr 0.8fr; gap: 0 10px; }
+.ws-grid input { min-width: 0; width: 100%; box-sizing: border-box; }
+.ws-seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; width: fit-content; }
+.ws-seg button { border: 0; background: var(--surface); color: var(--body); padding: 8px 14px; font: inherit; font-size: 13.5px; cursor: pointer; border-right: 1px solid var(--line); }
+.ws-seg button:last-child { border-right: 0; }
+.ws-seg button.on { background: var(--navy, #1A2E3B); color: #fff; }
+.ws-hint { font-size: 13px; padding: 8px 10px; border-radius: 8px; background: var(--grn-bg, #f0fdf4); color: var(--grn-dk, #166534); margin-bottom: 10px; }
+.ws-hint:empty { display: none; }
+.ws-old { display: flex; flex-direction: column; gap: 4px; font-size: 13px; margin-bottom: 8px; }
+.ws-old-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.ws-actions { display: flex; justify-content: flex-end; gap: 8px; }
+@media (max-width: 520px) { .ws-grid { grid-template-columns: 1fr 1fr; } }

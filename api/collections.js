@@ -694,7 +694,7 @@ async function reminderContext(busy, codes) {
 
 // Decide for one party. Returns { ok: true, plan } or { ok: false, skip, why }.
 //   minOver: 20 = anyone with something over 20 days, 40 = only parties with something over 40 days.
-function planReminder(ctx, code, { minOver = 20, respectGap = true } = {}) {
+function planReminder(ctx, code, { minOver = 20, respectGap = true, allowRecent = false } = {}) {
   const s = ctx.seg.get(code)
   const p = ctx.pd.get(code) || {}
   const c = ctx.cu.get(code) || {}
@@ -703,7 +703,8 @@ function planReminder(ctx, code, { minOver = 20, respectGap = true } = {}) {
   if (isDnd(s)) return { ok: false, skip: 'dnd', why: 'JCM Due DND group' }
   if (p.needs_review === true) return { ok: false, skip: 'needs_review', why: 'Balance flagged "Check balance"' }
   if (balance <= 0 || ctx.fresh.stale.has(code)) return { ok: false, skip: 'nothing_due', why: 'Nothing due right now' }
-  const overdue = Math.min(overdueOf(ctx.ag20.get(code)), balance)
+  // allowRecent (scheduled reminders the customer agreed to): bills under 20 days count as due too.
+  const overdue = Math.min(overdueOf(ctx.ag20.get(code)), balance) || (allowRecent ? balance : 0)
   const overdue40 = Math.min(overdueOf(ctx.ag40.get(code)), balance)
   if (overdue <= 0) return { ok: false, skip: 'recent_credit', why: 'Nothing over 20 days yet' }
   const red = overdue40 > 0
@@ -1096,3 +1097,14 @@ async function closeDailyTaskIfDone(busy, hq, groupName, me) {
 
 // Shared with api/_nexus.js (the HQ assistant).
 export { dueByPerson }
+
+// One reminder for a schedule set from the WhatsApp Inbox (api/_schedules.js). Same templates and hard
+// skips (DND, check balance, nothing due, no number, 20 h repeat) — but no contact gap, and bills under
+// 20 days count, because the customer was spoken to and the date was agreed.
+export async function sendScheduledReminder(busy, code, switches) {
+  const ctx = await reminderContext(busy, [code])
+  const d = planReminder(ctx, code, { respectGap: false, allowRecent: true })
+  if (!d.ok) return { status: 'skip', skip: d.skip, why: d.why }
+  const r = await dispatchReminder(busy, d.plan, { id: null, name: 'Scheduled reminder' }, switches)
+  return { status: r.status, error: r.error, mobile: d.plan.mobile, template: d.plan.template, balance: d.plan.balance }
+}

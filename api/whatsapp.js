@@ -6,6 +6,7 @@ import { runOutbox, TXN } from './_wa-outbox.js'
 import { listConversations, loadThread, replyText, unreadCount } from './_wa-inbox.js'
 import { db as ordersDb } from './_orders/lib/db.js'
 import { materialOverview } from './_orders/lib/material.js'
+import { partySearch, scheduleList, scheduleSave, scheduleStop, runSchedules } from './_schedules.js'
 import { runEmailAlerts, runItemAlerts, alertsGet, alertSave, alertRemove } from './_staff-alerts.js'
 
 // WhatsApp via Meta's Cloud API — the HQ "WhatsApp" admin page (src/whatsapp-test.js at #whatsapp-test),
@@ -37,6 +38,7 @@ async function tick(busy, force) {
   // Staff alerts (api/_staff-alerts.js): email bills brand-wise, sales invoices by item group. One failing never stops the rest.
   try { out.emailAlerts = await runEmailAlerts(busy, sw) } catch (err) { out.emailAlerts = { error: String(err.message || err).slice(0, 200) } }
   try { out.itemAlerts = await runItemAlerts(busy, sw) } catch (err) { out.itemAlerts = { error: String(err.message || err).slice(0, 200) } }
+  try { out.schedules = await runSchedules(busy, sw) } catch (err) { out.schedules = { error: String(err.message || err).slice(0, 200) } }
   const at = sw.get('orders_daily_at') || '17:30'
   const last = sw.get('last_orders_daily')
   const today = todayIST()
@@ -215,6 +217,13 @@ export default async function handler(req, res) {
     if (body.action === 'tick') return send(res, 200, { ok: true, ...(await tick(busy, body.force)) })
     if (body.action === 'count') return send(res, 200, { unread: await unreadCount(busy) })
     if (body.action === 'alerts-get') return send(res, 200, await alertsGet(busy))
+    // Scheduled payment reminders from the Inbox (api/_schedules.js).
+    if (['party-search', 'schedule-list', 'schedule-save', 'schedule-stop'].includes(body.action)) {
+      try {
+        const fn = { 'party-search': partySearch, 'schedule-list': scheduleList, 'schedule-save': scheduleSave, 'schedule-stop': scheduleStop }[body.action]
+        return send(res, 200, await fn(busy, body, me))
+      } catch (err) { return send(res, err.status || 500, { error: err.message }) }
+    }
     if (body.action === 'alert-save' || body.action === 'alert-remove') {
       if (!me.isAdmin) return send(res, 403, { error: 'Only admins can change invoice alerts.' })
       try { return send(res, 200, body.action === 'alert-save' ? await alertSave(busy, body, me) : await alertRemove(busy, body)) }
