@@ -296,3 +296,6 @@ async function ledger(busy, body) {
   }
 }
 
+
+// Shared with api/_nexus.js (the HQ assistant).
+export { search as customerSearch, card as customerCard }

@@ -1,0 +1,65 @@
+/* Nexus — HQ assistant (src/nexus.js). Classes nx-*. Navy + gold = website colours. */
+.nx-root { --nx-navy: #1A2E3B; --nx-gold: #C8A96E; --nx-gap: 20px; position: fixed; right: var(--nx-gap); bottom: var(--nx-gap); z-index: 900; font-size: 14px; }
+body.has-tabbar .nx-root { bottom: calc(14px + var(--app-nav-h, 64px)); right: 14px; }
+body.native-app .nx-root { bottom: calc(14px + var(--app-nav-h, 64px) + env(safe-area-inset-bottom, 0px)); }
+body.keyboard-open:not(.nx-open) .nx-root { display: none; }
+
+.nx-fab { width: 58px; height: 58px; border-radius: 50%; border: 2px solid var(--nx-gold); background: var(--nx-navy); color: #fff; display: grid; place-items: center; cursor: pointer;
+  box-shadow: 0 8px 24px rgba(10, 20, 30, .35); transition: transform .15s ease, box-shadow .15s ease; padding: 0; }
+.nx-fab:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(10, 20, 30, .42); }
+.nx-fab:focus-visible { outline: 3px solid var(--nx-gold); outline-offset: 3px; }
+.nx-root.is-open .nx-fab { transform: scale(.92); }
+
+.nx-panel { position: absolute; right: 0; bottom: 72px; width: min(400px, calc(100vw - 32px)); height: min(620px, calc(100vh - 140px)); display: flex; flex-direction: column;
+  background: var(--surface, #fff); color: var(--text, #0f172a); border: 1px solid var(--line, #e2e8f0); border-radius: 18px; overflow: hidden; box-shadow: 0 18px 48px rgba(10, 20, 30, .28); }
+.nx-panel[hidden] { display: none; }
+.nx-head { display: flex; align-items: center; gap: 10px; padding: 12px 12px 12px 14px; background: var(--nx-navy); color: #fff; }
+.nx-badge { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, .08); border: 1px solid rgba(200, 169, 110, .6); color: #fff; flex-shrink: 0; }
+.nx-title { flex: 1; display: flex; flex-direction: column; line-height: 1.2; }
+.nx-title b { font-size: 16px; letter-spacing: .3px; }
+.nx-title small { font-size: 11.5px; color: rgba(255, 255, 255, .7); }
+.nx-icon { width: 34px; height: 34px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, .22); background: transparent; color: #fff; cursor: pointer; font-size: 15px; }
+.nx-icon:hover { background: rgba(255, 255, 255, .1); }
+
+.nx-body { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; background: var(--bg, #f8fafc); }
+.nx-hello { text-align: center; padding: 18px 10px 6px; color: var(--body, #334155); }
+.nx-hello-mark { display: inline-grid; place-items: center; width: 64px; height: 64px; border-radius: 50%; background: var(--nx-navy); color: #fff; border: 2px solid var(--nx-gold); }
+.nx-hello h3 { margin: 10px 0 4px; font-size: 17px; color: var(--text, #0f172a); }
+.nx-hello p { margin: 0; font-size: 13.5px; line-height: 1.45; }
+.nx-msg { max-width: 88%; padding: 9px 12px; border-radius: 14px; line-height: 1.45; word-wrap: break-word; }
+.nx-msg p { margin: 0 0 6px; } .nx-msg p:last-child { margin-bottom: 0; }
+.nx-msg ul { margin: 2px 0 6px; padding-left: 18px; } .nx-msg li { margin: 2px 0; }
+.nx-me { align-self: flex-end; background: var(--nx-navy); color: #fff; border-bottom-right-radius: 4px; white-space: pre-wrap; }
+.nx-bot { align-self: flex-start; background: var(--surface, #fff); border: 1px solid var(--line, #e2e8f0); border-bottom-left-radius: 4px; }
+.nx-bot.is-error { border-color: var(--red, #dc2626); color: var(--red-dk, #991b1b); }
+.nx-link { color: var(--blue, #2563eb); font-weight: 600; text-decoration: none; border-bottom: 1px dashed currentColor; }
+.nx-card { margin-top: 8px; padding: 10px; border-radius: 10px; border: 1px solid var(--nx-gold); background: color-mix(in srgb, var(--nx-gold) 10%, var(--surface, #fff)); }
+.nx-card-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.nx-card-state { margin-top: 6px; font-size: 12.5px; font-weight: 600; color: var(--muted, #64748b); }
+.nx-btn { border: 1px solid var(--line, #e2e8f0); background: var(--surface, #fff); color: var(--text, #0f172a); border-radius: 9px; padding: 7px 14px; font: inherit; font-size: 13px; cursor: pointer; }
+.nx-primary { background: var(--nx-navy); border-color: var(--nx-navy); color: #fff; }
+.nx-fb { display: flex; gap: 4px; margin-top: 6px; }
+.nx-fb button { border: 0; background: transparent; cursor: pointer; font-size: 13px; opacity: .35; padding: 2px 4px; border-radius: 6px; }
+.nx-fb button:hover, .nx-fb button.on { opacity: 1; background: var(--line-soft, #f1f5f9); }
+.nx-typing { display: flex; gap: 4px; padding: 12px 14px; }
+.nx-typing span { width: 7px; height: 7px; border-radius: 50%; background: var(--muted, #94a3b8); animation: nx-dot 1s infinite ease-in-out; }
+.nx-typing span:nth-child(2) { animation-delay: .15s } .nx-typing span:nth-child(3) { animation-delay: .3s }
+@keyframes nx-dot { 0%, 80%, 100% { opacity: .3; transform: translateY(0) } 40% { opacity: 1; transform: translateY(-3px) } }
+@media (prefers-reduced-motion: reduce) { .nx-typing span { animation: none; } .nx-fab { transition: none; } }
+.nx-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.nx-chips button { border: 1px solid var(--line, #e2e8f0); background: var(--surface, #fff); color: var(--body, #334155); border-radius: 999px; padding: 6px 11px; font: inherit; font-size: 12.5px; cursor: pointer; text-align: left; }
+.nx-chips button:hover { border-color: var(--nx-gold); }
+
+.nx-form { display: flex; gap: 8px; align-items: flex-end; padding: 10px; border-top: 1px solid var(--line, #e2e8f0); background: var(--surface, #fff); }
+.nx-form textarea { flex: 1; resize: none; min-height: 40px; max-height: 120px; padding: 10px 12px; border: 1px solid var(--line, #e2e8f0); border-radius: 12px; font: inherit; font-size: 15px; background: var(--bg, #f8fafc); color: var(--text, #0f172a); }
+.nx-form textarea:focus { outline: none; border-color: var(--nx-gold); }
+.nx-send { width: 42px; height: 42px; border-radius: 12px; border: 0; background: var(--nx-navy); color: var(--nx-gold); font-size: 17px; cursor: pointer; }
+
+/* Phones: the panel takes the whole screen; the round button hides while it is open. */
+@media (max-width: 640px) {
+  .nx-panel { position: fixed; inset: 0; width: auto; height: auto; border-radius: 0; border: 0; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); background: var(--nx-navy); }
+  .nx-body, .nx-form { background-clip: padding-box; }
+  .nx-root.is-open .nx-fab { display: none; }
+  body.nx-open { overflow: hidden; }
+}
+@media print { .nx-root { display: none !important; } }

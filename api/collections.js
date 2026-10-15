@@ -1093,3 +1093,6 @@ async function closeDailyTaskIfDone(busy, hq, groupName, me) {
   const left = [...due.values()].some(r => owners.ownerOf(r.group) === owner)
   if (!left) await markTaskDone(hq, t.data.task_id, me.id)
 }
+
+// Shared with api/_nexus.js (the HQ assistant).
+export { dueByPerson }

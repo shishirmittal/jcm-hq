@@ -32,6 +32,7 @@ import { renderCashDiscount } from './cash-discount.js'
 import { renderTaskBoard, unmountTaskBoard } from './task-board.js'
 import { mountPinnedSidebar, unmountPinnedSidebar } from './sidebar.js'
 import { startNotifyBell, stopNotifyBell } from './notify-bell.js'
+import { startNexus, stopNexus } from './nexus.js'
 import { renderStock, unmountStock } from './stock.js'
 import { getCurrentProfile as loadProfileForOrders } from './supabase.js'
 import { IS_NATIVE } from './native.js'
@@ -91,6 +92,7 @@ async function init() {
       unmountPinnedSidebar()
       unmountNativeShell()
       stopNotifyBell()
+      stopNexus()
       renderLogin(app, pendingLoginMessage)
       pendingLoginMessage = null
     }
@@ -136,6 +138,7 @@ async function enterApp() {
     mountNativeShell()
   }
   startNotifyBell()
+  startNexus()
   route()
 }
 

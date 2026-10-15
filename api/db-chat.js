@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
 import { z } from 'zod'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
+import { nexusTurn, nexusConfirm, NEXUS_MODEL } from './_nexus.js'
 
 // Same project as src/supabase.js — this is the public project URL, not a secret.
 const SUPABASE_URL = 'https://cmtnzmfuasniicsdxyle.supabase.co'
@@ -85,7 +86,7 @@ export default async function handler(req, res) {
       hasBusyServiceRoleKey: !!busyServiceRoleKey,
       hasAnthropicApiKey: !!anthropicApiKey,
     })
-    res.status(500).json({ error: 'AI chat is not configured yet' })
+    res.status(500).json({ error: String(req.body?.action || '').startsWith('nexus') ? 'Nexus is not switched on yet — the Anthropic API key is missing in Vercel (ask Shishir).' : 'AI chat is not configured yet' })
     return
   }
 
@@ -107,6 +108,44 @@ export default async function handler(req, res) {
   if (callerErr || !callerData?.user) {
     res.status(401).json({ error: 'Invalid or expired session' })
     return
+  }
+
+  // ---- Nexus, the HQ assistant (api/_nexus.js) — every signed-in, active person; each tool checks page access. ----
+  if (String(req.body?.action || '').startsWith('nexus')) {
+    const { data: p } = await supabaseAdmin.from('profiles')
+      .select('id, name, email, role, is_admin, active, allowed_tabs').eq('id', callerData.user.id).maybeSingle()
+    if (!p || p.active === false) return res.status(403).json({ error: 'Your account is not active.' })
+    const profile = { id: p.id, name: p.name || p.email || 'Someone', isAdmin: p.is_admin === true || p.role === 'admin', allowed_tabs: p.allowed_tabs || [] }
+    const busy = createClient(SUPABASE_BUSY_URL, busyServiceRoleKey, { auth: { autoRefreshToken: false, persistSession: false } })
+    const ctx = { anthropic: new Anthropic({ apiKey: anthropicApiKey }), hq: supabaseAdmin, busy, profile, me: profile }
+    const body = req.body || {}
+    const started = Date.now()
+    const log = row => supabaseAdmin.from('nexus_log').insert({ user_id: profile.id, user_name: profile.name, page: String(body.page || '').slice(0, 80), ms: Date.now() - started, ...row })
+      .select('id').single().then(r => r.data?.id || null, () => null)
+    try {
+      if (body.action === 'nexus-feedback') {
+        await supabaseAdmin.from('nexus_log').update({ feedback: body.value > 0 ? 1 : -1 }).eq('id', Number(body.id)).eq('user_id', profile.id)
+        return res.status(200).json({ ok: true })
+      }
+      if (body.action === 'nexus-confirm') {
+        try {
+          const out = await nexusConfirm(body, ctx)
+          await log({ question: `[confirm] ${body.tool}`, answer: out.result, tools: [String(body.tool)], action: { tool: body.tool, input: body.input }, outcome: 'confirmed' })
+          return res.status(200).json(out)
+        } catch (err) {
+          await log({ question: `[confirm] ${body.tool}`, tools: [String(body.tool)], action: { tool: body.tool, input: body.input }, outcome: 'failed', error: String(err.message).slice(0, 300) })
+          return res.status(err.status || 200).json(err.status ? { error: err.message } : { result: null, error: err.message })
+        }
+      }
+      const out = await nexusTurn(body, ctx)
+      const last = [...(body.messages || [])].reverse().find(m => m.role !== 'assistant')
+      const id = await log({ question: String(last?.text || '').slice(0, 2000), answer: String(out.reply || '').slice(0, 4000), tools: out.tools, action: out.pending || null, outcome: out.pending ? 'pending' : 'answered' })
+      return res.status(200).json({ ...out, id, model: NEXUS_MODEL })
+    } catch (err) {
+      console.error('nexus error:', err)
+      await log({ outcome: 'error', error: String(err.message || err).slice(0, 300), question: String([...(body.messages || [])].pop()?.text || '').slice(0, 2000) })
+      return res.status(err.status || 500).json({ error: err.status ? err.message : 'Nexus could not answer just now. Try again in a moment.' })
+    }
   }
 
   const { data: callerProfile, error: callerProfileErr } = await supabaseAdmin
