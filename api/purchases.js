@@ -119,7 +119,7 @@ export default async function handler(req, res) {
       .eq('id', userData.user.id).maybeSingle(), 'profile')
     if (!profile || profile.active === false) return send(res, 403, { error: 'Your account is not active.' })
     const isAdmin = profile.is_admin === true || profile.role === 'admin'
-    const me = { id: profile.id, name: profile.name || profile.email || 'Someone', whatsapp: profile.whatsapp }
+    const me = { id: profile.id, name: profile.name || profile.email || 'Someone', whatsapp: profile.whatsapp, isAdmin }
 
     // Email Purchase Summary (api/_email-purchases.js) shares this function; its own page id.
     if (action.startsWith('email-')) {

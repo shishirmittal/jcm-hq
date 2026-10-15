@@ -513,3 +513,25 @@ J.C. Mittal and Sons, Ratlam
 - **Samples:** {{1}} Badshah Electric · {{2}} JCM/1234 · {{3}} 13 Oct 2026 · {{4}} 45,600 · {{5}} 7
 - **Button (as created 14 Oct):** one Quick reply **Revised Invoice PDF** (HQ replies with the current invoice PDF)
 - Until it is approved, HQ sends the corrected copy with `txn_invoice` instead.
+
+## staff_invoice_copy  (added 2026-10-15 — WhatsApp → Invoice alerts, sales invoice PDF by item group)
+
+- Category: **Utility** · Language: **English**
+- Header: **Document** (sample: any PDF)
+- Body:
+
+```
+New sale with {{1}} items — please arrange installation / warranty registration.
+
+Customer: {{2}}
+Mobile: {{3}}
+Invoice: {{4}} dated {{5}}
+Items: {{6}}
+
+The invoice PDF is attached.
+```
+
+- Samples: {{1}} Chimneys & Cooktops · {{2}} Mr Animesh Jain · {{3}} 98930 12345 · {{4}} JCM/2627/34370 · {{5}} 15 Oct 2026 · {{6}} Faber Chimney Hood Zenith 90 × 1
+- Footer: `J.C. Mittal & Sons, Ratlam` · Buttons: none
+
+Brand invoices that arrive by email (Email Purchase Summary → Brands & mails → WhatsApp to) reuse `staff_purchase_pdf` (15b): {{1}} supplier, {{2}} invoice no, {{3}} total, {{4}} "Mail from <brand> · <time>".

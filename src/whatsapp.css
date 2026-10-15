@@ -114,3 +114,12 @@
 .wa-pause { margin: 4px 0 10px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .wa-paused { background: #fff4e5; color: #7a4100; border: 1px solid #f5c38b; border-radius: 8px; padding: 8px 12px; font-size: 14px; }
 @media (max-width: 640px) { .wa-ops { white-space: normal; } }
+
+/* Invoice alerts tab (src/whatsapp-alerts.js) — classes wal-* */
+.wal-rules { display: flex; flex-direction: column; gap: 8px; }
+.wal-rule { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 13.5px; }
+.wal-rule.is-off { opacity: .55; }
+.wal-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.wal-side { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.wal-switch { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
+@media (max-width: 560px) { .wal-rule { flex-direction: column; } }

@@ -13,6 +13,7 @@ import { esc } from './utils.js'
 import { icon } from './icons.js'
 import { openPdfViewer } from './pdf-viewer.js'
 import { hqConfirm } from './hq-dialog.js'
+import { pickRecipients, recipientsText } from './alert-recipients.js'
 import { callPurchases as call } from './purchases.js'
 import './email-purchases.css'
 
@@ -319,14 +320,15 @@ export async function renderEmailPurchases(container) {
 
   const MAIL_STATUS = { done: ['Read', 'ok'], no_invoice: ['No invoice in it', 'quiet'], skipped: ['Skipped by subject', 'quiet'], failed: ['Failed — will retry', 'bad'], reading: ['Reading…', 'quiet'] }
   function paintDrawer() {
-    const { senders, settings, mails } = state.senders
+    const { senders, settings, mails, people = [] } = state.senders
     $('epDrawerBody').innerHTML = `
-      <p class="pur-hint">Only mails from these senders are read. Add a brand's invoice address (or just its domain) and the next run picks it up.</p>
+      <p class="pur-hint">Only mails from these senders are read. Add a brand's invoice address (or just its domain) and the next run picks it up. <b>WhatsApp to</b> = who gets each new invoice of that brand as a PDF on WhatsApp.</p>
       <div class="ep-senders">
         ${senders.map(s => `
           <div class="ep-sender${s.enabled ? '' : ' is-off'}">
             <label class="ep-sender-main"><input type="checkbox" data-sender-toggle="${esc(s.match)}" ${s.enabled ? 'checked' : ''} /> <span><strong>${esc(s.brand || s.match)}</strong><br><small>${esc(s.match)}${s.note ? ` · ${esc(s.note)}` : ''}</small></span></label>
             <button class="btn-ghost btn-small" data-sender-remove="${esc(s.match)}" aria-label="Remove ${esc(s.match)}">${icon('x', 12)}</button>
+            <button type="button" class="ep-wa" data-sender-wa="${esc(s.match)}"><span class="ep-wa-label">WhatsApp to:</span> ${esc(recipientsText(s.notify_profiles, s.notify_numbers, people))} <span class="ep-wa-edit">Change</span></button>
           </div>`).join('')}
       </div>
       <div class="ep-add">
@@ -351,6 +353,15 @@ export async function renderEmailPurchases(container) {
     body.querySelectorAll('[data-sender-toggle]').forEach(box => box.addEventListener('change', async () => {
       try { await call({ action: 'email-sender-save', match: box.dataset.senderToggle, enabled: box.checked }); flash('Saved.') }
       catch (err) { box.checked = !box.checked; flash(err.message) }
+    }))
+    body.querySelectorAll('[data-sender-wa]').forEach(btn => btn.addEventListener('click', async () => {
+      const s = senders.find(x => x.match === btn.dataset.senderWa)
+      const saved = await pickRecipients({
+        title: `${s.brand || s.match} invoices on WhatsApp`, subtitle: 'Each invoice that arrives by email from this brand goes to these people as a PDF.',
+        people, profileIds: s.notify_profiles || [], numbers: s.notify_numbers || [],
+        onSave: ({ profile_ids, extra_numbers }) => call({ action: 'email-sender-notify', match: s.match, profile_ids, extra_numbers }),
+      })
+      if (saved) { flash('Saved.'); openDrawer() }
     }))
     body.querySelectorAll('[data-sender-remove]').forEach(btn => btn.addEventListener('click', async () => {
       if (!await hqConfirm(`Stop reading mails from ${btn.dataset.senderRemove}?`)) return

@@ -1,0 +1,18 @@
+/* Staff-alert recipients picker (src/alert-recipients.js) — classes ar-* */
+.ar-modal { width: min(560px, calc(100vw - 24px)); max-height: 88vh; overflow-y: auto; }
+.ar-sub { font-size: 12.5px; color: var(--muted); }
+.ar-h { margin: 14px 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .3px; color: var(--muted); }
+.ar-h small { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.ar-people { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px; }
+.ar-person { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; font-size: 13.5px; }
+.ar-person.is-off { opacity: .55; cursor: default; }
+.ar-person small { color: var(--muted); }
+.ar-person:has(input:checked) { border-color: var(--blue, #2563eb); background: var(--blue-bg, #eff6ff); }
+.ar-tag { font-size: 10.5px; padding: 1px 6px; border-radius: 6px; background: var(--line-soft, #eef2f7); color: var(--body); }
+.ar-nums { display: flex; flex-direction: column; gap: 6px; margin-bottom: 6px; }
+.ar-num { display: grid; grid-template-columns: 1fr 150px auto; gap: 6px; }
+.ar-num input, .ar-top select, .ar-top input { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: var(--surface); color: var(--text); min-width: 0; }
+.ar-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; gap: 8px; }
+.ar-remove { color: var(--red-dk, #b91c1c); }
+.ar-top { display: flex; flex-direction: column; gap: 6px; }
+@media (max-width: 520px) { .ar-num { grid-template-columns: 1fr 1fr auto; } }

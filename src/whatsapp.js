@@ -12,6 +12,7 @@ import { canSee } from './permissions.js'
 import { esc } from './utils.js'
 import { renderWhatsappSettings } from './whatsapp-test.js'
 import { hqConfirm } from './hq-dialog.js'
+import { renderInvoiceAlerts } from './whatsapp-alerts.js'
 
 export async function callWhatsapp(payload) {
   const { data: { session } } = await supabase.auth.getSession()
@@ -42,7 +43,7 @@ export const KIND_LABEL = {
   invoice: 'Invoice', receipt: 'Receipt', credit_note: 'Credit note', debit_note: 'Debit note', payment: 'Payment made', purchase: 'Purchase bill',
   order: 'Order booked', quotation: 'Quotation', dispatch: 'Dispatched', gst_supplier: 'GSTR-1 reminder', reminder: 'Payment reminder',
   staff_followup: 'Staff: morning list', staff_evening: 'Admins: evening summary', staff_red_alert: 'Staff: Red Alert', staff_purchase: 'Staff: purchase bill',
-  staff_purchase_summary: 'Staff: purchases summary', staff_gst: 'Staff: GST report', staff_orders: 'Admins: orders 17:30', test: 'Sample / test',
+  staff_purchase_summary: 'Staff: purchases summary', staff_gst: 'Staff: GST report', staff_orders: 'Admins: orders 17:30', staff_email_bill: 'Staff: brand invoice (email)', staff_invoice_alert: 'Staff: invoice by item group', test: 'Sample / test',
 }
 const TONE = { sent: 'blue', delivered: 'grn', read: 'grn', received: 'grey', failed: 'red', no_number: 'grey', no_billing: 'grey', off: 'grey', queued: 'amb', held: 'amb', deleted: 'grey', sending: 'amb', cancelled: 'grey', expired: 'grey', skipped: 'grey', APPROVED: 'grn', PENDING: 'amb', REJECTED: 'red', MISSING: 'red', PAUSED: 'red', DISABLED: 'red' }
 const STATUS_TEXT = { sent: 'Sent', delivered: 'Delivered', read: 'Read ✓✓', failed: 'Failed', no_number: 'No number', no_billing: 'No billed party (ledger only)', queued: 'Waiting', held: 'On hold', deleted: 'Deleted in Busy', off: 'Switched off', received: 'Received' }
@@ -51,7 +52,7 @@ const timeOnly = iso => iso ? new Date(iso).toLocaleTimeString('en-IN', { hour: 
 const dayOf = iso => new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
 const pill = (s, t) => `<span class="pf-pill pf-tone-${TONE[s] || 'grey'}">${esc(t || STATUS_TEXT[s] || s)}</span>`
 
-const TABS = [['inbox', 'Inbox'], ['templates', 'Templates'], ['log', 'Log'], ['outbox', 'Outbox'], ['settings', 'Settings']]
+const TABS = [['inbox', 'Inbox'], ['templates', 'Templates'], ['log', 'Log'], ['outbox', 'Outbox'], ['alerts', 'Invoice alerts'], ['settings', 'Settings']]
 
 export function renderWhatsapp(container, tab = 'inbox', sub = null) {
   if (!TABS.some(t => t[0] === tab)) tab = 'inbox'
@@ -72,7 +73,7 @@ export function renderWhatsapp(container, tab = 'inbox', sub = null) {
   const $ = id => container.querySelector('#' + id)
   $('waMenu').addEventListener('click', () => openSidebar())
   const body = $('waBody')
-  const page = { inbox: renderInbox, templates: renderTemplates, log: renderLog, outbox: renderOutbox, settings: (el) => renderWhatsappSettings(el) }[tab]
+  const page = { inbox: renderInbox, templates: renderTemplates, log: renderLog, outbox: renderOutbox, alerts: renderInvoiceAlerts, settings: (el) => renderWhatsappSettings(el) }[tab]
   const ctl = page(body, sub)
   $('waRefresh').addEventListener('click', () => ctl?.refresh?.())
   loadWhatsappBadge().then(n => { const el = container.querySelector('#waTabUnread'); if (el) el.textContent = n ? ` ${n}` : '' })

@@ -7,7 +7,7 @@
 .ep-extract-note svg { flex: none; margin-top: 2px; }
 
 .ep-senders { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
-.ep-sender { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid var(--line-soft); border-radius: 10px; }
+.ep-sender { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid var(--line-soft); border-radius: 10px; }
 .ep-sender.is-off { opacity: .55; }
 .ep-sender-main { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; flex: 1; min-width: 0; }
 .ep-sender-main input { margin-top: 3px; }
@@ -22,3 +22,7 @@
 @media (max-width: 600px) {
   .ep-add { grid-template-columns: 1fr; }
 }
+/* Brand → WhatsApp recipients line (2026-10-15) */
+.ep-wa { flex-basis: 100%; text-align: left; font: inherit; font-size: 12.5px; background: var(--bg); border: 1px dashed var(--line); border-radius: 8px; padding: 6px 8px; color: var(--body); cursor: pointer; }
+.ep-wa-label { color: var(--muted); }
+.ep-wa-edit { float: right; color: var(--blue, #2563eb); font-weight: 600; }

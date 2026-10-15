@@ -6,6 +6,7 @@ import { runOutbox, TXN } from './_wa-outbox.js'
 import { listConversations, loadThread, replyText, unreadCount } from './_wa-inbox.js'
 import { db as ordersDb } from './_orders/lib/db.js'
 import { materialOverview } from './_orders/lib/material.js'
+import { runEmailAlerts, runItemAlerts, alertsGet, alertSave, alertRemove } from './_staff-alerts.js'
 
 // WhatsApp via Meta's Cloud API — the HQ "WhatsApp" admin page (src/whatsapp-test.js at #whatsapp-test),
 // the Meta webhook, and the outbox of customer transaction messages (api/_wa-outbox.js).
@@ -24,7 +25,7 @@ const SUPABASE_URL = 'https://cmtnzmfuasniicsdxyle.supabase.co'
 
 // Every kind of message HQ sends (switches on the WhatsApp page; wa_settings 'off:<kind>').
 const KINDS = ['invoice', 'receipt', 'credit_note', 'debit_note', 'payment', 'purchase', 'order', 'quotation', 'dispatch', 'gst_supplier',
-  'reminder', 'staff_followup', 'staff_evening', 'staff_red_alert', 'staff_purchase', 'staff_purchase_summary', 'staff_gst', 'staff_orders']
+  'reminder', 'staff_followup', 'staff_evening', 'staff_red_alert', 'staff_purchase', 'staff_purchase_summary', 'staff_gst', 'staff_orders', 'staff_email_bill', 'staff_invoice_alert']
 
 // Every tick (every 5 min from JCM-Server, or Run now on the page): the outbox, then the daily staff
 // orders message once a day after wa_settings orders_daily_at (default 17:30 India time).
@@ -33,6 +34,9 @@ const clockIST = () => new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(1
 async function tick(busy, force) {
   const out = { outbox: await runOutbox(busy) }
   const sw = await waSwitches(busy)
+  // Staff alerts (api/_staff-alerts.js): email bills brand-wise, sales invoices by item group. One failing never stops the rest.
+  try { out.emailAlerts = await runEmailAlerts(busy, sw) } catch (err) { out.emailAlerts = { error: String(err.message || err).slice(0, 200) } }
+  try { out.itemAlerts = await runItemAlerts(busy, sw) } catch (err) { out.itemAlerts = { error: String(err.message || err).slice(0, 200) } }
   const at = sw.get('orders_daily_at') || '17:30'
   const last = sw.get('last_orders_daily')
   const today = todayIST()
@@ -85,7 +89,8 @@ const EXPECTED = [
   { name: 'staff_followup_morning', used: 'Staff: morning follow-up list' }, { name: 'staff_followup_evening', used: 'Admins: evening collections summary' },
   { name: 'staff_red_alert', used: 'Staff: Red Alert explanation' }, { name: 'staff_purchase_pdf', used: 'Staff: purchase bill entered (PDF)' }, { name: 'staff_purchase_bill', used: 'Staff: purchase bill — old text version (until the PDF one is approved)' },
   { name: 'staff_purchase_summary', used: 'Staff: purchases evening summary' }, { name: 'gst_mismatch_summary', used: 'Staff: GST mismatch report (PDF)' },
-  { name: 'staff_orders_pending', used: 'Admins: orders / material 17:30' }, { name: 'hello_world', used: 'Connection test' },
+  { name: 'staff_orders_pending', used: 'Admins: orders / material 17:30' },
+  { name: 'staff_invoice_copy', used: 'Staff + extra numbers: sales invoice PDF when it holds an item of a chosen item group (WhatsApp → Invoice alerts)' }, { name: 'hello_world', used: 'Connection test' },
 ]
 
 // Sample sends for the WhatsApp page — one entry per template in docs/whatsapp-templates.md.
@@ -110,6 +115,7 @@ const SAMPLES = {
   staff_red_alert: { params: () => ['Priti', 'Shishir', '2', 'Bill deleted: JCM/1180 Badshah Electric ₹12,400 (11 Oct); ₹0 rate: JCM/1190 line 3 (12 Oct)', 'Why was this bill deleted after printing?'], opts: () => ({ headerImageUrl: BANNER('staff-red-alert') }) },
   staff_purchase_bill: { params: () => ['Lapp India Pvt Ltd', 'LAPP/88812', '11 Oct 2026', '12: Cable 2.5 sqmm 500 × ₹28; Cable 4 sqmm 300 × ₹44 and 10 more', '88,000', 'Ratan at 11:42, 12 Oct 2026'], opts: () => ({ headerImageUrl: BANNER('staff-purchase') }) },
   staff_purchase_pdf: { params: () => ['Emechem (Indore)', '4892', '58,620', 'Ruchir Mittal at 8:47 pm, 12 Oct 2026'], opts: () => ({ headerDocumentUrl: `${HQ_URL}/wa/sample-purchase.pdf`, headerDocumentName: 'Purchase-4892-Emechem-Indore.pdf' }) },
+  staff_invoice_copy: { params: () => ['Chimneys & Cooktops', 'Mr Animesh Jain', '98930 12345', 'JCM/2627/34370', '15 Oct 2026', 'Faber Chimney Hood Zenith 90 × 1, Faber Hob 3B × 1'], opts: () => ({ headerDocumentUrl: `${HQ_URL}/wa/sample-purchase.pdf`, headerDocumentName: 'JCM-Invoice-sample.pdf' }) },
   staff_purchase_summary: { params: () => ['12 Oct 2026', '6', '41', '3,42,000', 'Lapp India ₹88,000; Daikin ₹1,20,000; Atomberg ₹54,000 and 3 more'], opts: () => ({ headerImageUrl: BANNER('staff-purchase') }) },
   staff_orders_pending: { params: () => ['12 Oct 2026', '9', '4', '2,15,000', 'Badshah Electric (3 days), Nexus Enterprises (2 days), Shree Traders (today) and 6 more'], opts: () => ({ headerImageUrl: BANNER('staff-orders'), buttonPayloads: [`orders:${todayIST()}`] }) },
 }
@@ -208,6 +214,12 @@ export default async function handler(req, res) {
     if (!busy) return send(res, 500, { error: 'SUPABASE_BUSY_SERVICE_ROLE_KEY missing in Vercel.' })
     if (body.action === 'tick') return send(res, 200, { ok: true, ...(await tick(busy, body.force)) })
     if (body.action === 'count') return send(res, 200, { unread: await unreadCount(busy) })
+    if (body.action === 'alerts-get') return send(res, 200, await alertsGet(busy))
+    if (body.action === 'alert-save' || body.action === 'alert-remove') {
+      if (!me.isAdmin) return send(res, 403, { error: 'Only admins can change invoice alerts.' })
+      try { return send(res, 200, body.action === 'alert-save' ? await alertSave(busy, body, me) : await alertRemove(busy, body)) }
+      catch (err) { return send(res, err.status || 500, { error: err.message }) }
+    }
     if (body.action === 'inbox') {
       try { return send(res, 200, { conversations: await listConversations(busy) }) }
       catch (err) { if (err.message === 'SETUP') return send(res, 200, { conversations: [], setup: true }); throw err }

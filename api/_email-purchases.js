@@ -13,6 +13,10 @@
 //   email-senders                       sender list + settings + recent mails looked at
 //   email-sender-save match, brand, enabled, remove
 //   email-mail-retry message_id         read a mail again next run
+//   email-sender-notify match, profile_ids, extra_numbers   who gets this brand's invoices on WhatsApp
+//                                       (sent from api/_staff-alerts.js runEmailAlerts on every WhatsApp tick)
+
+import { staffPeople, cleanNumbers } from './_staff-alerts.js'
 
 const TAB_ID = 'email-purchases'
 const MAX_BILLS = 300
@@ -40,7 +44,11 @@ export async function handleEmailAction(action, body, ctx) {
   if (action === 'email-count') return send(res, 200, await countToday(busy))
   if (action === 'email-list') return send(res, 200, await list(busy, body))
   if (action === 'email-pdf') return send(res, 200, await pdf(busy, body))
-  if (action === 'email-senders') return send(res, 200, await senders(busy))
+  if (action === 'email-senders') return send(res, 200, await senders(busy, ctx.hq))
+  if (action === 'email-sender-notify') {
+    if (!me.isAdmin) return send(res, 403, { error: 'Only admins can change who gets brand invoices.' })
+    return send(res, 200, await senderNotify(busy, body, me))
+  }
   if (action === 'email-sender-save') return send(res, 200, await senderSave(busy, body, me))
   if (action === 'email-mail-retry') return send(res, 200, await mailRetry(busy, body))
   return send(res, 400, { error: 'Unknown request.' })
@@ -123,14 +131,25 @@ async function pdf(busy, body) {
   return { base64: buf.toString('base64'), filename }
 }
 
-async function senders(busy) {
-  const [s, settings, mails] = await Promise.all([
+async function senders(busy, hq) {
+  const [s, settings, mails, people] = await Promise.all([
     busy.from('email_bill_senders').select('*').order('brand'),
     busy.from('email_bill_settings').select('*').eq('id', 1).maybeSingle(),
     busy.from('email_scan_mails').select('message_id, sender, subject, received_at, status, note, bills').order('received_at', { ascending: false }).limit(60),
+    staffPeople(hq),
   ])
   if (s.error) throw s.error
-  return { senders: s.data || [], settings: settings.data || {}, mails: mails.data || [] }
+  return { senders: s.data || [], settings: settings.data || {}, mails: mails.data || [], people }
+}
+
+async function senderNotify(busy, body, me) {
+  const match = String(body.match || '').trim().toLowerCase()
+  const ids = [...new Set((Array.isArray(body.profile_ids) ? body.profile_ids : []).map(String).filter(x => /^[0-9a-f-]{36}$/i.test(x)))].slice(0, 30)
+  const row = { notify_profiles: ids, notify_numbers: cleanNumbers(body.extra_numbers), added_by: me.name }
+  const r = await busy.from('email_bill_senders').update(row).eq('match', match).select('match')
+  check(r, 'save WhatsApp people')
+  if (!(r.data || []).length) throw Object.assign(new Error('That sender is not in the list.'), { status: 404 })
+  return { ok: true }
 }
 
 async function senderSave(busy, body, me) {
