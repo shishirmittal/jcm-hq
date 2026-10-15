@@ -454,7 +454,7 @@ Samples (one per variable box):
 | 7 | quotation_sent | quotation.png | PDF Copy | ✅ |
 | 8 | order_dispatched_photo | dispatched.png (sample) | Invoice PDF | ✅ |
 | 9 | order_dispatched | dispatched.png | Invoice PDF | ✅ |
-| 10 | gstr1_filing_reminder | any (live = GST banner) | — | ☐ |
+| 10 | gstr1_filing_reminder | any (live = GST banner) | — | ✅ (15 Oct, tested) |
 | 11 | portal_login_otp | — (Authentication) | Copy code | ☐ only if needed |
 | 12 | staff_followup_morning | staff-followup.png | Due List PDF (quick reply → own list with Call buttons) | ✅ (14 Oct) |
 | 13 | staff_followup_evening | staff-evening.png | Summary PDF (quick reply → collections PDF) | ✅ (14 Oct) |
