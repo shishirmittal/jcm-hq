@@ -283,11 +283,21 @@ async function loadPeople(hq) {
 // `pre` = { live, steps } when the caller already has them (meta).
 async function computeDue(busy, pre = null) {
   const today = todayIST()
-  const [fresh, rows, latest] = await Promise.all([
+  // Last real contact in the past 15 days (call, WhatsApp, visit, reminder delivered) — the rhythm counts from it,
+  // so a WhatsApp reminder resets the 7 / 14 days exactly like a call (Shishir 2026-10-16, same rule as the greyed cards).
+  const since = new Date(Date.now() - 15 * 86400000).toISOString()
+  const [fresh, rows, latest, recent] = await Promise.all([
     pre ? null : dueFreshness(busy),
     pre ? null : fetchAll(receivables(busy, 'party_code, group_name'), 'dues'),
     fetchAll(() => busy.from('collection_latest').select('party_code, group_name, next_followup, created_at'), 'latest'),
+    fetchAll(() => busy.from('collection_followups').select('party_code, created_at, channel, outcome').gte('created_at', since).in('channel', ['call', 'whatsapp', 'visit', 'reminder']), 'recent contacts'),
   ])
+  const lastContactAt = new Map()
+  for (const r of recent) {
+    if (!isContact(r)) continue
+    const c = String(r.party_code)
+    if (!lastContactAt.has(c) || lastContactAt.get(c) < r.created_at) lastContactAt.set(c, r.created_at)
+  }
   const groupOf = new Map()
   for (const l of latest) groupOf.set(String(l.party_code), l.group_name)
   for (const r of (pre ? pre.rows : rows) || []) groupOf.set(String(r.party_code), r.group_name)
@@ -305,7 +315,8 @@ async function computeDue(busy, pre = null) {
     if (l?.next_followup) continue // a future date was typed: wait for it
     const rule = CADENCE.find(c => (steps[c.over]?.get(code) || 0) >= 1)
     if (!rule) continue
-    const lastDay = l?.created_at ? new Date(new Date(l.created_at).getTime() + 5.5 * 3600e3).toISOString().slice(0, 10) : null
+    const lastAt = [lastContactAt.get(code), l?.created_at].filter(Boolean).sort().pop()
+    const lastDay = lastAt ? new Date(new Date(lastAt).getTime() + 5.5 * 3600e3).toISOString().slice(0, 10) : null
     const days = lastDay ? Math.round((Date.parse(today) - Date.parse(lastDay)) / 86400000) : null
     if (days === null || days >= rule.every) due.set(code, { kind: 'cadence', over: rule.over, every: rule.every, days, group: groupOf.get(code) })
   }
