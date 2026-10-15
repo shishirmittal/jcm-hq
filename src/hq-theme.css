@@ -282,3 +282,5 @@ body.native-app { --hq-header-h: calc(56px + env(safe-area-inset-top)); }
   table.hq-stacked td[data-label=""]::before { display: none; }
   table.hq-stacked td:first-child { font-weight: 700; }
 }
+/* Sidebar 2026-10-15: the daily pages on top have no heading. */
+.nav-group-bare { padding-top: 4px; }

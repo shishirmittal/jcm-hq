@@ -32,79 +32,47 @@
 // Stock has always been reachable by every user (main.js routes #stock before
 // any permission check); it simply had no row in the web sidebar until now.
 export const NAV_CONFIG = [
-  { section: 'Main', items: [
+  // Sidebar layout agreed with Shishir 2026-10-15: daily pages on top (no
+  // heading), then six groups. Ids never change — they are the permission ids in
+  // profiles.allowed_tabs — only labels, order and groups do. `bare` = no heading.
+  { section: 'Main', bare: true, items: [
     { id: 'dashboard', label: 'Dashboard', icon: 'grid', hash: '' },
     { id: 'tasks', label: 'Task Board', icon: 'clipboard', hash: '#tasks', badge: 'openTasks' },
-    // Questions from Red Alerts about entries this person made in Busy.
-    // open: everyone signed in can see it; the API only returns their own.
     { id: 'explain', label: 'My Explanations', icon: 'question', hash: '#explain', open: true, badge: 'myExplain' },
   ] },
-  { section: 'CRM', items: [
+  { section: 'Sales', items: [
+    { id: 'customers', label: 'Customer Card', icon: 'idcard', hash: '#customers' },
+    { id: 'quotations', label: 'Quotations', icon: 'file', hash: '#quotations', badge: 'pendingQuotes' },
     { id: 'leads', label: 'Project Leads', icon: 'flag', hash: '#leads', badge: 'openLeads' },
     { id: 'architects', label: 'Architects', icon: 'compass', hash: '#architects' },
     { id: 'electricians', label: 'Electricians', icon: 'bolt', hash: '#electricians' },
   ] },
-  { section: 'Sales', items: [
-    // One customer on one screen (phone tab): contact, dues + ageing, bills,
-    // ledger, orders, follow-ups. api/customers.js: admins or 'customers' ticked.
-    { id: 'customers', label: 'Customer Card', icon: 'idcard', hash: '#customers' },
-    { id: 'quotations', label: 'Quotations', icon: 'file', hash: '#quotations', badge: 'pendingQuotes' },
-    { id: 'payments', label: 'Payments', icon: 'rupee', hash: '#payments', adminOnly: true },
-  ] },
-  // Payment Follow-up: call/WhatsApp parties with dues by account group, save
-  // outcomes + next follow-up date. api/collections.js lets in admins and anyone
-  // with 'payment-followup' in allowed_tabs. Badge = follow-ups due today/overdue.
-  { section: 'Collections', items: [
+  { section: 'Accounts', items: [
     { id: 'payment-followup', label: 'Payment Follow-up', icon: 'phone', hash: '#payment-followup', adminOnly: true, badge: 'paymentFollowup' },
+    { id: 'payments', label: 'Payments', icon: 'rupee', hash: '#payments', adminOnly: true },
+    { id: 'gst-recon', label: 'GSTR-2A Reconciliation', icon: 'percent', hash: '#gst-recon', adminOnly: true },
   ] },
-  // GSTR-2A reconciliation: Busy purchases vs the 2A data Busy downloaded, party-wise,
-  // only the red flags, one month at a time. api/gst.js lets in admins and anyone with
-  // 'gst-recon' in allowed_tabs (admins only for now — Ruchir and Shishir, 12 Oct 2026).
-  { section: 'GST', items: [
-    { id: 'gst-recon', label: 'GSTR-2A Reconciliation', icon: 'file', hash: '#gst-recon', adminOnly: true },
-  ] },
-  // JCM Orders admin screens (from orders.jcmretails.com /owner and /logs).
-  // adminOnly as on the orders site, but grantable: tick one for a person in
-  // Manage Users and api/orders.js lets them in too.
   { section: 'Warehouse', items: [
-    // The staff tablet's work (pick, check, boxes + labels, dispatch with LR
-    // photo) for people signed in to HQ — a phone tab. Jobs come from Warehouse
-    // & Devices → Tablet staff; api/orders.js?h=floor enforces them.
     { id: 'floor-orders', label: 'Orders', icon: 'pick', hash: '#floor-orders' },
     { id: 'material', label: 'Pending Material', icon: 'package', hash: '#material' },
+    { id: 'stock', label: 'Stock', icon: 'warehouse', hash: '#stock', open: true },
     { id: 'order-log', label: 'Order Log', icon: 'clock', hash: '#order-log', adminOnly: true },
   ] },
-  { section: 'Purchase & Stock', items: [
-    { id: 'orders', label: 'Order Planning', icon: 'truck', hash: '#order-planning' },
-    { id: 'stock', label: 'Stock', icon: 'warehouse', hash: '#stock', open: true },
-    // grantable: false — the gate that actually matters is the "Admins can
-    // update catalog" RLS policy on catalog_items, which a ticked box here
-    // could never satisfy.
+  { section: 'Purchase', items: [
+    { id: 'purchases', label: 'Purchase Summary', icon: 'receipt', hash: '#purchases', adminOnly: true, badge: 'purchasesToday' },
+    { id: 'email-purchases', label: 'Email Purchases', icon: 'mail', hash: '#email-purchases', adminOnly: true, badge: 'emailBillsToday' },
+    { id: 'orders', label: 'Reorder Planning', icon: 'truck', hash: '#order-planning' },
     { id: 'price-update', label: 'Price Update', icon: 'tag', hash: '#price-update', adminOnly: true, grantable: false },
     { id: 'items-management', label: 'Items Management', icon: 'layers', hash: '#items-management', adminOnly: true },
-    // Purchase bills typed into Busy (what reached the warehouse), fed by
-    // busy-sync/sync-purchases.js. Grantable; api/purchases.js checks the same id.
-    // Badge = bills entered today.
-    { id: 'purchases', label: 'Purchase Summary', icon: 'package', hash: '#purchases', adminOnly: true, badge: 'purchasesToday' },
-    // Brand invoices that arrive by email (Gmail), read by Claude on JCM-Server —
-    // busy-sync/sync-email-purchases.js. Grantable; api/purchases.js (email-* actions)
-    // checks the same id. Badge = invoice mails received today.
-    { id: 'email-purchases', label: 'Email Purchases', icon: 'message', hash: '#email-purchases', adminOnly: true, badge: 'emailBillsToday' },
   ] },
-  { section: 'Insights', items: [
+  { section: 'Reports', items: [
     { id: 'control', label: 'Control Centre', icon: 'chart', hash: '#dashboard', adminOnly: true },
-    // ₹0 sales lines and deletions in Busy, fed by busy-sync/sync-red-alerts.js.
-    // Grantable like Payments: api/red-alerts.js lets in admins and anyone with
-    // 'red-alerts' in allowed_tabs. Badge = alerts still New + answers waiting.
     { id: 'red-alerts', label: 'Red Alerts', icon: 'alert-triangle', hash: '#red-alerts', adminOnly: true, badge: 'redAlerts' },
   ] },
   { section: 'Admin', items: [
+    { id: 'whatsapp', label: 'WhatsApp', icon: 'message', hash: '#whatsapp', adminOnly: true, badge: 'waUnread' },
     { id: 'users', label: 'Manage Users', icon: 'users', hash: '#admin', adminOnly: true, grantable: false },
     { id: 'warehouse', label: 'Warehouse & Devices', icon: 'monitor', hash: '#warehouse', adminOnly: true },
-    // JCM Sync on JCM-Server: every Busy → Supabase job, last run, failures, Run now.
     { id: 'sync-status', label: 'Sync status', icon: 'history', hash: '#sync-status', adminOnly: true },
-    // WhatsApp: inbox (customer replies, 24 h free replies), templates from WhatsApp Manager, send log,
-    // outbox, switches and samples (src/whatsapp.js, api/whatsapp.js). Badge = unread replies.
-    { id: 'whatsapp', label: 'WhatsApp', icon: 'monitor', hash: '#whatsapp', adminOnly: true, badge: 'waUnread' },
   ] },
 ]
