@@ -301,7 +301,10 @@ function ledgerNotReady() {
 
 function ledgerHtml(l) {
   if (!l.rows.length) return '<div class="cu-muted cu-pad">No entries this year.</div>'
+  const bal = n => `${esc(formatMoney(Math.abs(n)))} ${n < 0 ? 'Cr' : 'Dr'}`
+  const closing = Number(l.closing) || 0
   return `${l.asOf ? `<div class="cu-pad cu-ledger-sync">${syncChip('Ledger', l.asOf, 3)}</div>` : ''}
+    <div class="cu-pad cu-ledger-sum">${closing < 0 ? `<b>Credit balance in their favour: ${bal(closing)}</b> — advance lying with us` : closing > 0 ? `<b>Due from them: ${bal(closing)}</b>` : '<b>Fully settled</b> — nothing due'}<span class="cu-muted cu-small"> · opening 1 April ${bal(Number(l.opening) || 0)}</span></div>
     <table class="cu-table">
       <thead><tr><th>Date</th><th>Entry</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr></thead>
       <tbody>${l.rows.map(r => `<tr>

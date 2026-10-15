@@ -106,3 +106,4 @@ button.cu-act { border: 0; font-family: inherit; cursor: pointer; }
 /* Send button per bill (2026-10-15) */
 .cu-bill-act { text-align: right; white-space: nowrap; }
 .cu-bill-act .pf-link { display: inline-flex; align-items: center; gap: 4px; color: #17653a; font-weight: 600; }
+.cu-ledger-sum { font-size: 13.5px; }

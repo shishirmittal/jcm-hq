@@ -1,5 +1,6 @@
 import { applyCors } from './_cors.js'
 import { createClient } from '@supabase/supabase-js'
+import { loadStatement } from './_ledger-pdf.js'
 import { sendLedger, sendInvoiceCopy } from './_send-docs.js'
 import { listBusyQuotes, loadBusyQuote, buildBusyQuotePdf, sendBusyQuote } from './_busy-quote.js'
 
@@ -283,29 +284,14 @@ async function bills(busy, body) {
 async function ledger(busy, body) {
   const code = String(Number(body.party_code))
   const page = Math.max(0, Number(body.page) || 0)
-  // A customer has a few hundred entries a year at most: read them all, work the
-  // running balance back from today's outstanding, then hand out one page.
-  const [r, dues, runAt, job] = await Promise.all([
-    busy.from('party_ledger').select('*').eq('party_code', code)
-      .order('vch_date', { ascending: false }).order('vch_code', { ascending: false }).order('sr_no', { ascending: false })
-      .range(0, 4999),
-    busy.from('party_dues').select('outstanding_balance, synced_at').eq('party_code', code).limit(1),
-    duesRunAt(busy),
-    // The ledger sync only re-sends changed vouchers, so "as of" is its last good run.
-    busy.from('sync_jobs').select('last_ok_at').eq('job_id', 'ledger').limit(1),
-  ])
-  if (missing(r)) return { ready: false }
-  const all = check(r, 'party_ledger')
-  const d = dues.error ? null : dues.data?.[0]
-  let bal = d && fresh(d, runAt) ? Number(d.outstanding_balance) || 0 : 0
-  const rows = all.map(x => {
-    const row = { date: x.vch_date, type: x.vch_type_name || '', no: x.vch_no || '', debit: Number(x.debit) || 0, credit: Number(x.credit) || 0, balance: Math.round(bal * 100) / 100 }
-    bal -= row.debit - row.credit
-    return row
-  })
-  const asOf = (!job.error && job.data?.[0]?.last_ok_at) || all.reduce((m, x) => (x.synced_at > m ? x.synced_at : m), '') || null
+  // Same numbers as the ledger PDF (api/_ledger-pdf.js loadStatement): opening = Busy balance as at
+  // 31 March (party_anchor_balance, Dr + / Cr −), postings run forward, newest shown first.
+  const stmt = await loadStatement(busy, code)
+  if (!stmt) return { ready: false }
+  const rows = [...stmt.rows].reverse()
   return {
-    ready: true, total: rows.length, page, pageSize: LEDGER_PAGE, asOf,
+    ready: true, total: rows.length, page, pageSize: LEDGER_PAGE, asOf: stmt.asOf,
+    opening: stmt.opening, closing: stmt.closing,
     rows: rows.slice(page * LEDGER_PAGE, page * LEDGER_PAGE + LEDGER_PAGE),
   }
 }
