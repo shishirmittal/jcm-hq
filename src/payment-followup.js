@@ -373,6 +373,17 @@ export function renderPaymentFollowup(container, sub) {
     const party = state.parties.find(p => p.party_code === btn.dataset.code)
     if (!party) return
     const act = btn.dataset.act
+    // Resting card (contacted recently / promised date ahead / auto reminder running): ask before contacting again.
+    if (party.hold && ['call', 'send-wa', 'send-ledger'].includes(act) && !btn.dataset.ok) {
+      e.preventDefault()
+      hqConfirm(`${holdText(party)}\n\nContact ${party.party_name} anyway?`).then(ok => {
+        if (!ok) return
+        if (act === 'call') { btn.dataset.ok = '1'; btn.click(); delete btn.dataset.ok }
+        else if (act === 'send-wa') confirmWhatsApp(party)
+        else confirmLedger(party)
+      })
+      return
+    }
     if (act === 'call') setTimeout(() => openModal(party, 'call'), 400)
     else if (act === 'send-wa') confirmWhatsApp(party)
     else if (act === 'send-ledger') confirmLedger(party)
@@ -914,20 +925,44 @@ export function renderPaymentFollowup(container, sub) {
       </div>`
   }
 
+  // Red strip on every card: the last time we actually reached out, how, and who (Shishir 2026-10-16).
+  function lastContactHtml(p) {
+    const c = p.last_contact
+    if (!c) return '<div class="pf-lastc pf-lastc-none">No follow-up yet — never called or messaged</div>'
+    const days = daysBetween(String(c.at).slice(0, 10), state.today)
+    return `<div class="pf-lastc"><b>Last follow-up:</b> ${esc(fmtDateTime(c.at))} · <b>${esc(CHANNEL_LABEL[c.channel] || c.channel)}</b>${c.by ? ` · ${esc(c.by)}` : ''} <span class="pf-lastc-ago">(${days === 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`})</span></div>`
+  }
+  // Promise and automatic reminder, highlighted so nobody chases a customer who already gave a date.
+  function promiseHtml(p) {
+    const l = p.latest, sc = p.schedule, bits = []
+    if (l && (l.promised_amount || l.promised_date) && (l.outcome === 'promised' || l.promised_date)) {
+      const missed = l.promised_date && l.promised_date < state.today && p.balance > 0
+      bits.push(`<div class="pf-prom ${missed ? 'is-missed' : ''}">🤝 ${missed ? '<b>Promise missed</b> — ' : '<b>Promised</b> '}${l.promised_amount ? esc(rupees(l.promised_amount)) + ' ' : ''}${l.promised_date ? `by <b>${esc(fmtDate(l.promised_date))}</b>` : ''}</div>`)
+    }
+    if (sc) bits.push(`<div class="pf-prom pf-sched">⏰ <b>Auto WhatsApp reminder</b> ${esc(fmtDateTime(sc.next_at))}${sc.repeat !== 'none' ? `, then ${esc(sc.repeat)}` : ''}${sc.sent_count ? ` · ${sc.sent_count} sent` : ''} — stops when payment shows in Busy</div>`)
+    return bits.join('')
+  }
+  function holdText(p) {
+    const h = p.hold
+    if (!h) return ''
+    if (h.kind === 'schedule') return `An automatic WhatsApp reminder is already scheduled for ${fmtDateTime(h.until)}.`
+    if (h.kind === 'promise') return `They promised to pay by ${fmtDate(h.until)}.`
+    const ago = p.last_contact ? daysBetween(String(p.last_contact.at).slice(0, 10), state.today) : 0
+    return `Followed up ${ago === 0 ? 'today' : `${ago} day${ago === 1 ? '' : 's'} ago`}. Over ${h.tier} days → once every ${h.days} days, so next contact from ${fmtDate(h.until)}.`
+  }
+  function holdHtml(p) {
+    return p.hold ? `<div class="pf-hold">⏸ ${esc(holdText(p))}</div>` : ''
+  }
+
   function latestHtml(p) {
     const l = p.latest
-    if (!l) return `<div class="pf-latest pf-muted">Not followed up yet${p.last_reminder ? ` · <span class="pf-pill pf-tone-blue">WA ${esc(fmtDate(p.last_reminder))}</span>` : ''}</div>`
+    if (!l) return '' // the red "Last follow-up" strip says it
     const o = OUTCOME[l.outcome]
     const bits = [`${fmtDate(l.created_at)}`, l.created_by_name, CHANNEL_LABEL[l.channel] || l.channel].filter(Boolean)
-    let promise = ''
-    if (l.outcome === 'promised' && (l.promised_amount || l.promised_date)) {
-      const missed = l.promised_date && l.promised_date < state.today && p.balance > 0
-      promise = `<span class="pf-pill ${missed ? 'pf-pill-red' : 'pf-pill-grn'}">${missed ? 'Promise missed' : 'Promised'}${l.promised_amount ? ` ${esc(rupees(l.promised_amount))}` : ''}${l.promised_date ? ` by ${esc(fmtDate(l.promised_date))}` : ''}</span>`
-    }
-    const rem = p.last_reminder ? `<span class="pf-pill pf-tone-blue" title="WhatsApp reminder">WA ${esc(fmtDate(p.last_reminder))}</span>` : ''
+    const promise = '' // shown highlighted above (promiseHtml)
     return `
       <div class="pf-latest">
-        <span class="pf-muted">Last: ${esc(bits.join(' · '))}</span>${rem}
+        <span class="pf-muted">Last outcome saved: ${esc(bits.join(' · '))}</span>
         ${promise || (o ? `<span class="pf-pill pf-tone-${o.tone}">${esc(o.label)}</span>` : '')}
         ${l.remarks ? `<div class="pf-remark">“${esc(l.remarks)}”</div>` : ''}
       </div>`
@@ -976,10 +1011,10 @@ export function renderPaymentFollowup(container, sub) {
       p.owner_name && !(state.mode === 'today' && state.person !== 'all') ? `<span class="pf-tag pf-tag-owner" title="Follows up this group">${esc(p.owner_name)}</span>` : '',
       p.needs_review ? '<span class="pf-tag pf-tag-review" title="Balance flagged for checking in the dues sync">Check balance</span>' : '',
     ].join('')
-    const pickable = !!wa && p.balance > 0 && !p.dnd && !p.needs_review
+    const pickable = !!wa && p.balance > 0 && !p.dnd && !p.needs_review && !p.hold
     return `
-      <article class="pf-row ${state.picked.has(p.party_code) ? 'is-picked' : ''}">
-        <label class="pf-pick" title="${pickable ? 'Tick to include in Send WhatsApp' : 'No WhatsApp number, DND or check balance — cannot be sent'}">
+      <article class="pf-row ${state.picked.has(p.party_code) ? 'is-picked' : ''} ${p.hold ? 'is-held' : ''}">
+        <label class="pf-pick" title="${pickable ? 'Tick to include in Send WhatsApp' : p.hold ? 'Resting — ' + esc(holdText(p)) : 'No WhatsApp number, DND or check balance — cannot be sent'}">
           <input type="checkbox" data-pick="${code}" ${pickable ? '' : 'disabled'} ${state.picked.has(p.party_code) ? 'checked' : ''}>
         </label>
         <div class="pf-row-main">
@@ -989,6 +1024,8 @@ export function renderPaymentFollowup(container, sub) {
           <div class="pf-phones">${p.phones.length
             ? p.phones.map(ph => `<a href="tel:+91${ph}" class="pf-phone" data-act="call" data-code="${code}">${esc(ph.replace(/(\d{5})(\d{5})/, '$1 $2'))}</a>`).join('')
             : '<span class="pf-muted">No phone number in Busy</span>'}</div>
+          ${lastContactHtml(p)}
+          ${promiseHtml(p)}
           ${ageingHtml(p)}
           ${latestHtml(p)}
         </div>
@@ -996,6 +1033,7 @@ export function renderPaymentFollowup(container, sub) {
           ${balanceHtml(p)}
           ${nextHtml(p)}
           ${reasonHtml(p)}
+          ${holdHtml(p)}
           <div class="pf-actions">
             ${phone ? `<a class="btn-contact btn-call" href="tel:+91${phone}" data-act="call" data-code="${code}">${PHONE_SVG} Call</a>` : ''}
             ${wa ? `<button type="button" class="btn-contact btn-whatsapp" data-act="send-wa" data-code="${code}">${WA_SVG} WhatsApp</button>` : ''}

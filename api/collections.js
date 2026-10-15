@@ -472,10 +472,14 @@ async function handleList(busy, hq, me, body, res) {
     latestRows
       ? Promise.resolve(latestRows)
       : inChunks(codes, 200, part => busy.from('collection_latest').select('*').in('party_code', part).then(r => check(r, 'latest'))),
-    inChunks(codes, 200, part => busy.from('collection_followups').select('party_code, created_at')
-      .eq('channel', 'reminder').eq('outcome', 'sent').in('party_code', part)
-      .order('created_at', { ascending: false }).limit(5000).then(r => check(r, 'reminders'))),
+    inChunks(codes, 200, part => busy.from('collection_followups').select('party_code, created_at, channel, outcome, created_by_name')
+      .in('channel', ['call', 'whatsapp', 'visit', 'reminder']).in('party_code', part)
+      .order('created_at', { ascending: false }).limit(10000).then(r => check(r, 'contacts'))),
   ])
+  // Scheduled reminders set from the WhatsApp Inbox (api/_schedules.js) — shown on the card.
+  const schedRows = await inChunks(codes, 200, part => busy.from('collection_schedules').select('party_code, next_at, repeat, sent_count, promised_amount, note')
+    .eq('status', 'active').in('party_code', part).then(r => (r.error ? [] : r.data || [])))
+  const schedMap = new Map(schedRows.map(r => [String(r.party_code), r]))
 
   const byCode = (rows, key = 'party_code') => {
     const m = new Map()
@@ -488,7 +492,24 @@ async function handleList(busy, hq, me, body, res) {
   const custMap = byCode(customers)
   const latestMap = byCode(latest)
   const lastReminder = new Map()
-  for (const r of reminders) if (!lastReminder.has(String(r.party_code))) lastReminder.set(String(r.party_code), r.created_at)
+  const lastContact = new Map()
+  for (const r of reminders) {
+    const c = String(r.party_code)
+    if (r.channel === 'reminder' && r.outcome === 'sent' && !lastReminder.has(c)) lastReminder.set(c, r.created_at)
+    if (isContact(r) && !lastContact.has(c)) lastContact.set(c, { at: r.created_at, channel: r.channel, by: r.created_by_name || null })
+  }
+  // Why the Call / WhatsApp buttons rest (greyed): contacted within the rest period, a promised date still
+  // ahead, or a scheduled reminder running. Staff can still go ahead after a confirm (page side).
+  function holdOf(code, over20, over40, latest, sched) {
+    if (sched) return { kind: 'schedule', until: sched.next_at, why: 'Automatic WhatsApp reminder is scheduled' }
+    if (latest?.promised_date && latest.promised_date >= today) return { kind: 'promise', until: latest.promised_date, why: 'Promised to pay' }
+    const lc = lastContact.get(code)
+    const tier = over40 > 0 ? 40 : over20 > 0 ? 20 : null
+    if (!lc || !tier) return null
+    const until = new Date(Date.parse(lc.at) + CONTACT_GAP[tier] * 86400000)
+    if (until.getTime() <= Date.now()) return null
+    return { kind: 'rest', tier, days: CONTACT_GAP[tier], until: until.toISOString(), why: `Over ${tier} days — contact once every ${CONTACT_GAP[tier]} days` }
+  }
 
   const out = parties.map(p => {
     const code = String(p.party_code)
@@ -522,11 +543,14 @@ async function handleList(busy, hq, me, body, res) {
       },
       latest: latestMap.get(code) || null,
       last_reminder: lastReminder.get(code) || null,
+      last_contact: lastContact.get(code) || null,
+      schedule: schedMap.get(code) || null,
       due_reason: dueMap ? dueMap.get(code) || null : null,
       owner_id: owners.ownerOf(p.group_name),
       owner_name: nameOf.get(owners.ownerOf(p.group_name)) || null,
     }
   })
+  for (const p of out) p.hold = p.balance > 0 ? holdOf(p.party_code, p.overdueBy[20], p.overdueBy[40], p.latest, p.schedule) : null
 
   return send(res, 200, { parties: out, view, group, today, lastSync: fresh.lastSync, graceDays: GRACE_DAYS, graceSteps: GRACE_STEPS,
     person, summary, doneToday, ownersReady: owners.ready,
@@ -651,7 +675,10 @@ const REMINDER_GAP_HOURS = 20
 const MAX_PER_CALL = 25
 // Contact gap (Shishir, 2026-10-12): a party contacted (call / note / visit / reminder) within
 // this many days is left alone by every reminder send. Over 40 days → 6 days, over 20 → 13 days.
-const CONTACT_GAP = { 40: 6, 20: 13 }
+// Rest period after any real contact (call, WhatsApp, visit, reminder delivered) — Shishir 2026-10-16:
+// over 40 days → 7 days, over 20 days → 14 days (same as the follow-up rhythm). Notes don't count.
+const CONTACT_GAP = { 40: 7, 20: 14 }
+const isContact = r => ['call', 'whatsapp', 'visit'].includes(r.channel) || (r.channel === 'reminder' && r.outcome === 'sent')
 const AUTO_DEFAULTS = { reminders_on: false, reminders_at: '11:00', reminders_tiers: '20,40', reminders_max: 150 }
 
 const rupeesText = n => '₹' + inr(n)
@@ -671,8 +698,8 @@ async function reminderContext(busy, codes) {
     intCodes.length ? inChunks(intCodes, 300, part => busy.from('customers').select('party_code, mobile, whatsapp_no').in('party_code', part).then(r => check(r, 'customers'))) : [],
     inChunks(codes, 300, part => busy.from('collection_followups').select('party_code, created_at').eq('channel', 'reminder').eq('outcome', 'sent')
       .in('party_code', part).gte('created_at', sinceRem).then(r => check(r, 'recent reminders'))),
-    inChunks(codes, 300, part => busy.from('collection_followups').select('party_code, created_at, channel').in('party_code', part)
-      .gte('created_at', sinceContact).then(r => check(r, 'contacts'))),
+    inChunks(codes, 300, part => busy.from('collection_followups').select('party_code, created_at, channel, outcome').in('party_code', part)
+      .gte('created_at', sinceContact).then(r => check(r, 'contacts').filter(isContact))),
     dueFreshness(busy),
     ageingFor(busy, codes),
     ageingFor(busy, codes, 40),

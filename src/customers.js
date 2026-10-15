@@ -215,6 +215,8 @@ async function renderCard(container, code) {
       ${agBits.length ? `
         <div class="cu-agebar">${agBits.map(([, v], i) => `<span class="cu-age-${i}" style="flex:${v / agTotal}"></span>`).join('')}</div>
         <div class="cu-agelist">${agBits.map(([k, v], i) => `<span><i class="cu-age-${i}"></i>${esc(k)} <b>${esc(formatMoney(Math.round(v)))}</b></span>`).join('')}</div>` : ''}
+      ${d.dues.amount > 0 || d.lastContact ? `<div class="cu-lastc">${d.lastContact ? `<b>Last follow-up:</b> ${esc(new Date(d.lastContact.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' }))} · <b>${esc({ call: 'Call', whatsapp: 'WhatsApp', visit: 'Visit', reminder: 'WhatsApp reminder' }[d.lastContact.channel] || d.lastContact.channel)}</b>${d.lastContact.by ? ` · ${esc(d.lastContact.by)}` : ''}` : '<b>No follow-up yet</b> — never called or messaged'}</div>` : ''}
+      ${d.promise && d.promise.date && d.promise.date >= new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10) ? `<div class="cu-prom">🤝 <b>Promised</b> ${d.promise.amount ? esc(formatMoney(Math.round(d.promise.amount))) + ' ' : ''}by <b>${esc(day(d.promise.date))}</b></div>` : ''}
       ${ag?.oldestUnpaid || ag?.lastBill ? `<div class="cu-due-foot">${ag.oldestUnpaid ? `Oldest unpaid bill ${esc(day(ag.oldestUnpaid))}` : ''}${ag.oldestUnpaid && ag.lastBill ? ' · ' : ''}${ag.lastBill ? `Last bill ${esc(day(ag.lastBill))}` : ''}</div>` : ''}
     </section>
 

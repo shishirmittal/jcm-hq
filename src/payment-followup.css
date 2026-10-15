@@ -275,3 +275,14 @@ body.pf-modal-open { overflow: hidden; }
   .pf-row .pf-row-side { flex: 1 1 100%; }
   .pf-pick-send { margin-left: 0; width: 100%; justify-content: center; }
 }
+
+/* Last follow-up strip, promise / auto reminder, resting cards (2026-10-16, Shishir) */
+.pf-lastc { margin: 6px 0 4px; padding: 6px 10px; border-radius: 8px; background: var(--red-bg, #fef2f2); color: var(--red-dk, #991b1b); border-left: 4px solid var(--red, #dc2626); font-size: 13px; line-height: 1.4; }
+.pf-lastc-none { font-weight: 600; }
+.pf-lastc-ago { opacity: .8; }
+.pf-prom { margin: 4px 0; padding: 6px 10px; border-radius: 8px; background: var(--grn-bg, #f0fdf4); color: var(--grn-dk, #166534); border-left: 4px solid var(--grn, #16a34a); font-size: 13px; }
+.pf-prom.is-missed { background: var(--amb-bg, #fffbeb); color: var(--amb-dk, #92400e); border-left-color: var(--amb, #d97706); }
+.pf-prom.pf-sched { background: var(--blue-bg, #eff6ff); color: var(--blue-dk, #1e40af); border-left-color: var(--blue, #2563eb); }
+.pf-hold { font-size: 12px; color: var(--muted); margin: 4px 0; max-width: 260px; }
+.pf-row.is-held .btn-call, .pf-row.is-held .btn-whatsapp, .pf-row.is-held [data-act="send-ledger"] { filter: grayscale(1); opacity: .45; }
+.pf-row.is-held .pf-phone { color: var(--muted); }

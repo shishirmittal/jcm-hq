@@ -207,7 +207,7 @@ async function card(busy, hq, body) {
     busy.from('party_dues').select('*').eq('party_code', codeText).limit(1),
     duesRunAt(busy),
     busy.rpc('collections_ageing', { p_codes: [codeText] }),
-    busy.from('collection_followups').select('*').eq('party_code', codeText).order('created_at', { ascending: false }).limit(10),
+    busy.from('collection_followups').select('*').eq('party_code', codeText).order('created_at', { ascending: false }).limit(40),
     busy.from('sync_log').select('*').order('run_at', { ascending: false }).limit(20),
     hq.from('orders').select('id, so_vch_no, so_date, stage, stage_since, line_count, order_value, invoice_vch_no, invoice_date, closed_at, closed_reason')
       .eq('party_code', code).order('so_date', { ascending: false }).limit(10),
@@ -245,7 +245,10 @@ async function card(busy, hq, body) {
       ageing: ag ? { d0_30: +ag.d0_30 || 0, d31_60: +ag.d31_60 || 0, d61_90: +ag.d61_90 || 0, d90: +ag.d90_plus || 0, older: +ag.older || 0, oldestUnpaid: ag.oldest_unpaid_date || null, lastBill: ag.last_bill_date || null } : null,
     },
     customersAsOf: nightlyRow?.run_at || null,
-    followups: follow.error ? null : (follow.data || []).map(f => ({
+    // Last real contact (call, WhatsApp, visit, reminder delivered) — the red strip on the card.
+    lastContact: follow.error ? null : (x => x ? { at: x.created_at, channel: x.channel, by: x.created_by_name || '' } : null)((follow.data || []).find(f => ['call', 'whatsapp', 'visit'].includes(f.channel) || (f.channel === 'reminder' && f.outcome === 'sent'))),
+    promise: follow.error ? null : (x => x ? { amount: x.promised_amount, date: x.promised_date } : null)((follow.data || []).find(f => f.channel !== 'reminder' && (f.promised_amount || f.promised_date))),
+    followups: follow.error ? null : (follow.data || []).slice(0, 10).map(f => ({
       at: f.created_at, channel: f.channel, outcome: f.outcome, remarks: f.remarks || '',
       by: f.created_by_name || '', promisedAmount: f.promised_amount, promisedDate: f.promised_date, next: f.next_followup,
     })),
