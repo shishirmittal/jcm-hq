@@ -1,6 +1,7 @@
 import { applyCors } from './_cors.js'
 import { createClient } from '@supabase/supabase-js'
 import { sendLedger, sendInvoiceCopy } from './_send-docs.js'
+import { listBusyQuotes, loadBusyQuote, buildBusyQuotePdf, sendBusyQuote } from './_busy-quote.js'
 
 // Customer Card (JCM HQ → Sales → #customers) — page src/customers.js.
 //
@@ -66,7 +67,28 @@ export default async function handler(req, res) {
     .select('id, name, email, role, is_admin, active, allowed_tabs').eq('id', userData.user.id).maybeSingle()
   if (!profile || profile.active === false) return send(res, 403, { error: 'Your account is not active.' })
   const isAdmin = profile.is_admin === true || profile.role === 'admin'
-  const granted = Array.isArray(profile.allowed_tabs) && profile.allowed_tabs.includes(TAB_ID)
+  const tabs = Array.isArray(profile.allowed_tabs) ? profile.allowed_tabs : []
+  const granted = tabs.includes(TAB_ID)
+  const body0 = req.body || {}
+  // Quotations from Busy (2026-10-15): the Quotations page's own permission, served from here to stay within
+  // Vercel's 12-function limit.
+  if (String(body0.action || '').startsWith('busy-quote')) {
+    if (!isAdmin && !tabs.includes('quotations')) return send(res, 403, { error: 'You do not have access to Quotations.' })
+    try {
+      if (body0.action === 'busy-quotes') return send(res, 200, await listBusyQuotes(busy, body0))
+      if (body0.action === 'busy-quote') { const d = await loadBusyQuote(busy, body0.vch_key); return d ? send(res, 200, d) : send(res, 404, { error: 'Quotation not found.' }) }
+      if (body0.action === 'busy-quote-pdf') {
+        const d = await loadBusyQuote(busy, body0.vch_key); if (!d) return send(res, 404, { error: 'Quotation not found.' })
+        const pdf = await buildBusyQuotePdf(d)
+        return send(res, 200, { base64: Buffer.from(pdf).toString('base64'), filename: `JCM-Quotation-${String(d.quote.vch_no || '').replace(/[^A-Za-z0-9]+/g, '-')}.pdf` })
+      }
+      if (body0.action === 'busy-quote-send') { const r = await sendBusyQuote(busy, body0, profile.name || profile.email || 'HQ'); return send(res, r.error ? 400 : 200, r) }
+    } catch (err) {
+      console.error('busy quotes error:', err)
+      return send(res, 500, { error: /busy_quotation/.test(err.message || '') && /does not exist|schema cache/.test(err.message || '') ? 'Run supabase/quotations-busy-setup.sql in the Busy project first.' : 'Something went wrong. Try again.' })
+    }
+    return send(res, 400, { error: 'Unknown request.' })
+  }
   if (!isAdmin && !granted) return send(res, 403, { error: 'You do not have access to Customer Card.' })
   const canFollowUp = isAdmin || (Array.isArray(profile.allowed_tabs) && profile.allowed_tabs.includes('payment-followup'))
 

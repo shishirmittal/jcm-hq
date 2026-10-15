@@ -3,6 +3,7 @@ import { esc, formatDate, formatMoney, formatMoneyCompact, skeletonList } from '
 import { openSidebar } from './sidebar.js'
 import { renderQuotationForm } from './quotation-form.js'
 import { renderQuotationView } from './quotation-view.js'
+import { renderBusyQuotations } from './quotations-busy.js'
 
 const PER_PAGE_OPTIONS = [10, 25, 50]
 const DEFAULT_PER_PAGE = 10
@@ -41,7 +42,12 @@ export async function renderQuotations(container) {
         <button class="btn-primary btn-small" id="newQuotationBtn">+ New quotation</button>
       </header>
       <main class="app-main">
-        <div class="quotations-layout">
+        <div class="qtn-tabs" role="tablist">
+          <button type="button" class="qtn-tab active" data-tab="hq">HQ quotations</button>
+          <button type="button" class="qtn-tab" data-tab="busy">From Busy</button>
+        </div>
+        <div id="qtnBusy" hidden></div>
+        <div class="quotations-layout" id="qtnHq">
           <div class="quotations-main">
             <div class="qtn-filters">
               <div class="qtn-filters-row">
@@ -81,6 +87,16 @@ export async function renderQuotations(container) {
   `
 
   document.getElementById('hamburgerBtn').addEventListener('click', () => openSidebar({ isAdmin }))
+  // HQ quotations | From Busy (2026-10-15): the Busy tab is its own page (src/quotations-busy.js), rendered on first open.
+  let busyDrawn = false
+  container.querySelectorAll('.qtn-tab').forEach(b => b.addEventListener('click', () => {
+    container.querySelectorAll('.qtn-tab').forEach(x => x.classList.toggle('active', x === b))
+    const busy = b.dataset.tab === 'busy'
+    document.getElementById('qtnHq').hidden = busy
+    document.getElementById('qtnBusy').hidden = !busy
+    document.getElementById('newQuotationBtn').hidden = busy
+    if (busy && !busyDrawn) { busyDrawn = true; renderBusyQuotations(document.getElementById('qtnBusy')) }
+  }))
   document.getElementById('newQuotationBtn').addEventListener('click', () => {
     renderQuotationForm(container, null, () => renderQuotations(container))
   })

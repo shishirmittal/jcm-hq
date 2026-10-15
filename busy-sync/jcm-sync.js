@@ -54,6 +54,8 @@ const JOBS = [
   { id: 'transactions', name: 'Transaction WhatsApps (invoice, receipt, notes, order…)', args: ['sync-transactions.js'], every: 5, timeout: 4 },
   // Invoice portal tables for invoices touched in the last 48 h (nightly sync.js still does the full year).
   { id: 'invoices-live', name: 'Invoices (portal, live)', args: ['sync-invoices-live.js'], every: 5, timeout: 4 },
+  // Quotations typed in Busy (VchType 26, QT/…) → HQ Quotations "From Busy" tab (2026-10-15).
+  { id: 'quotations', name: 'Quotations from Busy', args: ['sync-quotations.js'], every: 10, timeout: 8 },
   { id: 'nightly', name: 'Nightly full sync (items, sales, invoices, customers)', args: ['sync.js'], dailyAt: '22:54', timeout: 120, logFile: 'task-scheduler.log' },
 ];
 
