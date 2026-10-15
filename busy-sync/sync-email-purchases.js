@@ -172,15 +172,22 @@ async function askClaude(apiKey, mail, pdfs) {
       max_tokens: 8000,
       system: SYSTEM,
       tools: [TOOL],
-      tool_choice: { type: 'tool', name: 'record_documents' },
       messages: [{ role: 'user', content }],
     }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(`Claude ${res.status}: ${(data.error && data.error.message) || JSON.stringify(data).slice(0, 300)}`);
   const use = (data.content || []).find((c) => c.type === 'tool_use');
-  if (!use) throw new Error('Claude gave no record_documents answer');
-  const docs = Array.isArray(use.input && use.input.documents) ? use.input.documents : [];
+  let docs;
+  if (use) docs = use.input && use.input.documents;
+  else {
+    // No tool call: look for a JSON answer in the text instead.
+    const text = (data.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('\n');
+    const m = text.match(/\{[\s\S]*"documents"[\s\S]*\}/);
+    if (!m) throw new Error(`Claude gave no record_documents answer: ${text.slice(0, 200)}`);
+    docs = JSON.parse(m[0]).documents;
+  }
+  docs = Array.isArray(docs) ? docs : [];
   const usage = data.usage || {};
   return { docs, usage: `${usage.input_tokens || 0} in / ${usage.output_tokens || 0} out` };
 }
