@@ -106,9 +106,8 @@ async function readQuotes(pool) {
 }
 
 async function readLines(pool) {
-  // Quotations are not stock vouchers, so the item rows may be RecType 4 (like Sales Orders) or
-  // RecType 2 (like invoices) depending on the Busy version — both are read; per voucher the
-  // RecType that has rows wins (4 first).
+  // Quotation item rows are Tran2 RecType 20 on this Busy (found 2026-10-15: 4,405 rows for 316 quotations;
+  // RecType 3 rows are bill sundries). 4 / 2 are read too in case a version stores them like orders / invoices.
   const r = await pool.request().query(`
     SELECT t2.VchCode, t2.RecType, t2.SrNo, t2.MasterCode1 AS ItemCode, m.Name AS ItemName,
            t2.Value1 AS Qty1, t2.D1 AS QtyD1, t2.D2 AS Rate, t2.Value3 AS Taxable,
@@ -121,7 +120,7 @@ async function readLines(pool) {
       SELECT TOP 1 g.TaxRate, g.TaxRate1 FROM VchGSTSumItemWise g
       WHERE g.VchCode = t2.VchCode AND g.ItemCode = t2.MasterCode1 AND ROUND(g.TaxableAmt, 2) = ROUND(ABS(t2.Value3), 2)
     ) gst
-    WHERE t1.VchType = ${QUOTE} AND t2.RecType IN (2, 4) AND m.MasterType = 6
+    WHERE t1.VchType = ${QUOTE} AND t2.RecType IN (20, 4, 2) AND m.MasterType = 6
     ORDER BY t2.VchCode, t2.RecType, t2.SrNo`);
   return r.recordset;
 }
@@ -136,7 +135,7 @@ function buildRows(quotes, lines) {
   }
   const linesBy = new Map();
   for (const [vch, byType] of byVch) {
-    const rows = byType.get(4) || byType.get(2) || [];
+    const rows = byType.get(20) || byType.get(4) || byType.get(2) || [];
     const key = `${DB}|${vch}`;
     linesBy.set(key, rows.map((l) => {
       const qty = Math.abs(Number(l.Qty1 || l.QtyD1 || 0));
