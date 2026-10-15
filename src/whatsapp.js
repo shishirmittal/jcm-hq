@@ -117,6 +117,18 @@ function renderInbox(el, number) {
   const state = { convs: [], number: number || null, timer: null, thread: null, filter: store.get('wa.filter', 'open'), label: '', quick: [], labels: [], me: null, people: null, party: {}, media: {}, att: null, sig: null, convSig: null }
   if (!FILTERS.some(f => f[0] === state.filter)) state.filter = 'open'
   const $ = id => el.querySelector('#' + id)
+  // The chat panel. On a phone it is lifted out of the page onto the whole screen (setFull), so nothing
+  // around it — page header, tabs, a sliding wrapper — can push it sideways or under the status bar.
+  const TH = $('waThread')
+  const home = TH.parentElement
+  const phone = () => window.matchMedia('(max-width: 800px)').matches
+  function setFull(on) {
+    on = on && phone()
+    if (on && TH.parentElement !== document.body) document.body.appendChild(TH)
+    if (!on && TH.parentElement !== home) home.appendChild(TH)
+    TH.classList.toggle('wa-thread-full', on)
+    document.body.classList.toggle('wa-chat-full', on)
+  }
   const conv = n => state.convs.find(x => x.number === n) || {}
 
   async function loadConvs(silent) {
@@ -183,7 +195,7 @@ function renderInbox(el, number) {
   }
 
   function drawTools() {
-    const th = $('waThread'), box = th.querySelector('#waTools')
+    const th = TH, box = th.querySelector('#waTools')
     if (!box) return
     const c = conv(state.number)
     box.innerHTML = `
@@ -195,7 +207,7 @@ function renderInbox(el, number) {
   }
 
   function drawCust(t) {
-    const c = conv(state.number), box = $('waThread').querySelector('#waCust')
+    const c = conv(state.number), box = TH.querySelector('#waCust')
     if (!box) return
     if (!c.code) { box.innerHTML = '<span class="wa-muted">Customer not known for this number — use ⏰ Schedule reminder → search to link one.</span>'; return }
     const p = state.party[c.code]
@@ -234,11 +246,11 @@ function renderInbox(el, number) {
     state.number = null
     history.replaceState(null, '', '#whatsapp/inbox')
     el.classList.remove('wa-show-thread')
-    document.body.classList.remove('wa-chat-full')
+    setFull(false)
     drawConvs()
   }
   async function openThread(number, silent = false) {
-    const th = $('waThread')
+    const th = TH
     const quiet = silent && state.number === number && th.querySelector('#waMsgs')
     if (!quiet) {
       state.number = number
@@ -308,7 +320,7 @@ function renderInbox(el, number) {
       th.querySelector('#waBack').addEventListener('click', closeThread)
       th.querySelector('#waMore').addEventListener('click', e => { const on = th.classList.toggle('wa-tools-open'); e.currentTarget.setAttribute('aria-expanded', String(on)) })
       el.classList.add('wa-show-thread')
-      document.body.classList.add('wa-chat-full')
+      setFull(true)
       th.querySelector('#waTools').addEventListener('click', e => {
         const b = e.target.closest('button[data-t]')
         if (!b) return
@@ -351,11 +363,11 @@ function renderInbox(el, number) {
         b.disabled = true
         try {
           const d = await call({ action: 'media', id: Number(b.dataset.media) })
-          const img = el.querySelector(`#waImg${b.dataset.media}`)
+          const img = TH.querySelector(`#waImg${b.dataset.media}`)
           if (img && d.mime.startsWith('image/') && !img.innerHTML) {
             // Photos show right in the chat; tap the photo to see it full screen (Save / share there).
             state.media[b.dataset.media] = d
-            showLoadedImages(el)
+            showLoadedImages(TH)
           } else if (/pdf|^image\//.test(d.mime)) {
             await openPdfViewer(d) // opens on screen; "Save / share" button inside
           } else {
@@ -377,7 +389,7 @@ function renderInbox(el, number) {
   }
   // Photo / file reply (2026-10-16): photos are shrunk on the phone (1600 px JPEG) so they pass through HQ fast.
   async function pickFile(f) {
-    const err = el.querySelector('#waReplyErr')
+    const err = TH.querySelector('#waReplyErr')
     err.hidden = true
     try {
       if (/^image\//.test(f.type) && !/gif|svg/.test(f.type)) state.att = await shrinkImage(f)
@@ -387,11 +399,11 @@ function renderInbox(el, number) {
         state.att = { kind: 'document', mime, filename: f.name, size: f.size, base64: await fileBase64(f) }
       }
       drawAtt()
-      el.querySelector('#waReplyText')?.focus()
+      TH.querySelector('#waReplyText')?.focus()
     } catch (e) { err.textContent = e.message; err.hidden = false }
   }
   function drawAtt() {
-    const box = el.querySelector('#waAttPrev'), ta = el.querySelector('#waReplyText')
+    const box = TH.querySelector('#waAttPrev'), ta = TH.querySelector('#waReplyText')
     if (!box) return
     const a = state.att
     box.hidden = !a
@@ -401,7 +413,7 @@ function renderInbox(el, number) {
     if (ta) ta.placeholder = a ? 'Add a caption (optional)…' : 'Type a reply…'
   }
   async function sendReply() {
-    const ta = el.querySelector('#waReplyText'), btn = el.querySelector('#waReplySend'), err = el.querySelector('#waReplyErr')
+    const ta = TH.querySelector('#waReplyText'), btn = TH.querySelector('#waReplySend'), err = TH.querySelector('#waReplyErr')
     const text = ta.value.trim()
     const att = state.att
     if (!text && !att) return
@@ -410,21 +422,27 @@ function renderInbox(el, number) {
       if (att) await call({ action: 'reply-media', number: state.number, base64: att.base64, mime: att.mime, filename: att.filename, caption: text })
       else await call({ action: 'reply', number: state.number, text })
       ta.value = ''; state.att = null; drawAtt()
-      await openThread(state.number, true); el.querySelector('#waMsgs').scrollTop = 1e9; loadConvs(true)
+      await openThread(state.number, true); TH.querySelector('#waMsgs').scrollTop = 1e9; loadConvs(true)
     }
     catch (e) { err.textContent = e.message; err.hidden = false }
     finally { btn.disabled = false; btn.textContent = 'Send' }
   }
 
   // Leaving the Inbox (another tab or page) always gives the header and tab bar back.
-  const onHash = () => { if (!el.isConnected || !location.hash.startsWith('#whatsapp/inbox/')) { document.body.classList.remove('wa-chat-full'); if (!el.isConnected) window.removeEventListener('hashchange', onHash) } }
+  // Leaving the page (or the Inbox) takes the full-screen chat away with it.
+  const onHash = () => {
+    if (el.isConnected && location.hash.startsWith('#whatsapp/inbox/')) return
+    if (TH.parentElement === document.body) TH.remove()
+    document.body.classList.remove('wa-chat-full')
+    if (!el.isConnected) window.removeEventListener('hashchange', onHash)
+  }
   window.addEventListener('hashchange', onHash)
   loadConvs().then(() => { if (number) openThread(number) })
   // Every 20 s: list always; the open chat only when nobody is typing or picking from a dropdown.
   state.timer = setInterval(() => {
-    if (!el.isConnected) { clearInterval(state.timer); document.body.classList.remove('wa-chat-full'); return }
+    if (!el.isConnected) { clearInterval(state.timer); return }
     loadConvs(true)
-    if (state.number && !document.querySelector('.hq-dlg, .modal-overlay') && !el.querySelector('#waReplySend:disabled')) openThread(state.number, true)
+    if (state.number && !document.querySelector('.hq-dlg, .modal-overlay') && !TH.querySelector('#waReplySend:disabled')) openThread(state.number, true)
   }, 20000)
   return { refresh: () => { loadConvs(); if (state.number) openThread(state.number, true) } }
 }

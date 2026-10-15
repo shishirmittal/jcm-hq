@@ -220,13 +220,6 @@
   .wa-more-btn { display: inline-flex; font-size: 22px; }
   .wa-thread:not(.wa-tools-open) .wa-tools, .wa-thread:not(.wa-tools-open) .wa-cust { display: none; }
   .wa-tools-open .wa-more-btn { background: var(--hover, #eef2f7); }
-  body.wa-chat-full .wa-show-thread .wa-thread {
-    position: fixed; inset: 0; z-index: 80; border: 0; border-radius: 0; max-height: none; height: 100dvh;
-    padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); box-sizing: border-box;
-    background: var(--surface, #fff);
-  }
-  body.wa-chat-full .wa-show-thread .wa-msgs { min-height: 0; }
-  body.wa-chat-full .app-tabs, body.wa-chat-full .nx-root { display: none !important; }
   body.wa-chat-full { overflow: hidden; }
   .wa-thread-head { padding: 8px 10px 8px 6px; }
   .wa-reply { padding: 8px 10px; }
@@ -239,3 +232,35 @@
 .wa-reply .wa-quick .wa-chip { padding: 6px 12px; }
 .wa-reply-row textarea { width: auto; flex: 1 1 0; min-height: 40px; }
 .wa-reply-row .btn-primary { flex: 0 0 auto; height: 40px; }
+
+/* Phone full-screen chat (2026-10-16 v2): the panel is moved onto <body> (src/whatsapp.js setFull), so it is
+   fixed to the real screen whatever wraps the page. Status-bar / gesture-bar room from the safe-area insets. */
+.wa-thread.wa-thread-full {
+  position: fixed; inset: 0; z-index: 85; margin: 0; border: 0; border-radius: 0;
+  width: 100vw; max-width: 100vw; height: 100dvh; max-height: none; overflow: hidden;
+  display: flex; flex-direction: column; box-sizing: border-box;
+  padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px);
+  background: var(--surface, #fff); color: var(--text, inherit);
+}
+.wa-thread-full .wa-msgs { flex: 1 1 auto; min-height: 0; }
+.wa-thread-full .wa-thread-head { padding: 8px 10px 8px 4px; }
+.wa-thread-full .wa-reply { padding: 8px 10px; }
+.wa-thread-full .wa-reply-row textarea { min-height: 44px; max-height: 120px; }
+.wa-thread-full .wa-quick { margin: 0 -10px; padding: 0 10px 2px; }
+html:has(body.wa-chat-full), body.wa-chat-full { overflow: hidden !important; overscroll-behavior: none; }
+body.wa-chat-full .app-tabs, body.wa-chat-full .nx-root, body.wa-chat-full .nb-panel { display: none !important; }
+.wa-hbtn { min-height: 40px !important; min-width: 40px; }
+/* Reply area: one column; the saved-replies row scrolls inside the screen width instead of stretching it. */
+.wa-reply { flex-wrap: nowrap; }
+.wa-reply > * { min-width: 0; max-width: 100%; }
+.wa-reply .wa-quick { width: 100%; }
+/* Night mode: tool strips follow the theme. */
+body.dark-mode .wa-cust { background: rgba(255,255,255,.04); color: var(--text, #e5e7eb); }
+body.dark-mode .wa-sched-chip { background: rgba(59,130,246,.14); color: #bfdbfe; }
+body.dark-mode .wa-tools-open .wa-more-btn { background: rgba(255,255,255,.12); color: inherit; }
+body.dark-mode .wa-tools select, body.dark-mode .wa-list-tools select { background: var(--surface); color: var(--text, #e5e7eb); border-color: var(--line); }
+body.dark-mode .wa-attach { background: transparent; border-color: var(--line); }
+body.dark-mode .wa-label { background: rgba(255,255,255,.1); color: #e5e7eb; }
+body.dark-mode .wa-conv.active { background: rgba(200,169,110,.14); }
+body.dark-mode .wa-conv:hover { background: rgba(255,255,255,.04); }
+body.dark-mode .wa-chip.on { background: var(--gold, #C8A96E); border-color: var(--gold, #C8A96E); color: #12213B; }
