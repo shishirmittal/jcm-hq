@@ -67,3 +67,10 @@
 .cd-account.is-pooled { border-left-color: var(--line); }
 .cd-notes-switch { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--body); cursor: pointer; height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); }
 .cd-notes-switch input { accent-color: var(--navy); }
+
+/* payments with an extra amount (Settings) */
+.cd-adjusts { display: flex; flex-direction: column; gap: 6px; margin: 6px 0; }
+.cd-adjust { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; border: 1px solid var(--line-soft); border-radius: 10px; padding: 8px 10px; font-size: 13px; }
+.cd-adjust small { color: var(--muted); }
+.cd-adjrow { margin-top: 6px; }
+.cd-adjnote { width: 100%; box-sizing: border-box; margin-top: 6px; height: 32px; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--card); color: inherit; padding: 0 8px; font: inherit; font-size: 13px; }

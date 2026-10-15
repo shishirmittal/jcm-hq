@@ -14,11 +14,14 @@
 //                                        payment that cleared it (FIFO), days, slab and CD amount; totals
 //   cd-settings-save  scheme_from, slab_a_days, slab_a_pct, slab_b_days, slab_b_pct, count_notes, name_match, name_exclude
 //   cd-account-save   party_code, included, opening_balance, opening_note
+//   cd-adjust-save    vch_no, excess, note      part of a payment paid by mistake → stays as credit
+//   cd-adjust-remove  vch_code
 //
 // The dates here are Busy voucher dates. Signify decides the slab by the day the money
 // reached ITS bank — a NEFT typed on the 5th and credited on the 6th is Slab B for them.
 
 const isDate = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''))
+const ADVANCE_DAYS = 15
 const r2 = n => Math.round(Number(n || 0) * 100) / 100
 const dayDiff = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000)
 function fyStart(d = new Date(Date.now() + 5.5 * 3600e3)) {
@@ -131,6 +134,10 @@ export function calcAccount(rowsIn, opening, s, from, to, hub = null) {
     }
     if (dr > 0) {
       const p = { kind: r.vch_type === 19 ? 'payment' : 'note', date: r.vch_date, no: r.vch_no || '', amount: dr, remaining: dr, type: r.vch_type, typeName: r.vch_type_name, vch_code: r.vch_code, party_code: hub, party_name: r.party_name }
+      // Part (or all) of this payment marked on the page as paid by mistake: it stays as a
+      // credit with Signify and never pays a bill.
+      const adj = (s.adjustments || {})[r.vch_code]
+      if (adj && p.kind === 'payment') { p.held = r2(Math.min(dr, Number(adj.excess) || 0)); p.heldNote = adj.note || ''; p.remaining = r2(dr - p.held) }
       if (p.kind === 'payment' || countNotes) pays.push(p); else ignored.push(p)
     }
   }
@@ -160,9 +167,26 @@ export function calcAccount(rowsIn, opening, s, from, to, hub = null) {
   } else {
     for (const p of pays) {
       if (p.kind === 'payment') {
-        const open = queue.filter(e => e.remaining > 0.004 && e.date <= p.date)
+        // Bills up to ADVANCE_DAYS after the payment count too: JCM often pays from the PDF mail
+        // before the bill is typed into Busy.
+        const open = queue.filter(e => e.remaining > 0.004 && dayDiff(p.date, e.date) <= ADVANCE_DAYS)
         const set = exactSet(open.map(e => Math.round(e.remaining * 100)), Math.round(p.remaining * 100))
         if (set) { for (const i of set) apply(p, open[i]); p.matched = true; continue }
+        // Paid in parts (e.g. ₹300 sent two days later to make up a short payment): this payment
+        // together with the next one or two within a week.
+        const later = pays.filter(q => q !== p && q.kind === 'payment' && q.remaining > 0.004 && q.date >= p.date && dayDiff(p.date, q.date) <= 7 && pays.indexOf(q) > pays.indexOf(p)).slice(0, 2)
+        let grouped = false
+        for (let n = 1; n <= later.length && !grouped; n++) {
+          const group = [p, ...later.slice(0, n)]
+          const total = group.reduce((t, g) => t + Math.round(g.remaining * 100), 0)
+          const gs = exactSet(open.map(e => Math.round(e.remaining * 100)), total)
+          if (gs) {
+            for (const i of gs) for (const g of group) { if (open[i].remaining <= 0.004) break; if (g.remaining > 0.004) apply(g, open[i]) }
+            for (const g of group) g.matched = true
+            grouped = true
+          }
+        }
+        if (grouped) continue
         // No exact set: the payment goes in order to bills inside its discount window or later
         // (an advance for bills not in Busy yet) — never back to an older bill: a payment made
         // in October is not for an August bill.
@@ -175,14 +199,6 @@ export function calcAccount(rowsIn, opening, s, from, to, hub = null) {
         continue
       }
       fifo(p) // opening advance, and credit notes / returns when the switch is on
-    }
-    // Whatever is left of a payment is an advance; it clears bills that arrive later, in order.
-    for (const p of pays) {
-      if (p.kind !== 'payment' || p.remaining <= 0.004) continue
-      for (const e of queue) {
-        if (p.remaining <= 0.004) break
-        if (e.remaining > 0.004 && e.kind !== 'opening' && e.date >= p.date) apply(p, e)
-      }
     }
   }
 
@@ -234,7 +250,7 @@ export function calcAccount(rowsIn, opening, s, from, to, hub = null) {
     totals: { credits: totalCr, debits: totalDr, closing: r2(op + totalCr - totalDr) },
     open_bills: openEntries.length, open_amount: r2(openEntries.reduce((t, e) => t + e.remaining, 0)),
     unapplied: r2(pays.reduce((t, p) => t + p.remaining, 0)),
-    advances: pays.filter(p => p.remaining > 0.004 && p.kind !== 'note').map(p => ({ date: p.date, no: p.no, amount: p.amount, remaining: p.remaining })),
+    advances: pays.filter(p => (p.remaining > 0.004 || p.held > 0) && p.kind === 'payment').map(p => ({ date: p.date, no: p.no, amount: p.amount, remaining: r2((p.remaining || 0) + (p.held || 0)), held: p.held || 0, note: p.heldNote || '', vch_code: p.vch_code })),
     ignored: ignored.map(p => ({ date: p.date, no: p.no, amount: p.amount, type_name: p.typeName, party_name: p.party_name })),
     unmatched,
     entries: hubRows.length,
@@ -263,6 +279,8 @@ async function summary(busy, body) {
   const to = isDate(body.to) ? body.to : null
   if (!from || !to || from > to) fail(400, 'Pick a from and to date.')
   const s = check(await busy.from('cd_settings').select('*').eq('id', 1).maybeSingle(), 'cd_settings') || {}
+  const adjRows = check(await busy.from('cd_payment_adjust').select('*').order('vch_date'), 'cd_payment_adjust')
+  s.adjustments = Object.fromEntries(adjRows.map(a => [a.vch_code, a]))
   const accounts = check(await busy.from('cd_accounts').select('*').order('party_name'), 'cd_accounts')
   const wanted = Array.isArray(body.codes) && body.codes.length
     ? accounts.filter(a => body.codes.map(String).includes(String(a.party_code)))
@@ -320,7 +338,7 @@ async function summary(busy, body) {
     none: all.filter(r => r.kind === 'purchase' && r.settled && !r.slab).length,
     unpaid: all.filter(r => r.kind === 'purchase' && !r.settled).length,
   }
-  return { from, to, settings: s, accounts, pools, result, totals, lastSyncAt: s.last_sync_at || null, lastSyncNote: s.last_sync_note || null, fyStart: fyStart() }
+  return { from, to, settings: s, adjustments: adjRows, accounts, pools, result, totals, lastSyncAt: s.last_sync_at || null, lastSyncNote: s.last_sync_note || null, fyStart: fyStart() }
 }
 
 async function settingsSave(busy, body) {
@@ -335,6 +353,27 @@ async function settingsSave(busy, body) {
   if (typeof body.email_signature === 'string' && body.email_signature.trim()) patch.email_signature = body.email_signature.trim().slice(0, 300)
   if (!Object.keys(patch).length) fail(400, 'Nothing to save.')
   check(await busy.from('cd_settings').update(patch).eq('id', 1), 'cd_settings')
+  return { ok: true }
+}
+
+// Mark part (or all) of a payment as paid by mistake / standing credit. Found by its Busy number.
+async function adjustSave(busy, body, me) {
+  const vchNo = String(body.vch_no || '').trim()
+  const excess = Number(body.excess)
+  if (!vchNo) fail(400, 'Type the payment number, e.g. BANK/767.')
+  if (!(excess > 0)) fail(400, 'Type the extra amount.')
+  const rows = check(await busy.from('cd_ledger').select('party_code, vch_code, vch_no, vch_date, debit').eq('vch_type', 19).ilike('vch_no', vchNo).gt('debit', 0), 'cd_ledger')
+  if (!rows.length) fail(404, `No payment ${vchNo} found on the Signify accounts.`)
+  if (rows.length > 1) fail(400, `More than one payment is numbered ${vchNo} — tell Claude which one.`)
+  const r = rows[0]
+  if (excess > Number(r.debit)) fail(400, `The payment is only ₹${Number(r.debit).toLocaleString('en-IN')}.`)
+  check(await busy.from('cd_payment_adjust').upsert({ vch_code: r.vch_code, party_code: r.party_code, vch_no: r.vch_no, vch_date: r.vch_date, excess, note: String(body.note || '').trim().slice(0, 300), created_by: me?.name || null }, { onConflict: 'vch_code' }), 'cd_payment_adjust')
+  return { ok: true }
+}
+async function adjustRemove(busy, body) {
+  const code = Number(body.vch_code)
+  if (!code) fail(400, 'Which payment?')
+  check(await busy.from('cd_payment_adjust').delete().eq('vch_code', code), 'cd_payment_adjust')
   return { ok: true }
 }
 
@@ -464,6 +503,8 @@ export async function handleCdAction(action, body, { busy, send, res, me }) {
   if (action === 'cd-summary') { const d = await summary(busy, body); return send(res, 200, { ...d, email: emailReady() }) }
   if (action === 'cd-settings-save') return send(res, 200, await settingsSave(busy, body))
   if (action === 'cd-account-save') return send(res, 200, await accountSave(busy, body))
+  if (action === 'cd-adjust-save') return send(res, 200, await adjustSave(busy, body, me))
+  if (action === 'cd-adjust-remove') return send(res, 200, await adjustRemove(busy, body))
   if (action === 'cd-emails-save') return send(res, 200, await emailsSave(busy, body))
   if (action === 'cd-send') return send(res, 200, await sendMail(busy, body, me))
   if (action === 'cd-email-log') return send(res, 200, await emailLog(busy))

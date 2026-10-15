@@ -87,3 +87,20 @@ update cd_accounts set included = false
 -- bills it was made for (how JCM pays, Dilip's working); 'fifo' = Signify's rule (oldest bill first).
 alter table cd_settings add column if not exists match_mode text not null default 'amount';
 update cd_settings set count_notes = false where id = 1;
+
+-- Added 2026-10-15 (migration cash_discount_payment_adjust): part of a payment marked as paid by
+-- mistake — it stays as a credit with Signify and never pays a bill. Edited on the page (Settings).
+create table if not exists cd_payment_adjust (
+  vch_code    integer primary key,
+  party_code  text,
+  vch_no      text,
+  vch_date    date,
+  excess      numeric not null,
+  note        text,
+  created_by  text,
+  created_at  timestamptz not null default now()
+);
+alter table cd_payment_adjust enable row level security;
+insert into cd_payment_adjust (vch_code, party_code, vch_no, vch_date, excess, note, created_by)
+values (14652, '12116', 'BANK/767', '2026-08-18', 36000, 'Paid extra by mistake — stands as credit with Signify (Dilip, 15 Oct 2026)', 'Shishir')
+on conflict (vch_code) do nothing;

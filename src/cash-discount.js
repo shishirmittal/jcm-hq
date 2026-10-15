@@ -269,7 +269,7 @@ export async function renderCashDiscount(container) {
           <div class="cd-pool-head">
             <div>
               <div class="cd-pool-title">${multi ? `Paid through <strong>${esc(pool.hub_name)}</strong> — ${members.length} of ${pool.members.length} accounts had bills this period` : `<strong>${esc(pool.hub_name)}</strong> — paid on its own account`}</div>
-              <div class="pur-bill-meta">${multi ? 'Bills of these accounts are moved into the paying account by journal in Busy, so FIFO runs on all of them as one. ' : ''}Opening: ${openingWhy} · balance now ${money(Math.abs(pool.totals.closing))} ${pool.totals.closing < 0 ? 'advance with Signify' : 'payable'} · ${pool.open_bills} bill${pool.open_bills === 1 ? '' : 's'} still open (${money(pool.open_amount)})${pool.ignored.length ? ` · ${pool.ignored.length} credit note${pool.ignored.length === 1 ? '' : 's'} / return${pool.ignored.length === 1 ? '' : 's'} not counted (switch above)` : ''}${pool.advances?.length ? ` · <b>advance not yet matched to a bill: ${esc(pool.advances.map(a => `${a.no || 'payment'} ${fmtDate(a.date)} ${money(a.remaining)}`).join(', '))}</b>` : ''}${pool.unmatched?.length ? ` · <b>${pool.unmatched.length} amount${pool.unmatched.length === 1 ? '' : 's'} moved in that match no bill</b> (${esc(pool.unmatched.map(u => money(u.amount)).join(', '))})` : ''}</div>
+              <div class="pur-bill-meta">${multi ? 'Bills of these accounts are moved into the paying account by journal in Busy, so FIFO runs on all of them as one. ' : ''}Opening: ${openingWhy} · balance now ${money(Math.abs(pool.totals.closing))} ${pool.totals.closing < 0 ? 'advance with Signify' : 'payable'} · ${pool.open_bills} bill${pool.open_bills === 1 ? '' : 's'} still open (${money(pool.open_amount)})${pool.ignored.length ? ` · ${pool.ignored.length} credit note${pool.ignored.length === 1 ? '' : 's'} / return${pool.ignored.length === 1 ? '' : 's'} not counted (switch above)` : ''}${pool.advances?.length ? ` · <b>credit standing with Signify: ${esc(pool.advances.map(a => `${a.no || 'payment'} ${fmtDate(a.date)} ${money(a.remaining)}${a.held ? ` (${a.note || 'marked as extra'})` : ' (not matched to any bill)'}`).join('; '))}</b>` : ''}${pool.unmatched?.length ? ` · <b>${pool.unmatched.length} amount${pool.unmatched.length === 1 ? '' : 's'} moved in that match no bill</b> (${esc(pool.unmatched.map(u => money(u.amount)).join(', '))})` : ''}</div>
             </div>
             <div class="pur-bill-side"><div class="pur-amount">${money(pool.cd)}</div><small class="cd-sub">CD on ${pool.invoices} invoice${pool.invoices === 1 ? '' : 's'}</small></div>
           </div>
@@ -401,6 +401,13 @@ export async function renderCashDiscount(container) {
       <p class="pur-hint">"Our way" (toolbar) matches each NEFT to the bills it was made for — the amount is the proof — and only falls back to oldest-first when no exact set of bills fits. "Signify's rule" is strict FIFO. Credit notes and returns are only counted when the switch is on.</p>
       <label class="pur-switch"><input type="radio" name="cdMode" value="auto" ${(s.fifo_mode || 'auto') !== 'per_account' ? 'checked' : ''}/> <span><strong>Accounts paid together, as one</strong><br><small>Bills moved by journal into another Signify account (TR / MP) and paid from there are matched across all those accounts in date order. Recommended — this is how the books are kept.</small></span></label>
       <label class="pur-switch"><input type="radio" name="cdMode" value="per_account" ${s.fifo_mode === 'per_account' ? 'checked' : ''}/> <span><strong>Each account on its own</strong><br><small>Only that account's own payments clear its bills.</small></span></label>
+      <h4 class="pur-drawer-sub">Payments with an extra amount</h4>
+      <p class="pur-hint">If a payment was more than the bills it was for (paid by mistake), mark the extra here. It then stays as a credit with Signify and the rest of the payment is matched to its bills.</p>
+      <div class="cd-adjusts">
+        ${(d.adjustments || []).map(a => `<div class="cd-adjust"><span><strong>${esc(a.vch_no)}</strong> · ${esc(fmtDate(a.vch_date))} · extra ${money(a.excess)}${a.note ? `<br><small>${esc(a.note)}</small>` : ''}</span><button class="pur-link" data-adj-remove="${esc(String(a.vch_code))}">Remove</button></div>`).join('') || '<p class="pur-hint">None marked.</p>'}
+      </div>
+      <div class="cd-openrow cd-adjrow"><input type="text" id="cdAdjNo" placeholder="payment no., e.g. BANK/767" /><input type="number" step="0.01" id="cdAdjAmt" placeholder="extra ₹" /><button class="btn-ghost btn-small" id="cdAdjAdd">Add</button></div>
+      <input type="text" id="cdAdjNote" class="cd-adjnote" placeholder="note (optional), e.g. paid extra by mistake" />
       <h4 class="pur-drawer-sub">Which accounts</h4>
       <div class="cd-grid">
         <label>Name has (words, comma-separated)<input type="text" id="cdMatch" value="${esc(s.name_match || '')}" /></label>
@@ -423,6 +430,15 @@ export async function renderCashDiscount(container) {
           </div>`
         }).join('')}
       </div>`
+    $('cdAdjAdd').addEventListener('click', async () => {
+      try {
+        await call({ action: 'cd-adjust-save', vch_no: $('cdAdjNo').value, excess: $('cdAdjAmt').value, note: $('cdAdjNote').value })
+        closeDrawer(); load()
+      } catch (err) { hqAlert(err.message) }
+    })
+    $('cdDrawerBody').querySelectorAll('[data-adj-remove]').forEach(b => b.addEventListener('click', async () => {
+      try { await call({ action: 'cd-adjust-remove', vch_code: b.dataset.adjRemove }); closeDrawer(); load() } catch (err) { hqAlert(err.message) }
+    }))
     $('cdSaveSettings').addEventListener('click', async () => {
       try {
         await call({ action: 'cd-settings-save', scheme_from: $('cdSchemeFrom').value, slab_a_days: $('cdADays').value, slab_a_pct: $('cdAPct').value, slab_b_days: $('cdBDays').value, slab_b_pct: $('cdBPct').value, count_notes: $('cdCountNotes').checked, fifo_mode: $('cdDrawerBody').querySelector('input[name=cdMode]:checked')?.value, name_match: $('cdMatch').value, name_exclude: $('cdExclude').value, email_signature: $('cdSignature').value })
