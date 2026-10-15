@@ -87,6 +87,10 @@ export async function renderCashDiscount(container) {
           <label class="pur-date"><span>Invoices from</span><input type="date" id="cdFrom" min="2026-04-01" /></label>
           <label class="pur-date"><span>to</span><input type="date" id="cdTo" min="2026-04-01" /></label>
           <button class="btn-ghost btn-small cd-accbtn" id="cdAccountsBtn">${icon('building', 14)} <span id="cdAccountsLabel">Accounts</span></button>
+          <div class="pur-chips" id="cdModeChips" title="How each payment is matched to bills">
+            <button class="pur-chip" data-mode="amount">Our way — payment matched to its bills</button>
+            <button class="pur-chip" data-mode="fifo">Signify's rule — oldest bill first</button>
+          </div>
           <label class="cd-notes-switch" title="Signify's credit notes (and debit notes / returns) clear the oldest bills in the FIFO, the way Signify applies them on its side. Off = only bank payments clear bills."><input type="checkbox" id="cdNotesSwitch" /> <span>Credit notes clear bills too</span></label>
         </div>
         <div class="pur-tiles cd-tiles" id="cdTiles"></div>
@@ -136,6 +140,10 @@ export async function renderCashDiscount(container) {
   $('cdNewEmail').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addEmail() } })
   $('cdEmails').addEventListener('click', e => { const b = e.target.closest('[data-remove]'); if (b) saveEmails(state.data.settings.email_to.filter(x => x !== b.dataset.remove)) })
   $('cdSendBtn').addEventListener('click', sendClaim)
+  $('cdModeChips').addEventListener('click', async e => {
+    const b = e.target.closest('[data-mode]'); if (!b) return
+    try { await call({ action: 'cd-settings-save', match_mode: b.dataset.mode }); load() } catch (err) { hqAlert(err.message) }
+  })
   $('cdNotesSwitch').addEventListener('change', async () => {
     try { await call({ action: 'cd-settings-save', count_notes: $('cdNotesSwitch').checked }); load() } catch (err) { hqAlert(err.message) }
   })
@@ -201,6 +209,7 @@ export async function renderCashDiscount(container) {
     const d = state.data
     if (d) {
       $('cdNotesSwitch').checked = d.settings.count_notes === true
+      container.querySelectorAll('#cdModeChips .pur-chip').forEach(b => b.classList.toggle('active', b.dataset.mode === (d.settings.match_mode || 'amount')))
       const total = d.accounts.length, chosen = d.result.length
       $('cdAccountsLabel').textContent = `${chosen} of ${total} account${total === 1 ? '' : 's'}`
     }
@@ -259,7 +268,7 @@ export async function renderCashDiscount(container) {
           <div class="cd-pool-head">
             <div>
               <div class="cd-pool-title">${multi ? `Paid through <strong>${esc(pool.hub_name)}</strong> — ${members.length} of ${pool.members.length} accounts had bills this period` : `<strong>${esc(pool.hub_name)}</strong> — paid on its own account`}</div>
-              <div class="pur-bill-meta">${multi ? 'Bills of these accounts are moved into the paying account by journal in Busy, so FIFO runs on all of them as one. ' : ''}Opening 1 Apr: ${openingWhy} · balance now ${money(Math.abs(pool.totals.closing))} ${pool.totals.closing < 0 ? 'advance with Signify' : 'payable'} · ${pool.open_bills} bill${pool.open_bills === 1 ? '' : 's'} still open (${money(pool.open_amount)})${pool.ignored.length ? ` · ${pool.ignored.length} credit / debit note${pool.ignored.length === 1 ? '' : 's'} not counted (switch above)` : ''}</div>
+              <div class="pur-bill-meta">${multi ? 'Bills of these accounts are moved into the paying account by journal in Busy, so FIFO runs on all of them as one. ' : ''}Opening 1 Apr: ${openingWhy} · balance now ${money(Math.abs(pool.totals.closing))} ${pool.totals.closing < 0 ? 'advance with Signify' : 'payable'} · ${pool.open_bills} bill${pool.open_bills === 1 ? '' : 's'} still open (${money(pool.open_amount)})${pool.ignored.length ? ` · ${pool.ignored.length} credit note${pool.ignored.length === 1 ? '' : 's'} / return${pool.ignored.length === 1 ? '' : 's'} not counted (switch above)` : ''}${pool.unmatched?.length ? ` · <b>${pool.unmatched.length} amount${pool.unmatched.length === 1 ? '' : 's'} moved in that match no bill</b> (${esc(pool.unmatched.map(u => money(u.amount)).join(', '))})` : ''}</div>
             </div>
             <div class="pur-bill-side"><div class="pur-amount">${money(pool.cd)}</div><small class="cd-sub">CD on ${pool.invoices} invoice${pool.invoices === 1 ? '' : 's'}</small></div>
           </div>
@@ -284,11 +293,11 @@ export async function renderCashDiscount(container) {
     const subAmt = purchases.reduce((s, r) => s + r.amount, 0), subCd = rows.reduce((s, r) => s + r.cd, 0)
     const body = rows.length ? rows.map(r => `
       <tr class="cd-row cd-${statusTone(r)}">
-        <td>${esc(fmtDate(r.date))}</td>
+        <td>${esc(fmtDate(r.date))}${r.moved_on && r.moved_on !== r.date ? `<br><small title="Moved to the paying account on this day">moved ${esc(fmtDate(r.moved_on))}</small>` : ''}</td>
         <td>${esc(r.vch_no || '—')}${r.kind !== 'purchase' ? ` <small>${esc(r.type_name || '')}</small>` : ''}</td>
         <td class="pur-r">${money(r.amount)}</td>
         <td>${r.pay_date ? esc(fmtDate(r.pay_date)) : '<span class="cd-dash">—</span>'}</td>
-        <td>${r.pay_no ? esc(r.pay_no) : ''}${r.pay_kind === 'note' ? ' <small>note</small>' : ''}${r.pay_account ? ` <small title="Paid from this account">via ${esc(r.pay_account.replace(/^Signify Innovations? India(?: Ltd)?\s*/i, ''))}</small>` : ''}${r.parts > 1 ? ` <small title="This invoice was cleared by ${r.parts} payments; the last one decides the days">${r.parts} parts</small>` : ''}</td>
+        <td>${r.pay_no ? esc(r.pay_no) : ''}${r.pay_kind === 'note' ? ' <small>note</small>' : ''}${r.pay_exact ? ' <small title="This payment was made for exactly this bill (or this bill with others)">exact</small>' : ''}${r.pay_account ? ` <small title="Paid from this account">via ${esc(r.pay_account.replace(/^Signify Innovations? India(?: Ltd)?\s*/i, ''))}</small>` : ''}${r.parts > 1 ? ` <small title="This invoice was cleared by ${r.parts} payments; the last one decides the days">${r.parts} parts</small>` : ''}</td>
         <td class="pur-r">${r.pay_amount != null ? money(r.pay_amount) : ''}</td>
         <td class="pur-r">${r.days != null ? r.days : ''}</td>
         <td class="pur-r">${r.pct ? pct(r.pct) : '0%'}</td>
@@ -388,6 +397,7 @@ export async function renderCashDiscount(container) {
       </div>
       <label class="pur-switch"><input type="checkbox" id="cdCountNotes" ${s.count_notes ? 'checked' : ''}/> <span><strong>Count debit notes as payments</strong><br><small>Returns and Signify's own credit entries then clear old invoices in the FIFO, the way Signify does on its side. Off = only payment vouchers clear invoices.</small></span></label>
       <h4 class="pur-drawer-sub">How payments are matched</h4>
+      <p class="pur-hint">"Our way" (toolbar) matches each NEFT to the bills it was made for — the amount is the proof — and only falls back to oldest-first when no exact set of bills fits. "Signify's rule" is strict FIFO. Credit notes and returns are only counted when the switch is on.</p>
       <label class="pur-switch"><input type="radio" name="cdMode" value="auto" ${(s.fifo_mode || 'auto') !== 'per_account' ? 'checked' : ''}/> <span><strong>Accounts paid together, as one</strong><br><small>Bills moved by journal into another Signify account (TR / MP) and paid from there are matched across all those accounts in date order. Recommended — this is how the books are kept.</small></span></label>
       <label class="pur-switch"><input type="radio" name="cdMode" value="per_account" ${s.fifo_mode === 'per_account' ? 'checked' : ''}/> <span><strong>Each account on its own</strong><br><small>Only that account's own payments clear its bills.</small></span></label>
       <h4 class="pur-drawer-sub">Which accounts</h4>

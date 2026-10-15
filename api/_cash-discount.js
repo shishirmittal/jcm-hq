@@ -54,57 +54,101 @@ async function fetchAll(client, table, build) {
 // two-sided journal (debit one account, credit another) cancels out and is dropped; a one-sided
 // journal (the other side is outside the pool — a credit note account, TDS …) stays as a note.
 // ---------------------------------------------------------------------------
-export function calcAccount(rowsIn, opening, s, from, to) {
-  const countNotes = s.count_notes === true
+// Indexes of entries (amounts in paise, oldest first) that add up to target exactly, preferring
+// the oldest entries; null when there is no such set. Bounded search so a long list cannot hang.
+export function exactSet(amounts, target) {
+  const n = Math.min(amounts.length, 120)
+  let budget = 400000
+  const pick = []
+  const suffix = new Array(n + 1).fill(0)
+  for (let i = n - 1; i >= 0; i--) suffix[i] = suffix[i + 1] + amounts[i]
+  const go = (i, left) => {
+    if (left === 0) return true
+    if (i >= n || left < 0 || suffix[i] < left || --budget < 0) return false
+    if (amounts[i] <= left) { pick.push(i); if (go(i + 1, left - amounts[i])) return true; pick.pop() }
+    return go(i + 1, left)
+  }
+  return go(0, target) ? pick.slice() : null
+}
+
+export function calcAccount(rowsIn, opening, s, from, to, hub = null) {
+  const countNotes = s.count_notes !== false
   const start = fyStart()
-  // Net the journals voucher by voucher.
-  const rows = []
-  const jnl = new Map()
-  for (const r of rowsIn) {
-    if (r.vch_type === 16) { if (!jnl.has(r.vch_code)) jnl.set(r.vch_code, []); jnl.get(r.vch_code).push(r) } else rows.push(r)
+  const members = [...new Set(rowsIn.map(r => String(r.party_code)))]
+  // The paying account. In a pool it is the one the payments are made from; everything the FIFO
+  // sees is ITS ledger, exactly as Busy shows it: its own bills, the bills moved into it by
+  // journal (queued on the day they are moved, days counted from the invoice date), its
+  // payments, credit notes and returns. Bills still sitting on another account are "not moved yet".
+  if (!hub) {
+    const payCount = new Map()
+    for (const r of rowsIn) if (r.vch_type === 19 && Number(r.debit) > 0) payCount.set(String(r.party_code), (payCount.get(String(r.party_code)) || 0) + 1)
+    hub = [...payCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || members[0]
   }
-  for (const group of jnl.values()) {
-    const net = r2(group.reduce((t, r) => t + Number(r.credit || 0) - Number(r.debit || 0), 0))
-    if (Math.abs(net) < 0.01 && group.length > 1) continue
-    if (group.length === 1) { rows.push(group[0]); continue }
-    const biggest = [...group].sort((a, b) => Math.max(b.credit, b.debit) - Math.max(a.credit, a.debit))[0]
-    rows.push({ ...biggest, credit: net > 0 ? net : 0, debit: net < 0 ? -net : 0 })
-  }
-  const sorted = rows.sort((a, b) => String(a.vch_date).localeCompare(String(b.vch_date)) || a.vch_code - b.vch_code || a.sr_no - b.sr_no)
+  const byVch = new Map()
+  for (const r of rowsIn) { if (!byVch.has(r.vch_code)) byVch.set(r.vch_code, []); byVch.get(r.vch_code).push(r) }
+  const sortKey = (a, b) => String(a.date).localeCompare(String(b.date)) || String(a.no || '').localeCompare(String(b.no || '')) || (a.vch_code || 0) - (b.vch_code || 0) || (a.sr_no || 0) - (b.sr_no || 0)
 
-  // Bills = anything that increases what we owe. Only purchase bills (VchType 2) can earn CD.
+  // Every purchase bill in the pool (any account) — the rows the answer is made of.
   const bills = []
-  // Payments = what reduces it. Payment vouchers always; debit notes / returns / journals only if asked.
-  const pays = []
-  const ignored = [] // debits left out of the FIFO (shown so the figures can be tied to Busy)
-  const op = r2(opening || 0)
-  if (op > 0) bills.push({ kind: 'opening', date: start, no: 'Opening balance (1 Apr)', amount: op, remaining: op, cdOk: false, type: 0 })
-  if (op < 0) pays.push({ kind: 'opening', date: start, no: 'Opening advance (1 Apr)', amount: -op, remaining: -op, type: 0 })
+  for (const r of rowsIn) if (r.vch_type === 2 && Number(r.credit) > 0) bills.push({ party_code: String(r.party_code), party_name: r.party_name, kind: 'purchase', date: r.vch_date, no: r.vch_no || '', amount: r2(r.credit), vch_code: r.vch_code, sr_no: r.sr_no, type: 2, typeName: r.vch_type_name })
+  bills.sort(sortKey)
 
-  for (const r of sorted) {
+  // The hub's ledger → queue (what we owe) and pays (what reduces it).
+  const queue = []   // { bill?, date (queued), amount, remaining }
+  const pays = []
+  const ignored = []
+  const op = r2(opening || 0)
+  if (op > 0) queue.push({ kind: 'opening', date: start, no: 'Opening balance (1 Apr)', amount: op, remaining: op })
+  if (op < 0) pays.push({ kind: 'opening', date: start, no: 'Opening advance (1 Apr)', amount: -op, remaining: -op, party_code: hub })
+
+  const hubRows = rowsIn.filter(r => String(r.party_code) === hub).sort((a, b) => sortKey({ date: a.vch_date, no: a.vch_no, vch_code: a.vch_code, sr_no: a.sr_no }, { date: b.vch_date, no: b.vch_no, vch_code: b.vch_code, sr_no: b.sr_no }))
+  for (const r of hubRows) {
     const cr = r2(r.credit), dr = r2(r.debit)
-    const acc = { party_code: r.party_code, party_name: r.party_name }
-    if (cr > 0) bills.push({ ...acc, kind: r.vch_type === 2 ? 'purchase' : 'other', date: r.vch_date, no: r.vch_no || '', amount: cr, remaining: cr, cdOk: r.vch_type === 2, type: r.vch_type, typeName: r.vch_type_name, vch_code: r.vch_code })
+    if (cr > 0) {
+      if (r.vch_type === 2) {
+        const bill = bills.find(b => b.vch_code === r.vch_code && b.party_code === hub && !b.entry)
+        const e = { kind: 'bill', bill, date: r.vch_date, no: r.vch_no || '', amount: cr, remaining: cr }
+        if (bill) bill.entry = e
+        queue.push(e)
+      } else if (r.vch_type === 16) {
+        // A bill moved in from another account in the pool: the debited side names the account.
+        const other = (byVch.get(r.vch_code) || []).find(x => String(x.party_code) !== hub && Number(x.debit) > 0 && Math.abs(Number(x.debit) - cr) < 0.01)
+        const from = other ? String(other.party_code) : null
+        const bill = from ? bills.find(b => b.party_code === from && !b.entry && Math.abs(b.amount - cr) < 0.01 && b.date <= r.vch_date) : null
+        const e = { kind: bill ? 'bill' : 'moved', bill, date: r.vch_date, no: bill ? bill.no : (r.vch_no || ''), amount: cr, remaining: cr, from: other ? other.party_name : null }
+        if (bill) { bill.entry = e; bill.movedOn = r.vch_date }
+        queue.push(e)
+      } else queue.push({ kind: 'other', date: r.vch_date, no: r.vch_no || '', amount: cr, remaining: cr, typeName: r.vch_type_name })
+    }
     if (dr > 0) {
-      const p = { ...acc, kind: r.vch_type === 19 ? 'payment' : 'note', date: r.vch_date, no: r.vch_no || '', amount: dr, remaining: dr, type: r.vch_type, typeName: r.vch_type_name, vch_code: r.vch_code }
+      const p = { kind: r.vch_type === 19 ? 'payment' : 'note', date: r.vch_date, no: r.vch_no || '', amount: dr, remaining: dr, type: r.vch_type, typeName: r.vch_type_name, vch_code: r.vch_code, party_code: hub, party_name: r.party_name }
       if (p.kind === 'payment' || countNotes) pays.push(p); else ignored.push(p)
     }
   }
-  bills.sort((a, b) => a.date.localeCompare(b.date) || (a.vch_code || 0) - (b.vch_code || 0))
+  queue.sort((a, b) => a.date.localeCompare(b.date) || (a.kind === 'opening' ? -1 : 0) || String(a.no).localeCompare(String(b.no)))
   pays.sort((a, b) => a.date.localeCompare(b.date) || (a.vch_code || 0) - (b.vch_code || 0))
 
-  // FIFO: each payment goes to the oldest bill still open.
-  let bi = 0
+  // Two ways to decide which bills a payment clears:
+  //   'amount' (how JCM pays): each NEFT is made for particular bills, so its amount equals
+  //            those bills exactly — find that set among the open entries (oldest first);
+  //            when no exact set exists, fall back to FIFO for that payment.
+  //   'fifo'   (Signify's rule): every payment goes to the oldest open entry, full stop.
+  // Credit notes / returns always go FIFO (they are not made out for particular bills).
+  const byAmount = (s.match_mode || 'amount') === 'amount'
+  const apply = (p, e) => {
+    const take = r2(Math.min(p.remaining, e.remaining))
+    e.remaining = r2(e.remaining - take)
+    p.remaining = r2(p.remaining - take)
+    ;(e.parts ||= []).push({ date: p.date, no: p.no, amount: p.amount, applied: take, kind: p.kind })
+    if (e.remaining <= 0.004) e.settledBy = p
+  }
   for (const p of pays) {
-    while (p.remaining > 0.004 && bi < bills.length) {
-      const b = bills[bi]
-      if (b.remaining <= 0.004) { bi++; continue }
-      const take = r2(Math.min(p.remaining, b.remaining))
-      b.remaining = r2(b.remaining - take)
-      p.remaining = r2(p.remaining - take)
-      ;(b.parts ||= []).push({ date: p.date, no: p.no, amount: p.amount, applied: take, kind: p.kind, typeName: p.typeName })
-      if (b.remaining <= 0.004) { b.settledBy = p; bi++ }
+    if (byAmount && p.kind === 'payment') {
+      const open = queue.filter(e => e.remaining > 0.004 && e.date <= p.date)
+      const set = exactSet(open.map(e => Math.round(e.remaining * 100)), Math.round(p.remaining * 100))
+      if (set) { for (const i of set) apply(p, open[i]); p.matched = true; continue }
     }
+    for (const e of queue) { if (p.remaining <= 0.004) break; if (e.remaining > 0.004) apply(p, e) }
   }
 
   const schemeFrom = String(s.scheme_from || '2026-08-01')
@@ -113,24 +157,26 @@ export function calcAccount(rowsIn, opening, s, from, to) {
 
   const out = []
   for (const b of bills) {
-    if (b.kind === 'opening') continue
     if (b.date < from || b.date > to) continue
+    const e = b.entry
     const row = {
       party_code: b.party_code, party_name: b.party_name,
-      date: b.date, vch_no: b.no, amount: b.amount, kind: b.kind, type_name: b.typeName,
-      settled: !!b.settledBy, remaining: b.remaining,
-      pay_date: b.settledBy ? b.settledBy.date : null,
-      pay_no: b.settledBy ? b.settledBy.no : null,
-      pay_amount: b.settledBy ? b.settledBy.amount : null,
-      pay_kind: b.settledBy ? b.settledBy.kind : null,
-      pay_account: b.settledBy && b.settledBy.party_code !== b.party_code ? b.settledBy.party_name : null,
-      parts: (b.parts || []).length,
-      days: b.settledBy ? dayDiff(b.date, b.settledBy.date) : null,
+      date: b.date, vch_no: b.no, amount: b.amount, kind: 'purchase', type_name: b.typeName,
+      settled: !!(e && e.settledBy), remaining: e ? e.remaining : b.amount,
+      pay_date: e?.settledBy ? e.settledBy.date : null,
+      pay_no: e?.settledBy ? e.settledBy.no : null,
+      pay_amount: e?.settledBy ? e.settledBy.amount : null,
+      pay_kind: e?.settledBy ? e.settledBy.kind : null,
+      pay_exact: e?.settledBy ? !!e.settledBy.matched : null,
+      pay_account: e?.settledBy && b.party_code !== hub ? e.settledBy.party_name : null,
+      moved_on: b.movedOn || null,
+      parts: e ? (e.parts || []).length : 0,
+      days: e?.settledBy ? dayDiff(b.date, e.settledBy.date) : null,
       pct: 0, cd: 0, slab: null, status: '',
     }
-    if (b.kind !== 'purchase') row.status = `${b.typeName || 'Not a purchase bill'} — no CD`
-    else if (b.date < schemeFrom) row.status = 'Before the scheme'
-    else if (!b.settledBy) row.status = b.parts ? `Part paid — ${b.remaining.toFixed(2)} still open` : 'Not paid yet'
+    if (b.date < schemeFrom) row.status = 'Before the scheme'
+    else if (!e) row.status = `Not yet moved to the paying account`
+    else if (!e.settledBy) row.status = e.parts ? `Part paid — ${e.remaining.toFixed(2)} still open` : 'Not paid yet'
     // Paid before the bill date = advance pay term (Category C): only Slab A applies.
     else if (row.days < 0) { row.slab = 'A'; row.pct = aPct; row.status = `Slab A — paid in advance (${aPct}%)` }
     else if (row.days <= aDays) { row.slab = 'A'; row.pct = aPct; row.status = `Slab A (${aPct}%)` }
@@ -139,18 +185,23 @@ export function calcAccount(rowsIn, opening, s, from, to) {
     row.cd = r2(b.amount * row.pct / 100)
     out.push(row)
   }
+  // Amounts moved into the paying account that could not be matched to a bill (lumped
+  // transfers, part amounts): listed so they can be checked; they earn no CD by themselves.
+  const unmatched = queue.filter(e => e.kind === 'moved' && e.date >= from && e.date <= to).map(e => ({ date: e.date, amount: e.amount, from: e.from, settled: !!e.settledBy, pay_date: e.settledBy?.date || null }))
 
-  const totalCr = r2(sorted.reduce((t, r) => t + Number(r.credit || 0), 0))
-  const totalDr = r2(sorted.reduce((t, r) => t + Number(r.debit || 0), 0))
-  const openBills = bills.filter(b => b.remaining > 0.004 && b.kind !== 'opening')
+  const totalCr = r2(hubRows.reduce((t, r) => t + Number(r.credit || 0), 0))
+  const totalDr = r2(hubRows.reduce((t, r) => t + Number(r.debit || 0), 0))
+  const openEntries = queue.filter(e => e.remaining > 0.004 && e.kind !== 'opening')
   return {
     rows: out,
+    hub,
     opening: op,
     totals: { credits: totalCr, debits: totalDr, closing: r2(op + totalCr - totalDr) },
-    open_bills: openBills.length, open_amount: r2(openBills.reduce((t, b) => t + b.remaining, 0)),
-    unapplied: r2(pays.reduce((t, p) => t + p.remaining, 0)),      // payments with nothing left to clear (advance)
+    open_bills: openEntries.length, open_amount: r2(openEntries.reduce((t, e) => t + e.remaining, 0)),
+    unapplied: r2(pays.reduce((t, p) => t + p.remaining, 0)),
     ignored: ignored.map(p => ({ date: p.date, no: p.no, amount: p.amount, type_name: p.typeName, party_name: p.party_name })),
-    entries: sorted.length,
+    unmatched,
+    entries: hubRows.length,
   }
 }
 
@@ -201,18 +252,18 @@ async function summary(busy, body) {
   const result = []
   for (const members of poolsOf(wanted, ledger, s.fifo_mode || 'auto')) {
     const rows = members.flatMap(c => byCode.get(c) || [])
-    const openings = members.map(c => ({ code: c, ...openingOf(c) }))
-    const opening = r2(openings.reduce((t, o) => t + o.opening, 0))
-    const calc = calcAccount(rows, opening, s, from, to)
-    // The account the payments come from names the pool.
+    // The account the payments come from is the pool's ledger; its opening is the pool's opening.
     const payCount = new Map()
-    for (const r of rows) if (r.vch_type === 19 && Number(r.debit) > 0) payCount.set(r.party_code, (payCount.get(r.party_code) || 0) + 1)
+    for (const r of rows) if (r.vch_type === 19 && Number(r.debit) > 0) payCount.set(String(r.party_code), (payCount.get(String(r.party_code)) || 0) + 1)
     const hub = [...payCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || members[0]
+    const openings = members.map(c => ({ code: c, ...openingOf(c) }))
+    const opening = openingOf(hub).opening
+    const calc = calcAccount(rows, opening, s, from, to, hub)
     const poolId = `pool-${hub}`
     pools.push({
       id: poolId, hub_code: hub, hub_name: byName.get(hub)?.party_name || hub, members: members.map(c => ({ party_code: c, party_name: byName.get(c)?.party_name || c })),
       opening, openings: openings.map(o => ({ ...o, party_name: byName.get(o.code)?.party_name || o.code })),
-      totals: calc.totals, open_bills: calc.open_bills, open_amount: calc.open_amount, unapplied: calc.unapplied, ignored: calc.ignored, entries: calc.entries,
+      totals: calc.totals, open_bills: calc.open_bills, open_amount: calc.open_amount, unapplied: calc.unapplied, ignored: calc.ignored, unmatched: calc.unmatched, entries: calc.entries,
       cd: r2(calc.rows.reduce((t, r) => t + r.cd, 0)), invoices: calc.rows.filter(r => r.kind === 'purchase').length,
     })
     for (const c of members) {
@@ -243,6 +294,7 @@ async function settingsSave(busy, body) {
   for (const k of ['slab_a_pct', 'slab_b_pct']) if (body[k] != null && !Number.isNaN(Number(body[k]))) patch[k] = Number(body[k])
   if (typeof body.count_notes === 'boolean') patch.count_notes = body.count_notes
   if (body.fifo_mode === 'auto' || body.fifo_mode === 'per_account') patch.fifo_mode = body.fifo_mode
+  if (body.match_mode === 'amount' || body.match_mode === 'fifo') patch.match_mode = body.match_mode
   for (const k of ['name_match', 'name_exclude']) if (typeof body[k] === 'string') patch[k] = body[k].trim().slice(0, 200)
   if (typeof body.email_signature === 'string' && body.email_signature.trim()) patch.email_signature = body.email_signature.trim().slice(0, 300)
   if (!Object.keys(patch).length) fail(400, 'Nothing to save.')
