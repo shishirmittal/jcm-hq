@@ -51,6 +51,7 @@ export const NAV_CONFIG = [
     { id: 'payment-followup', label: 'Payment Follow-up', icon: 'phone', hash: '#payment-followup', adminOnly: true, badge: 'paymentFollowup' },
     { id: 'payments', label: 'Payments', icon: 'rupee', hash: '#payments', adminOnly: true },
     { id: 'gst-recon', label: 'GSTR-2A Reconciliation', icon: 'percent', hash: '#gst-recon', adminOnly: true },
+    { id: 'cash-discount', label: 'Signify Cash Discount', icon: 'percent', hash: '#cash-discount', adminOnly: true, grantable: false },
   ] },
   { section: 'Warehouse', items: [
     { id: 'floor-orders', label: 'Orders', icon: 'pick', hash: '#floor-orders' },
