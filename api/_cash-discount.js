@@ -44,16 +44,33 @@ async function fetchAll(client, table, build) {
 }
 
 // ---------------------------------------------------------------------------
-// The calculation for ONE account. Pure: ledger rows in, invoice rows out.
-//   rows     : cd_ledger rows of this account (any order)
-//   opening  : payable at the start of the year (positive = we owe them), or null/0
+// The calculation for ONE POOL of accounts. Pure: ledger rows in, invoice rows out.
+//   rows     : cd_ledger rows of every account in the pool (any order; each carries party_code/name)
+//   opening  : payable at the start of the year for the whole pool (positive = we owe them)
 //   s        : cd_settings row
 //   from, to : the invoice dates wanted in the answer (the FIFO always runs over the whole year)
+// JCM moves the lighting accounts' bills into TR / MP by journal and pays from there, so a
+// "pool" is the set of accounts joined by such transfers (see poolsOf below). Inside a pool a
+// two-sided journal (debit one account, credit another) cancels out and is dropped; a one-sided
+// journal (the other side is outside the pool — a credit note account, TDS …) stays as a note.
 // ---------------------------------------------------------------------------
-export function calcAccount(rows, opening, s, from, to) {
+export function calcAccount(rowsIn, opening, s, from, to) {
   const countNotes = s.count_notes === true
   const start = fyStart()
-  const sorted = [...rows].sort((a, b) => String(a.vch_date).localeCompare(String(b.vch_date)) || a.vch_code - b.vch_code || a.sr_no - b.sr_no)
+  // Net the journals voucher by voucher.
+  const rows = []
+  const jnl = new Map()
+  for (const r of rowsIn) {
+    if (r.vch_type === 16) { if (!jnl.has(r.vch_code)) jnl.set(r.vch_code, []); jnl.get(r.vch_code).push(r) } else rows.push(r)
+  }
+  for (const group of jnl.values()) {
+    const net = r2(group.reduce((t, r) => t + Number(r.credit || 0) - Number(r.debit || 0), 0))
+    if (Math.abs(net) < 0.01 && group.length > 1) continue
+    if (group.length === 1) { rows.push(group[0]); continue }
+    const biggest = [...group].sort((a, b) => Math.max(b.credit, b.debit) - Math.max(a.credit, a.debit))[0]
+    rows.push({ ...biggest, credit: net > 0 ? net : 0, debit: net < 0 ? -net : 0 })
+  }
+  const sorted = rows.sort((a, b) => String(a.vch_date).localeCompare(String(b.vch_date)) || a.vch_code - b.vch_code || a.sr_no - b.sr_no)
 
   // Bills = anything that increases what we owe. Only purchase bills (VchType 2) can earn CD.
   const bills = []
@@ -66,9 +83,10 @@ export function calcAccount(rows, opening, s, from, to) {
 
   for (const r of sorted) {
     const cr = r2(r.credit), dr = r2(r.debit)
-    if (cr > 0) bills.push({ kind: r.vch_type === 2 ? 'purchase' : 'other', date: r.vch_date, no: r.vch_no || '', amount: cr, remaining: cr, cdOk: r.vch_type === 2, type: r.vch_type, typeName: r.vch_type_name, vch_code: r.vch_code })
+    const acc = { party_code: r.party_code, party_name: r.party_name }
+    if (cr > 0) bills.push({ ...acc, kind: r.vch_type === 2 ? 'purchase' : 'other', date: r.vch_date, no: r.vch_no || '', amount: cr, remaining: cr, cdOk: r.vch_type === 2, type: r.vch_type, typeName: r.vch_type_name, vch_code: r.vch_code })
     if (dr > 0) {
-      const p = { kind: r.vch_type === 19 ? 'payment' : 'note', date: r.vch_date, no: r.vch_no || '', amount: dr, remaining: dr, type: r.vch_type, typeName: r.vch_type_name, vch_code: r.vch_code }
+      const p = { ...acc, kind: r.vch_type === 19 ? 'payment' : 'note', date: r.vch_date, no: r.vch_no || '', amount: dr, remaining: dr, type: r.vch_type, typeName: r.vch_type_name, vch_code: r.vch_code }
       if (p.kind === 'payment' || countNotes) pays.push(p); else ignored.push(p)
     }
   }
@@ -98,12 +116,14 @@ export function calcAccount(rows, opening, s, from, to) {
     if (b.kind === 'opening') continue
     if (b.date < from || b.date > to) continue
     const row = {
+      party_code: b.party_code, party_name: b.party_name,
       date: b.date, vch_no: b.no, amount: b.amount, kind: b.kind, type_name: b.typeName,
       settled: !!b.settledBy, remaining: b.remaining,
       pay_date: b.settledBy ? b.settledBy.date : null,
       pay_no: b.settledBy ? b.settledBy.no : null,
       pay_amount: b.settledBy ? b.settledBy.amount : null,
       pay_kind: b.settledBy ? b.settledBy.kind : null,
+      pay_account: b.settledBy && b.settledBy.party_code !== b.party_code ? b.settledBy.party_name : null,
       parts: (b.parts || []).length,
       days: b.settledBy ? dayDiff(b.date, b.settledBy.date) : null,
       pct: 0, cd: 0, slab: null, status: '',
@@ -111,26 +131,43 @@ export function calcAccount(rows, opening, s, from, to) {
     if (b.kind !== 'purchase') row.status = `${b.typeName || 'Not a purchase bill'} — no CD`
     else if (b.date < schemeFrom) row.status = 'Before the scheme'
     else if (!b.settledBy) row.status = b.parts ? `Part paid — ${b.remaining.toFixed(2)} still open` : 'Not paid yet'
+    // Paid before the bill date = advance pay term (Category C): only Slab A applies.
+    else if (row.days < 0) { row.slab = 'A'; row.pct = aPct; row.status = `Slab A — paid in advance (${aPct}%)` }
     else if (row.days <= aDays) { row.slab = 'A'; row.pct = aPct; row.status = `Slab A (${aPct}%)` }
     else if (row.days <= bDays) { row.slab = 'B'; row.pct = bPct; row.status = `Slab B (${bPct}%)` }
     else row.status = `Paid after day ${bDays} — no CD`
-    if (row.days != null && row.days < 0) { row.pct = 0; row.slab = null; row.status = 'Paid before the bill date (advance) — check' }
     row.cd = r2(b.amount * row.pct / 100)
     out.push(row)
   }
 
-  const totalCr = r2(sorted.reduce((s, r) => s + Number(r.credit || 0), 0))
-  const totalDr = r2(sorted.reduce((s, r) => s + Number(r.debit || 0), 0))
+  const totalCr = r2(sorted.reduce((t, r) => t + Number(r.credit || 0), 0))
+  const totalDr = r2(sorted.reduce((t, r) => t + Number(r.debit || 0), 0))
   const openBills = bills.filter(b => b.remaining > 0.004 && b.kind !== 'opening')
   return {
     rows: out,
     opening: op,
     totals: { credits: totalCr, debits: totalDr, closing: r2(op + totalCr - totalDr) },
-    open_bills: openBills.length, open_amount: r2(openBills.reduce((s, b) => s + b.remaining, 0)),
-    unapplied: r2(pays.reduce((s, p) => s + p.remaining, 0)),      // payments with nothing left to clear (advance)
-    ignored: ignored.map(p => ({ date: p.date, no: p.no, amount: p.amount, type_name: p.typeName })),
+    open_bills: openBills.length, open_amount: r2(openBills.reduce((t, b) => t + b.remaining, 0)),
+    unapplied: r2(pays.reduce((t, p) => t + p.remaining, 0)),      // payments with nothing left to clear (advance)
+    ignored: ignored.map(p => ({ date: p.date, no: p.no, amount: p.amount, type_name: p.typeName, party_name: p.party_name })),
     entries: sorted.length,
   }
+}
+
+// Which accounts belong together: two accounts joined by a two-sided journal (a bill moved
+// from one to the other) are in the same pool. 'per_account' mode = every account alone.
+export function poolsOf(accounts, ledger, mode) {
+  const codes = accounts.map(a => String(a.party_code))
+  const parent = new Map(codes.map(c => [c, c]))
+  const find = c => { while (parent.get(c) !== c) { parent.set(c, parent.get(parent.get(c))); c = parent.get(c) } return c }
+  if (mode !== 'per_account') {
+    const byVch = new Map()
+    for (const r of ledger) if (r.vch_type === 16 && parent.has(String(r.party_code))) { if (!byVch.has(r.vch_code)) byVch.set(r.vch_code, new Set()); byVch.get(r.vch_code).add(String(r.party_code)) }
+    for (const set of byVch.values()) { const [first, ...rest] = [...set]; for (const c of rest) parent.set(find(c), find(first)) }
+  }
+  const groups = new Map()
+  for (const c of codes) { const root = find(c); if (!groups.has(root)) groups.set(root, []); groups.get(root).push(c) }
+  return [...groups.values()]
 }
 
 // ---------------------------------------------------------------------------
@@ -143,7 +180,8 @@ async function summary(busy, body) {
   const wanted = Array.isArray(body.codes) && body.codes.length
     ? accounts.filter(a => body.codes.map(String).includes(String(a.party_code)))
     : accounts.filter(a => a.included !== false)
-  const codes = wanted.map(a => a.party_code)
+  const codes = wanted.map(a => String(a.party_code))
+  const byName = new Map(wanted.map(a => [String(a.party_code), a]))
 
   const anchors = codes.length ? check(await busy.from('party_anchor_balance').select('party_code, anchor_balance, anchor_date').in('party_code', codes.map(Number).filter(n => !Number.isNaN(n))), 'party_anchor_balance') : []
   const anchorOf = new Map(anchors.map(a => [String(a.party_code), a]))
@@ -151,27 +189,51 @@ async function summary(busy, body) {
   const byCode = new Map()
   for (const r of ledger) { if (!byCode.has(r.party_code)) byCode.set(r.party_code, []); byCode.get(r.party_code).push(r) }
 
-  const result = []
-  for (const a of wanted) {
-    const anchor = anchorOf.get(String(a.party_code))
+  const openingOf = code => {
+    const a = byName.get(code), anchor = anchorOf.get(code)
     // party_anchor_balance is receivable-positive; for a supplier a negative figure = we owe them.
-    let opening = 0, openingSource = 'none'
-    if (a.opening_balance != null) { opening = Number(a.opening_balance); openingSource = 'typed' }
-    else if (anchor) { opening = -Number(anchor.anchor_balance || 0); openingSource = 'busy' }
-    const calc = calcAccount(byCode.get(a.party_code) || [], opening, s, from, to)
-    result.push({ party_code: a.party_code, party_name: a.party_name, included: a.included !== false, opening_note: a.opening_note || '', opening_source: openingSource, ...calc })
+    if (a?.opening_balance != null) return { opening: Number(a.opening_balance), source: 'typed' }
+    if (anchor) return { opening: -Number(anchor.anchor_balance || 0), source: 'busy' }
+    return { opening: 0, source: 'none' }
   }
+
+  const pools = []
+  const result = []
+  for (const members of poolsOf(wanted, ledger, s.fifo_mode || 'auto')) {
+    const rows = members.flatMap(c => byCode.get(c) || [])
+    const openings = members.map(c => ({ code: c, ...openingOf(c) }))
+    const opening = r2(openings.reduce((t, o) => t + o.opening, 0))
+    const calc = calcAccount(rows, opening, s, from, to)
+    // The account the payments come from names the pool.
+    const payCount = new Map()
+    for (const r of rows) if (r.vch_type === 19 && Number(r.debit) > 0) payCount.set(r.party_code, (payCount.get(r.party_code) || 0) + 1)
+    const hub = [...payCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || members[0]
+    const poolId = `pool-${hub}`
+    pools.push({
+      id: poolId, hub_code: hub, hub_name: byName.get(hub)?.party_name || hub, members: members.map(c => ({ party_code: c, party_name: byName.get(c)?.party_name || c })),
+      opening, openings: openings.map(o => ({ ...o, party_name: byName.get(o.code)?.party_name || o.code })),
+      totals: calc.totals, open_bills: calc.open_bills, open_amount: calc.open_amount, unapplied: calc.unapplied, ignored: calc.ignored, entries: calc.entries,
+      cd: r2(calc.rows.reduce((t, r) => t + r.cd, 0)), invoices: calc.rows.filter(r => r.kind === 'purchase').length,
+    })
+    for (const c of members) {
+      const a = byName.get(c)
+      const mine = calc.rows.filter(r => String(r.party_code) === c)
+      const o = openings.find(x => x.code === c)
+      result.push({ party_code: c, party_name: a?.party_name || c, included: a?.included !== false, opening_note: a?.opening_note || '', opening: o.opening, opening_source: o.source, pool: poolId, rows: mine, entries: (byCode.get(c) || []).length })
+    }
+  }
+  result.sort((a, b) => a.pool.localeCompare(b.pool) || (b.rows.length - a.rows.length) || a.party_name.localeCompare(b.party_name))
   const all = result.flatMap(a => a.rows)
   const totals = {
     invoices: all.filter(r => r.kind === 'purchase').length,
-    amount: r2(all.filter(r => r.kind === 'purchase').reduce((s, r) => s + r.amount, 0)),
-    cd: r2(all.reduce((s, r) => s + r.cd, 0)),
-    slab_a: all.filter(r => r.slab === 'A').length, slab_a_cd: r2(all.filter(r => r.slab === 'A').reduce((s, r) => s + r.cd, 0)),
-    slab_b: all.filter(r => r.slab === 'B').length, slab_b_cd: r2(all.filter(r => r.slab === 'B').reduce((s, r) => s + r.cd, 0)),
+    amount: r2(all.filter(r => r.kind === 'purchase').reduce((t, r) => t + r.amount, 0)),
+    cd: r2(all.reduce((t, r) => t + r.cd, 0)),
+    slab_a: all.filter(r => r.slab === 'A').length, slab_a_cd: r2(all.filter(r => r.slab === 'A').reduce((t, r) => t + r.cd, 0)),
+    slab_b: all.filter(r => r.slab === 'B').length, slab_b_cd: r2(all.filter(r => r.slab === 'B').reduce((t, r) => t + r.cd, 0)),
     none: all.filter(r => r.kind === 'purchase' && r.settled && !r.slab).length,
     unpaid: all.filter(r => r.kind === 'purchase' && !r.settled).length,
   }
-  return { from, to, settings: s, accounts, result, totals, lastSyncAt: s.last_sync_at || null, lastSyncNote: s.last_sync_note || null, fyStart: fyStart() }
+  return { from, to, settings: s, accounts, pools, result, totals, lastSyncAt: s.last_sync_at || null, lastSyncNote: s.last_sync_note || null, fyStart: fyStart() }
 }
 
 async function settingsSave(busy, body) {
@@ -180,6 +242,7 @@ async function settingsSave(busy, body) {
   for (const k of ['slab_a_days', 'slab_b_days']) if (body[k] != null && Number.isInteger(Number(body[k]))) patch[k] = Number(body[k])
   for (const k of ['slab_a_pct', 'slab_b_pct']) if (body[k] != null && !Number.isNaN(Number(body[k]))) patch[k] = Number(body[k])
   if (typeof body.count_notes === 'boolean') patch.count_notes = body.count_notes
+  if (body.fifo_mode === 'auto' || body.fifo_mode === 'per_account') patch.fifo_mode = body.fifo_mode
   for (const k of ['name_match', 'name_exclude']) if (typeof body[k] === 'string') patch[k] = body[k].trim().slice(0, 200)
   if (typeof body.email_signature === 'string' && body.email_signature.trim()) patch.email_signature = body.email_signature.trim().slice(0, 300)
   if (!Object.keys(patch).length) fail(400, 'Nothing to save.')
@@ -226,7 +289,7 @@ async function buildExcelBase64(d) {
   const wb = XLSX.utils.book_new()
   const lines = []
   for (const a of d.result) {
-    for (const r of a.rows) lines.push({ Account: a.party_name, 'Invoice date': niceDate(r.date), 'Invoice no.': r.vch_no || '', 'Invoice amount (incl. GST)': r.amount, 'Payment date': r.pay_date ? niceDate(r.pay_date) : '', 'Payment no.': r.pay_no || '', 'Payment amount': r.pay_amount ?? '', Days: r.days ?? '', 'CD %': r.pct, 'CD amount': r.cd, Status: r.status })
+    for (const r of a.rows) lines.push({ Account: a.party_name, 'Invoice date': niceDate(r.date), 'Invoice no.': r.vch_no || '', 'Invoice amount (incl. GST)': r.amount, 'Payment date': r.pay_date ? niceDate(r.pay_date) : '', 'Payment no.': r.pay_no || '', 'Payment amount': r.pay_amount ?? '', 'Paid from': r.pay_account || '', Days: r.days ?? '', 'CD %': r.pct, 'CD amount': r.cd, Status: r.status })
     const purchases = a.rows.filter(r => r.kind === 'purchase')
     lines.push({ Account: `Total — ${a.party_name}`, 'Invoice no.': `${purchases.length} invoices`, 'Invoice amount (incl. GST)': r2(purchases.reduce((s, r) => s + r.amount, 0)), 'CD amount': r2(a.rows.reduce((s, r) => s + r.cd, 0)) })
     lines.push({})
@@ -238,7 +301,7 @@ async function buildExcelBase64(d) {
   XLSX.utils.sheet_add_json(ws, lines, { origin: 'A5' })
   ws['!cols'] = [{ wch: 44 }, { wch: 13 }, { wch: 20 }, { wch: 22 }, { wch: 13 }, { wch: 20 }, { wch: 16 }, { wch: 6 }, { wch: 6 }, { wch: 14 }, { wch: 34 }]
   XLSX.utils.book_append_sheet(wb, ws, 'CD claim')
-  const sum = d.result.map(a => ({ Account: a.party_name, 'Busy code': a.party_code, Invoices: a.rows.filter(r => r.kind === 'purchase').length, 'Invoice total': r2(a.rows.filter(r => r.kind === 'purchase').reduce((s, r) => s + r.amount, 0)), 'CD amount': r2(a.rows.reduce((s, r) => s + r.cd, 0)) }))
+  const sum = d.result.map(a => ({ Account: a.party_name, 'Busy code': a.party_code, Invoices: a.rows.filter(r => r.kind === 'purchase').length, 'Invoice total': r2(a.rows.filter(r => r.kind === 'purchase').reduce((t, r) => t + r.amount, 0)), 'CD amount': r2(a.rows.reduce((t, r) => t + r.cd, 0)), 'Paid through': d.pools.find(p => p.id === a.pool)?.hub_name || '' }))
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sum), 'Summary')
   return XLSX.write(wb, { type: 'base64', bookType: 'xlsx' })
 }

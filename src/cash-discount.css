@@ -58,3 +58,12 @@
   .cd-note { text-align: left; }
   .cd-grid { grid-template-columns: 1fr; }
 }
+
+/* pools (accounts paid together) */
+.cd-pool { border: 1px solid var(--line); border-radius: 12px; padding: 10px 10px 8px; background: var(--bg); display: flex; flex-direction: column; gap: 8px; }
+.cd-pool-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; padding: 2px 4px 4px; }
+.cd-pool-title { font-size: 14.5px; color: var(--ink); }
+.cd-pool-title strong { font-weight: 700; }
+.cd-account.is-pooled { border-left-color: var(--line); }
+.cd-notes-switch { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--body); cursor: pointer; height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); }
+.cd-notes-switch input { accent-color: var(--navy); }

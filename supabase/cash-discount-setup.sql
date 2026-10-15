@@ -75,3 +75,10 @@ create table if not exists cd_email_log (
   detail      text
 );
 alter table cd_email_log enable row level security;
+
+-- Added 2026-10-15 (migration cash_discount_pooling): FIFO runs per POOL of accounts joined by
+-- journal transfers (lighting bills are moved into TR / MP and paid from there); 'per_account' = old way.
+alter table cd_settings add column if not exists fifo_mode text not null default 'auto';
+update cd_settings set name_exclude = 'prof, tds' where id = 1 and name_exclude = 'prof';
+update cd_accounts set included = false
+ where party_name ilike '%tds%' or party_name ilike '%note a/c%' or upper(trim(party_name)) = 'SIGNIFY';

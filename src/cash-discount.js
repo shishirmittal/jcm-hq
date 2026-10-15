@@ -87,6 +87,7 @@ export async function renderCashDiscount(container) {
           <label class="pur-date"><span>Invoices from</span><input type="date" id="cdFrom" min="2026-04-01" /></label>
           <label class="pur-date"><span>to</span><input type="date" id="cdTo" min="2026-04-01" /></label>
           <button class="btn-ghost btn-small cd-accbtn" id="cdAccountsBtn">${icon('building', 14)} <span id="cdAccountsLabel">Accounts</span></button>
+          <label class="cd-notes-switch" title="Signify's credit notes (and debit notes / returns) clear the oldest bills in the FIFO, the way Signify applies them on its side. Off = only bank payments clear bills."><input type="checkbox" id="cdNotesSwitch" /> <span>Credit notes clear bills too</span></label>
         </div>
         <div class="pur-tiles cd-tiles" id="cdTiles"></div>
         <section class="cd-send" id="cdSend" hidden>
@@ -135,6 +136,9 @@ export async function renderCashDiscount(container) {
   $('cdNewEmail').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addEmail() } })
   $('cdEmails').addEventListener('click', e => { const b = e.target.closest('[data-remove]'); if (b) saveEmails(state.data.settings.email_to.filter(x => x !== b.dataset.remove)) })
   $('cdSendBtn').addEventListener('click', sendClaim)
+  $('cdNotesSwitch').addEventListener('change', async () => {
+    try { await call({ action: 'cd-settings-save', count_notes: $('cdNotesSwitch').checked }); load() } catch (err) { hqAlert(err.message) }
+  })
 
   // ---------- email ----------
   async function addEmail() {
@@ -196,6 +200,7 @@ export async function renderCashDiscount(container) {
     $('cdTo').value = state.to
     const d = state.data
     if (d) {
+      $('cdNotesSwitch').checked = d.settings.count_notes === true
       const total = d.accounts.length, chosen = d.result.length
       $('cdAccountsLabel').textContent = `${chosen} of ${total} account${total === 1 ? '' : 's'}`
     }
@@ -242,42 +247,24 @@ export async function renderCashDiscount(container) {
   function paintList() {
     const d = state.data
     if (!d.result.length) { $('cdList').innerHTML = '<div class="empty-state">No Signify account chosen. Open "Accounts" and tick the ones you want.</div>'; return }
-    const parts = d.result.map(a => {
-      const rows = a.rows
-      const purchases = rows.filter(r => r.kind === 'purchase')
-      const subAmt = purchases.reduce((s, r) => s + r.amount, 0), subCd = rows.reduce((s, r) => s + r.cd, 0)
-      const opening = a.opening_source === 'typed' ? `typed: ${money(a.opening)}` : a.opening_source === 'busy' ? `Busy 31 Mar: ${money(a.opening)}` : 'none found (taken as ₹0)'
-      const body = rows.length ? rows.map(r => `
-        <tr class="cd-row cd-${statusTone(r)}">
-          <td>${esc(fmtDate(r.date))}</td>
-          <td>${esc(r.vch_no || '—')}${r.kind !== 'purchase' ? ` <small>${esc(r.type_name || '')}</small>` : ''}</td>
-          <td class="pur-r">${money(r.amount)}</td>
-          <td>${r.pay_date ? esc(fmtDate(r.pay_date)) : '<span class="cd-dash">—</span>'}</td>
-          <td>${r.pay_no ? esc(r.pay_no) : ''}${r.pay_kind === 'note' ? ' <small>note</small>' : ''}${r.parts > 1 ? ` <small title="This invoice was cleared by ${r.parts} payments; the last one decides the days">${r.parts} parts</small>` : ''}</td>
-          <td class="pur-r">${r.pay_amount != null ? money(r.pay_amount) : ''}</td>
-          <td class="pur-r">${r.days != null ? r.days : ''}</td>
-          <td class="pur-r">${r.pct ? pct(r.pct) : '0%'}</td>
-          <td class="pur-r cd-cd">${r.cd ? money(r.cd) : '—'}</td>
-          <td><span class="pur-flag pur-flag-${statusTone(r)}">${esc(r.status)}</span></td>
-        </tr>`).join('') : `<tr><td colspan="10" class="pur-noitems">No Signify invoices on this account between ${esc(fmtDate(d.from))} and ${esc(fmtDate(d.to))}.</td></tr>`
-      return `
-        <section class="pur-bill cd-account">
-          <div class="pur-bill-head cd-acchead">
-            <div class="pur-bill-main">
-              <div class="pur-party">${esc(a.party_name)} <small class="cd-code">Busy ${esc(a.party_code)}</small></div>
-              <div class="pur-bill-meta">Opening at 1 Apr ${esc(opening)} · ${a.entries} entries this year · balance now ${money(a.totals.closing)} ${a.totals.closing < 0 ? '(advance with Signify)' : 'payable'} · ${a.open_bills} bill${a.open_bills === 1 ? '' : 's'} still open (${money(a.open_amount)})${a.ignored.length ? ` · ${a.ignored.length} debit note${a.ignored.length === 1 ? '' : 's'} not counted as payment (Settings)` : ''}</div>
+    const parts = []
+    for (const pool of d.pools) {
+      const members = d.result.filter(a => a.pool === pool.id)
+      if (!members.length) continue
+      const multi = pool.members.length > 1
+      const openingWhy = pool.openings.filter(o => o.opening).map(o => `${esc(o.party_name)} ${money(o.opening)}${o.source === 'typed' ? ' (typed)' : ''}`).join(', ') || 'nothing found in Busy for 31 March (taken as ₹0)'
+      parts.push(`
+        <div class="cd-pool">
+          <div class="cd-pool-head">
+            <div>
+              <div class="cd-pool-title">${multi ? `Paid through <strong>${esc(pool.hub_name)}</strong> — ${pool.members.length} accounts together` : `<strong>${esc(pool.hub_name)}</strong> — paid on its own account`}</div>
+              <div class="pur-bill-meta">${multi ? 'Bills of these accounts are moved into the paying account by journal in Busy, so FIFO runs on all of them as one. ' : ''}Opening 1 Apr: ${openingWhy} · balance now ${money(Math.abs(pool.totals.closing))} ${pool.totals.closing < 0 ? 'advance with Signify' : 'payable'} · ${pool.open_bills} bill${pool.open_bills === 1 ? '' : 's'} still open (${money(pool.open_amount)})${pool.ignored.length ? ` · ${pool.ignored.length} credit / debit note${pool.ignored.length === 1 ? '' : 's'} not counted (switch above)` : ''}</div>
             </div>
-            <div class="pur-bill-side"><div class="pur-amount">${money(subCd)}</div><small class="cd-sub">CD on ${purchases.length} invoice${purchases.length === 1 ? '' : 's'}</small></div>
+            <div class="pur-bill-side"><div class="pur-amount">${money(pool.cd)}</div><small class="cd-sub">CD on ${pool.invoices} invoice${pool.invoices === 1 ? '' : 's'}</small></div>
           </div>
-          <div class="pur-items">
-            <table class="pur-table cd-table">
-              <thead><tr><th>Date</th><th>Invoice no.</th><th class="pur-r">Amount</th><th>Payment date</th><th>Payment no.</th><th class="pur-r">Payment amount</th><th class="pur-r">Days</th><th class="pur-r">CD %</th><th class="pur-r">CD amount</th><th>Status</th></tr></thead>
-              <tbody>${body}</tbody>
-              <tfoot><tr class="pur-total"><td></td><td>Total — ${esc(a.party_name)}</td><td class="pur-r">${money(subAmt)}</td><td colspan="5"></td><td class="pur-r">${money(subCd)}</td><td></td></tr></tfoot>
-            </table>
-          </div>
-        </section>`
-    })
+          ${members.map(a => accountCard(a, multi)).join('')}
+        </div>`)
+    }
     const t = d.totals
     parts.push(`
       <section class="pur-bill cd-grand">
@@ -288,6 +275,43 @@ export async function renderCashDiscount(container) {
     $('cdList').innerHTML = `<div class="pur-list">${parts.join('')}</div>`
   }
 
+  function accountCard(a, pooled) {
+    const d = state.data
+    const rows = a.rows
+    const purchases = rows.filter(r => r.kind === 'purchase')
+    const subAmt = purchases.reduce((s, r) => s + r.amount, 0), subCd = rows.reduce((s, r) => s + r.cd, 0)
+    const body = rows.length ? rows.map(r => `
+      <tr class="cd-row cd-${statusTone(r)}">
+        <td>${esc(fmtDate(r.date))}</td>
+        <td>${esc(r.vch_no || '—')}${r.kind !== 'purchase' ? ` <small>${esc(r.type_name || '')}</small>` : ''}</td>
+        <td class="pur-r">${money(r.amount)}</td>
+        <td>${r.pay_date ? esc(fmtDate(r.pay_date)) : '<span class="cd-dash">—</span>'}</td>
+        <td>${r.pay_no ? esc(r.pay_no) : ''}${r.pay_kind === 'note' ? ' <small>note</small>' : ''}${r.pay_account ? ` <small title="Paid from this account">via ${esc(r.pay_account.replace(/^Signify Innovations? India(?: Ltd)?\s*/i, ''))}</small>` : ''}${r.parts > 1 ? ` <small title="This invoice was cleared by ${r.parts} payments; the last one decides the days">${r.parts} parts</small>` : ''}</td>
+        <td class="pur-r">${r.pay_amount != null ? money(r.pay_amount) : ''}</td>
+        <td class="pur-r">${r.days != null ? r.days : ''}</td>
+        <td class="pur-r">${r.pct ? pct(r.pct) : '0%'}</td>
+        <td class="pur-r cd-cd">${r.cd ? money(r.cd) : '—'}</td>
+        <td><span class="pur-flag pur-flag-${statusTone(r)}">${esc(r.status)}</span></td>
+      </tr>`).join('') : `<tr><td colspan="10" class="pur-noitems">No Signify invoices on this account between ${esc(fmtDate(d.from))} and ${esc(fmtDate(d.to))}.</td></tr>`
+    return `
+      <section class="pur-bill cd-account${pooled ? ' is-pooled' : ''}">
+        <div class="pur-bill-head cd-acchead">
+          <div class="pur-bill-main">
+            <div class="pur-party">${esc(a.party_name)} <small class="cd-code">Busy ${esc(a.party_code)}</small></div>
+            <div class="pur-bill-meta">${a.entries} entries this year${!pooled ? ` · opening 1 Apr ${a.opening_source === 'typed' ? 'typed ' : a.opening_source === 'busy' ? 'Busy 31 Mar ' : ''}${money(a.opening)}` : ''}</div>
+          </div>
+          <div class="pur-bill-side"><div class="pur-amount">${money(subCd)}</div><small class="cd-sub">CD on ${purchases.length} invoice${purchases.length === 1 ? '' : 's'}</small></div>
+        </div>
+        <div class="pur-items">
+          <table class="pur-table cd-table">
+            <thead><tr><th>Date</th><th>Invoice no.</th><th class="pur-r">Amount</th><th>Payment date</th><th>Payment no.</th><th class="pur-r">Payment amount</th><th class="pur-r">Days</th><th class="pur-r">CD %</th><th class="pur-r">CD amount</th><th>Status</th></tr></thead>
+            <tbody>${body}</tbody>
+            <tfoot><tr class="pur-total"><td></td><td>Total — ${esc(a.party_name)}</td><td class="pur-r">${money(subAmt)}</td><td colspan="5"></td><td class="pur-r">${money(subCd)}</td><td></td></tr></tfoot>
+          </table>
+        </div>
+      </section>`
+  }
+
   // ---------- Excel ----------
   function downloadExcel() {
     const d = state.data
@@ -296,7 +320,7 @@ export async function renderCashDiscount(container) {
     const title = `Signify Cash Discount claim — ${d.from === monthRange(-1)[0] && d.to === monthRange(-1)[1] ? monthName(d.from) : `${fmtDate(d.from)} to ${fmtDate(d.to)}`}`
     const lines = []
     for (const a of d.result) {
-      for (const r of a.rows) lines.push({ Account: a.party_name, 'Invoice date': fmtDate(r.date), 'Invoice no.': r.vch_no || '', 'Invoice amount (incl. GST)': r.amount, 'Payment date': r.pay_date ? fmtDate(r.pay_date) : '', 'Payment no.': r.pay_no || '', 'Payment amount': r.pay_amount ?? '', Days: r.days ?? '', 'CD %': r.pct, 'CD amount': r.cd, Status: r.status })
+      for (const r of a.rows) lines.push({ Account: a.party_name, 'Invoice date': fmtDate(r.date), 'Invoice no.': r.vch_no || '', 'Invoice amount (incl. GST)': r.amount, 'Payment date': r.pay_date ? fmtDate(r.pay_date) : '', 'Payment no.': r.pay_no || '', 'Payment amount': r.pay_amount ?? '', 'Paid from': r.pay_account || '', Days: r.days ?? '', 'CD %': r.pct, 'CD amount': r.cd, Status: r.status })
       const purchases = a.rows.filter(r => r.kind === 'purchase')
       lines.push({ Account: `Total — ${a.party_name}`, 'Invoice date': '', 'Invoice no.': `${purchases.length} invoices`, 'Invoice amount (incl. GST)': Math.round(purchases.reduce((s, r) => s + r.amount, 0) * 100) / 100, 'Payment date': '', 'Payment no.': '', 'Payment amount': '', Days: '', 'CD %': '', 'CD amount': Math.round(a.rows.reduce((s, r) => s + r.cd, 0) * 100) / 100, Status: '' })
       lines.push({})
@@ -304,11 +328,11 @@ export async function renderCashDiscount(container) {
     const t = d.totals
     lines.push({ Account: 'GRAND TOTAL', 'Invoice date': '', 'Invoice no.': `${t.invoices} invoices`, 'Invoice amount (incl. GST)': t.amount, 'Payment date': '', 'Payment no.': '', 'Payment amount': '', Days: '', 'CD %': '', 'CD amount': t.cd, Status: `Slab A ${t.slab_a} · Slab B ${t.slab_b} · late ${t.none} · unpaid ${t.unpaid}` })
     const ws = XLSX.utils.json_to_sheet([])
-    XLSX.utils.sheet_add_aoa(ws, [[title], ['J.C. Mittal & Sons, Ratlam — as per Signify circular CD-CIRC-001 (Slab A 0–5 days 1.5%, Slab B 6–10 days 1.0%, FIFO, GST-inclusive)'], [`Figures from Busy as of ${d.lastSyncAt ? fmtWhen(d.lastSyncAt) : '—'}`], []], { origin: 'A1' })
+    XLSX.utils.sheet_add_aoa(ws, [[title], [`J.C. Mittal & Sons, Ratlam — as per Signify circular CD-CIRC-001 (Slab A 0–5 days 1.5%, Slab B 6–10 days 1.0%, FIFO, GST-inclusive; credit notes ${d.settings.count_notes ? 'clear bills' : 'not counted'})`], [`Figures from Busy as of ${d.lastSyncAt ? fmtWhen(d.lastSyncAt) : '—'}`], []], { origin: 'A1' })
     XLSX.utils.sheet_add_json(ws, lines, { origin: 'A5' })
-    ws['!cols'] = [{ wch: 44 }, { wch: 13 }, { wch: 20 }, { wch: 22 }, { wch: 13 }, { wch: 20 }, { wch: 16 }, { wch: 6 }, { wch: 6 }, { wch: 14 }, { wch: 34 }]
+    ws['!cols'] = [{ wch: 44 }, { wch: 13 }, { wch: 20 }, { wch: 22 }, { wch: 13 }, { wch: 20 }, { wch: 16 }, { wch: 30 }, { wch: 6 }, { wch: 6 }, { wch: 14 }, { wch: 34 }]
     XLSX.utils.book_append_sheet(wb, ws, 'CD claim')
-    const summary = d.result.map(a => ({ Account: a.party_name, 'Busy code': a.party_code, Invoices: a.rows.filter(r => r.kind === 'purchase').length, 'Invoice total': Math.round(a.rows.filter(r => r.kind === 'purchase').reduce((s, r) => s + r.amount, 0) * 100) / 100, 'CD amount': Math.round(a.rows.reduce((s, r) => s + r.cd, 0) * 100) / 100, 'Opening 1 Apr': a.opening, 'Balance now': a.totals.closing, 'Bills still open': a.open_bills }))
+    const summary = d.result.map(a => ({ Account: a.party_name, 'Busy code': a.party_code, Invoices: a.rows.filter(r => r.kind === 'purchase').length, 'Invoice total': Math.round(a.rows.filter(r => r.kind === 'purchase').reduce((s, r) => s + r.amount, 0) * 100) / 100, 'CD amount': Math.round(a.rows.reduce((s, r) => s + r.cd, 0) * 100) / 100, 'Paid through': d.pools.find(p => p.id === a.pool)?.hub_name || '' }))
     const ws2 = XLSX.utils.json_to_sheet(summary)
     ws2['!cols'] = [{ wch: 44 }, { wch: 10 }, { wch: 9 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }]
     XLSX.utils.book_append_sheet(wb, ws2, 'Summary')
@@ -361,6 +385,9 @@ export async function renderCashDiscount(container) {
         <label>Slab B — discount %<input type="number" id="cdBPct" value="${esc(String(s.slab_b_pct ?? 1.0))}" step="0.01" min="0" /></label>
       </div>
       <label class="pur-switch"><input type="checkbox" id="cdCountNotes" ${s.count_notes ? 'checked' : ''}/> <span><strong>Count debit notes as payments</strong><br><small>Returns and Signify's own credit entries then clear old invoices in the FIFO, the way Signify does on its side. Off = only payment vouchers clear invoices.</small></span></label>
+      <h4 class="pur-drawer-sub">How payments are matched</h4>
+      <label class="pur-switch"><input type="radio" name="cdMode" value="auto" ${(s.fifo_mode || 'auto') !== 'per_account' ? 'checked' : ''}/> <span><strong>Accounts paid together, as one</strong><br><small>Bills moved by journal into another Signify account (TR / MP) and paid from there are matched across all those accounts in date order. Recommended — this is how the books are kept.</small></span></label>
+      <label class="pur-switch"><input type="radio" name="cdMode" value="per_account" ${s.fifo_mode === 'per_account' ? 'checked' : ''}/> <span><strong>Each account on its own</strong><br><small>Only that account's own payments clear its bills.</small></span></label>
       <h4 class="pur-drawer-sub">Which accounts</h4>
       <div class="cd-grid">
         <label>Name has (words, comma-separated)<input type="text" id="cdMatch" value="${esc(s.name_match || '')}" /></label>
@@ -385,7 +412,7 @@ export async function renderCashDiscount(container) {
       </div>`
     $('cdSaveSettings').addEventListener('click', async () => {
       try {
-        await call({ action: 'cd-settings-save', scheme_from: $('cdSchemeFrom').value, slab_a_days: $('cdADays').value, slab_a_pct: $('cdAPct').value, slab_b_days: $('cdBDays').value, slab_b_pct: $('cdBPct').value, count_notes: $('cdCountNotes').checked, name_match: $('cdMatch').value, name_exclude: $('cdExclude').value, email_signature: $('cdSignature').value })
+        await call({ action: 'cd-settings-save', scheme_from: $('cdSchemeFrom').value, slab_a_days: $('cdADays').value, slab_a_pct: $('cdAPct').value, slab_b_days: $('cdBDays').value, slab_b_pct: $('cdBPct').value, count_notes: $('cdCountNotes').checked, fifo_mode: $('cdDrawerBody').querySelector('input[name=cdMode]:checked')?.value, name_match: $('cdMatch').value, name_exclude: $('cdExclude').value, email_signature: $('cdSignature').value })
         closeDrawer(); load()
       } catch (err) { hqAlert(err.message) }
     })
