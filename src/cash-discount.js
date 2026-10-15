@@ -262,13 +262,14 @@ export async function renderCashDiscount(container) {
       const members = d.result.filter(a => a.pool === pool.id && a.rows.length)
       if (!members.length) continue
       const multi = pool.members.length > 1
-      const openingWhy = pool.openings.filter(o => o.opening).map(o => `${esc(o.party_name)} ${money(o.opening)}${o.source === 'typed' ? ' (typed)' : ''}`).join(', ') || 'nothing found in Busy for 31 March (taken as ₹0)'
+      const hubOpen = pool.openings.find(o => o.code === pool.hub_code)
+      const openingWhy = `${money(Math.abs(pool.opening))} ${pool.opening < 0 ? 'advance' : 'payable'} on ${esc(fmtDate(pool.opening_date))} (Busy ledger: 31 Mar ${hubOpen?.source === 'typed' ? 'typed ' : hubOpen?.source === 'none' ? '₹0 — nothing found; ' : ''}${money(hubOpen?.opening || 0)} + entries up to the scheme start)`
       parts.push(`
         <div class="cd-pool">
           <div class="cd-pool-head">
             <div>
               <div class="cd-pool-title">${multi ? `Paid through <strong>${esc(pool.hub_name)}</strong> — ${members.length} of ${pool.members.length} accounts had bills this period` : `<strong>${esc(pool.hub_name)}</strong> — paid on its own account`}</div>
-              <div class="pur-bill-meta">${multi ? 'Bills of these accounts are moved into the paying account by journal in Busy, so FIFO runs on all of them as one. ' : ''}Opening 1 Apr: ${openingWhy} · balance now ${money(Math.abs(pool.totals.closing))} ${pool.totals.closing < 0 ? 'advance with Signify' : 'payable'} · ${pool.open_bills} bill${pool.open_bills === 1 ? '' : 's'} still open (${money(pool.open_amount)})${pool.ignored.length ? ` · ${pool.ignored.length} credit note${pool.ignored.length === 1 ? '' : 's'} / return${pool.ignored.length === 1 ? '' : 's'} not counted (switch above)` : ''}${pool.unmatched?.length ? ` · <b>${pool.unmatched.length} amount${pool.unmatched.length === 1 ? '' : 's'} moved in that match no bill</b> (${esc(pool.unmatched.map(u => money(u.amount)).join(', '))})` : ''}</div>
+              <div class="pur-bill-meta">${multi ? 'Bills of these accounts are moved into the paying account by journal in Busy, so FIFO runs on all of them as one. ' : ''}Opening: ${openingWhy} · balance now ${money(Math.abs(pool.totals.closing))} ${pool.totals.closing < 0 ? 'advance with Signify' : 'payable'} · ${pool.open_bills} bill${pool.open_bills === 1 ? '' : 's'} still open (${money(pool.open_amount)})${pool.ignored.length ? ` · ${pool.ignored.length} credit note${pool.ignored.length === 1 ? '' : 's'} / return${pool.ignored.length === 1 ? '' : 's'} not counted (switch above)` : ''}${pool.unmatched?.length ? ` · <b>${pool.unmatched.length} amount${pool.unmatched.length === 1 ? '' : 's'} moved in that match no bill</b> (${esc(pool.unmatched.map(u => money(u.amount)).join(', '))})` : ''}</div>
             </div>
             <div class="pur-bill-side"><div class="pur-amount">${money(pool.cd)}</div><small class="cd-sub">CD on ${pool.invoices} invoice${pool.invoices === 1 ? '' : 's'}</small></div>
           </div>

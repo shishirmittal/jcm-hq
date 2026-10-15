@@ -86,7 +86,9 @@ export function calcAccount(rowsIn, opening, s, from, to, hub = null) {
   }
   const byVch = new Map()
   for (const r of rowsIn) { if (!byVch.has(r.vch_code)) byVch.set(r.vch_code, []); byVch.get(r.vch_code).push(r) }
-  const sortKey = (a, b) => String(a.date).localeCompare(String(b.date)) || String(a.no || '').localeCompare(String(b.no || '')) || (a.vch_code || 0) - (b.vch_code || 0) || (a.sr_no || 0) - (b.sr_no || 0)
+  // Busy's ledger order within a day (as on Dilip's printout): bills by number, then the other
+  // vouchers in the order they were entered.
+  const sortKey = (a, b) => String(a.date).localeCompare(String(b.date)) || ((a.type === 2 ? 0 : 1) - (b.type === 2 ? 0 : 1)) || (a.type === 2 && b.type === 2 ? String(a.no || '').localeCompare(String(b.no || '')) : 0) || (a.vch_code || 0) - (b.vch_code || 0) || (a.sr_no || 0) - (b.sr_no || 0)
 
   // Every purchase bill in the pool (any account) — the rows the answer is made of.
   const bills = []
@@ -97,35 +99,42 @@ export function calcAccount(rowsIn, opening, s, from, to, hub = null) {
   const queue = []   // { bill?, date (queued), amount, remaining }
   const pays = []
   const ignored = []
-  const op = r2(opening || 0)
-  if (op > 0) queue.push({ kind: 'opening', date: start, no: 'Opening balance (1 Apr)', amount: op, remaining: op })
-  if (op < 0) pays.push({ kind: 'opening', date: start, no: 'Opening advance (1 Apr)', amount: -op, remaining: -op, party_code: hub })
+  const schemeFrom = String(s.scheme_from || '2026-08-01')
+  const hubRows = rowsIn.filter(r => String(r.party_code) === hub).sort((a, b) => sortKey({ date: a.vch_date, no: a.vch_no, vch_code: a.vch_code, sr_no: a.sr_no, type: a.vch_type }, { date: b.vch_date, no: b.vch_no, vch_code: b.vch_code, sr_no: b.sr_no, type: b.vch_type }))
+  // Everything before the scheme start is ONE opening figure — the ledger balance that day,
+  // as on Dilip's working — not a queue of old bills. Bills before the scheme earn nothing anyway.
+  const before = hubRows.filter(r => r.vch_date < schemeFrom)
+  const op = r2((opening || 0) + before.reduce((t, r) => t + Number(r.credit || 0) - Number(r.debit || 0), 0))
+  const opLabel = `Opening balance (${schemeFrom.slice(8, 10)}-${schemeFrom.slice(5, 7)}-${schemeFrom.slice(0, 4)})`
+  if (op > 0) queue.push({ kind: 'opening', date: schemeFrom, no: opLabel, amount: op, remaining: op })
+  if (op < 0) pays.push({ kind: 'opening', date: schemeFrom, no: opLabel.replace('balance', 'advance'), amount: -op, remaining: -op, party_code: hub })
 
-  const hubRows = rowsIn.filter(r => String(r.party_code) === hub).sort((a, b) => sortKey({ date: a.vch_date, no: a.vch_no, vch_code: a.vch_code, sr_no: a.sr_no }, { date: b.vch_date, no: b.vch_no, vch_code: b.vch_code, sr_no: b.sr_no }))
   for (const r of hubRows) {
+    if (r.vch_date < schemeFrom) continue
     const cr = r2(r.credit), dr = r2(r.debit)
     if (cr > 0) {
       if (r.vch_type === 2) {
         const bill = bills.find(b => b.vch_code === r.vch_code && b.party_code === hub && !b.entry)
-        const e = { kind: 'bill', bill, date: r.vch_date, no: r.vch_no || '', amount: cr, remaining: cr }
+        const e = { kind: 'bill', bill, date: r.vch_date, no: r.vch_no || '', amount: cr, remaining: cr, vch_code: r.vch_code, type: 2 }
         if (bill) bill.entry = e
         queue.push(e)
       } else if (r.vch_type === 16) {
         // A bill moved in from another account in the pool: the debited side names the account.
         const other = (byVch.get(r.vch_code) || []).find(x => String(x.party_code) !== hub && Number(x.debit) > 0 && Math.abs(Number(x.debit) - cr) < 0.01)
         const from = other ? String(other.party_code) : null
-        const bill = from ? bills.find(b => b.party_code === from && !b.entry && Math.abs(b.amount - cr) < 0.01 && b.date <= r.vch_date) : null
-        const e = { kind: bill ? 'bill' : 'moved', bill, date: r.vch_date, no: bill ? bill.no : (r.vch_no || ''), amount: cr, remaining: cr, from: other ? other.party_name : null }
+        // The bill it moved: same account, same amount, dated on or before the move — the nearest one.
+        const bill = from ? bills.filter(b => b.party_code === from && !b.entry && Math.abs(b.amount - cr) < 0.01 && b.date <= r.vch_date).sort((a, b) => b.date.localeCompare(a.date))[0] || null : null
+        const e = { kind: bill ? 'bill' : 'moved', bill, date: r.vch_date, no: bill ? bill.no : (r.vch_no || ''), amount: cr, remaining: cr, from: other ? other.party_name : null, vch_code: r.vch_code }
         if (bill) { bill.entry = e; bill.movedOn = r.vch_date }
         queue.push(e)
-      } else queue.push({ kind: 'other', date: r.vch_date, no: r.vch_no || '', amount: cr, remaining: cr, typeName: r.vch_type_name })
+      } else queue.push({ kind: 'other', date: r.vch_date, no: r.vch_no || '', amount: cr, remaining: cr, typeName: r.vch_type_name, vch_code: r.vch_code })
     }
     if (dr > 0) {
       const p = { kind: r.vch_type === 19 ? 'payment' : 'note', date: r.vch_date, no: r.vch_no || '', amount: dr, remaining: dr, type: r.vch_type, typeName: r.vch_type_name, vch_code: r.vch_code, party_code: hub, party_name: r.party_name }
       if (p.kind === 'payment' || countNotes) pays.push(p); else ignored.push(p)
     }
   }
-  queue.sort((a, b) => a.date.localeCompare(b.date) || (a.kind === 'opening' ? -1 : 0) || String(a.no).localeCompare(String(b.no)))
+  queue.sort((a, b) => a.date.localeCompare(b.date) || (a.kind === 'opening' ? -1 : b.kind === 'opening' ? 1 : 0) || ((a.type === 2 ? 0 : 1) - (b.type === 2 ? 0 : 1)) || (a.type === 2 && b.type === 2 ? String(a.no).localeCompare(String(b.no)) : 0) || (a.vch_code || 0) - (b.vch_code || 0))
   pays.sort((a, b) => a.date.localeCompare(b.date) || (a.vch_code || 0) - (b.vch_code || 0))
 
   // Two ways to decide which bills a payment clears:
@@ -151,7 +160,6 @@ export function calcAccount(rowsIn, opening, s, from, to, hub = null) {
     for (const e of queue) { if (p.remaining <= 0.004) break; if (e.remaining > 0.004) apply(p, e) }
   }
 
-  const schemeFrom = String(s.scheme_from || '2026-08-01')
   const aDays = Number(s.slab_a_days ?? 5), bDays = Number(s.slab_b_days ?? 10)
   const aPct = Number(s.slab_a_pct ?? 1.5), bPct = Number(s.slab_b_pct ?? 1.0)
 
@@ -189,13 +197,14 @@ export function calcAccount(rowsIn, opening, s, from, to, hub = null) {
   // transfers, part amounts): listed so they can be checked; they earn no CD by themselves.
   const unmatched = queue.filter(e => e.kind === 'moved' && e.date >= from && e.date <= to).map(e => ({ date: e.date, amount: e.amount, from: e.from, settled: !!e.settledBy, pay_date: e.settledBy?.date || null }))
 
-  const totalCr = r2(hubRows.reduce((t, r) => t + Number(r.credit || 0), 0))
-  const totalDr = r2(hubRows.reduce((t, r) => t + Number(r.debit || 0), 0))
+  const after = hubRows.filter(r => r.vch_date >= schemeFrom)
+  const totalCr = r2(after.reduce((t, r) => t + Number(r.credit || 0), 0))
+  const totalDr = r2(after.reduce((t, r) => t + Number(r.debit || 0), 0))
   const openEntries = queue.filter(e => e.remaining > 0.004 && e.kind !== 'opening')
   return {
     rows: out,
     hub,
-    opening: op,
+    opening: op, opening_date: schemeFrom,
     totals: { credits: totalCr, debits: totalDr, closing: r2(op + totalCr - totalDr) },
     open_bills: openEntries.length, open_amount: r2(openEntries.reduce((t, e) => t + e.remaining, 0)),
     unapplied: r2(pays.reduce((t, p) => t + p.remaining, 0)),
@@ -262,7 +271,7 @@ async function summary(busy, body) {
     const poolId = `pool-${hub}`
     pools.push({
       id: poolId, hub_code: hub, hub_name: byName.get(hub)?.party_name || hub, members: members.map(c => ({ party_code: c, party_name: byName.get(c)?.party_name || c })),
-      opening, openings: openings.map(o => ({ ...o, party_name: byName.get(o.code)?.party_name || o.code })),
+      opening: calc.opening, opening_date: calc.opening_date, opening_1apr: opening, openings: openings.map(o => ({ ...o, party_name: byName.get(o.code)?.party_name || o.code })),
       totals: calc.totals, open_bills: calc.open_bills, open_amount: calc.open_amount, unapplied: calc.unapplied, ignored: calc.ignored, unmatched: calc.unmatched, entries: calc.entries,
       cd: r2(calc.rows.reduce((t, r) => t + r.cd, 0)), invoices: calc.rows.filter(r => r.kind === 'purchase').length,
     })
