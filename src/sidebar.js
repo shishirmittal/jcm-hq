@@ -6,7 +6,7 @@ import { loadPurchasesBadge } from './purchases.js'
 import { loadEmailPurchasesBadge } from './email-purchases.js'
 import { esc } from './utils.js'
 import { icon } from './icons.js'
-import { visibleNav } from './permissions.js'
+import { visibleNav, currentProfile } from './permissions.js'
 import { isDarkMode, toggleTheme } from './theme.js'
 import logoUrl from './assets/jcm-logo.png'
 
@@ -58,15 +58,67 @@ export async function loadNavBadges() {
 // (permissions.js), and visibleNav() has already dropped both the items they
 // cannot see and any section left empty by that — so a user's DOM never
 // contains a tab they were not granted, rather than hiding it with CSS.
+// ---- Favourites (2026-10-16) ----
+// Each person stars the pages they use most; those show in "Favourites" at the very top (in their own order,
+// changed with Edit → ▲ ▼), and stay in their usual group too. Saved on the person's profile (profiles.nav_favs),
+// so they follow them to the app and every computer; a copy in localStorage draws them instantly.
+let favEdit = false
+let lastBadges = null
+const favKey = () => `nav.favs:${currentProfile()?.id || 'anon'}`
+function getFavs() {
+  const p = currentProfile()
+  if (Array.isArray(p?.nav_favs)) return p.nav_favs
+  try { const v = JSON.parse(localStorage.getItem(favKey()) || '[]'); return Array.isArray(v) ? v : [] } catch { return [] }
+}
+async function saveFavs(list) {
+  const p = currentProfile()
+  if (p) p.nav_favs = list
+  try { localStorage.setItem(favKey(), JSON.stringify(list)) } catch { /* private mode */ }
+  rerenderNavs()
+  if (p?.id) {
+    const { error } = await supabase.from('profiles').update({ nav_favs: list }).eq('id', p.id)
+    if (error) console.error('favourites not saved:', error.message)
+  }
+}
+function rerenderNavs() {
+  document.querySelectorAll('.pinned-nav, .sidebar-menu').forEach(nav => {
+    const keepOpen = [...nav.querySelectorAll('.nav-group:not(.is-closed):not(.nav-group-bare)')].map(g => g.dataset.group)
+    nav.innerHTML = renderNavHtml()
+    setActiveNav(nav)
+    nav.querySelectorAll('.nav-group:not(.nav-group-bare)').forEach(g => { if (keepOpen.includes(g.dataset.group)) setGroupOpen(g, true) })
+    if (lastBadges) paintNavBadges(nav, lastBadges)
+  })
+}
+
 function renderNavHtml() {
-  const items = list => list.map(item => `
+  const favs = getFavs()
+  const row = item => `
             <button type="button" class="nav-row" data-hash="${esc(item.hash)}" title="${esc(item.label)}">
               <span class="nav-row-icon">${icon(item.icon, 16)}</span>
               <span class="nav-row-label">${esc(item.label)}</span>
               ${item.badge ? `<span class="nav-badge" data-badge="${esc(item.badge)}" hidden>0</span>` : ''}
+              <span class="nav-star ${favs.includes(item.id) ? 'on' : ''}" data-star="${esc(item.id)}" role="button" title="${favs.includes(item.id) ? 'Remove from Favourites' : 'Add to Favourites'}">${favs.includes(item.id) ? '★' : '☆'}</span>
             </button>
-          `).join('')
-  return visibleNav().map(section => {
+          `
+  const items = list => list.map(row).join('')
+  const sections = visibleNav()
+  const byId = new Map(sections.flatMap(sec => sec.items.map(it => [it.id, it])))
+  const mine = favs.filter(id => byId.has(id))
+  const favHtml = `
+      <div class="nav-group nav-group-bare nav-group-fav" data-group="Favourites">
+        <div class="nav-fav-head"><span>★ Favourites</span>${mine.length > 1 || favEdit ? `<button type="button" class="nav-fav-edit" data-fav-edit>${favEdit ? 'Done' : 'Edit'}</button>` : ''}</div>
+        <div class="nav-group-items">${!mine.length ? '<div class="nav-fav-hint">Tap ☆ beside any page to keep it here.</div>'
+          : favEdit ? mine.map((id, i) => `
+            <div class="nav-fav-row">
+              <span class="nav-row-icon">${icon(byId.get(id).icon, 16)}</span>
+              <span class="nav-row-label">${esc(byId.get(id).label)}</span>
+              <button type="button" data-fav-move="${i}" data-dir="-1" ${i === 0 ? 'disabled' : ''} title="Move up" aria-label="Move up">▲</button>
+              <button type="button" data-fav-move="${i}" data-dir="1" ${i === mine.length - 1 ? 'disabled' : ''} title="Move down" aria-label="Move down">▼</button>
+              <button type="button" data-fav-x="${esc(id)}" title="Remove" aria-label="Remove">✕</button>
+            </div>`).join('')
+          : mine.map(id => row(byId.get(id))).join('')}</div>
+      </div>`
+  return favHtml + sections.map(section => {
     // The daily pages at the top have no heading and never fold away.
     if (section.bare) return `<div class="nav-group nav-group-bare" data-group="${esc(section.section)}"><div class="nav-group-items">${items(section.items)}</div></div>`
     // Every group starts folded; openActiveGroup() opens the one holding the page on screen.
@@ -85,6 +137,43 @@ function renderNavHtml() {
   }).join('')
 }
 
+// One click handler per nav tree (delegated, so a redraw after starring needs no re-wiring): stars, favourites
+// edit, group folding, page rows.
+function wireNav(nav, go) {
+  nav.addEventListener('click', e => {
+    const star = e.target.closest('[data-star]')
+    if (star) {
+      e.preventDefault(); e.stopPropagation()
+      const id = star.dataset.star, favs = getFavs()
+      saveFavs(favs.includes(id) ? favs.filter(x => x !== id) : [...favs, id])
+      return
+    }
+    if (e.target.closest('[data-fav-edit]')) { favEdit = !favEdit; rerenderNavs(); return }
+    const mv = e.target.closest('[data-fav-move]')
+    if (mv) {
+      const visible = new Set(visibleNav().flatMap(sec => sec.items.map(it => it.id)))
+      const mine = getFavs().filter(id => visible.has(id))
+      const i = Number(mv.dataset.favMove), j = i + Number(mv.dataset.dir)
+      if (j < 0 || j >= mine.length) return
+      ;[mine[i], mine[j]] = [mine[j], mine[i]]
+      saveFavs(mine)
+      return
+    }
+    const x = e.target.closest('[data-fav-x]')
+    if (x) { saveFavs(getFavs().filter(id => id !== x.dataset.favX)); return }
+    const t = e.target.closest('[data-group-toggle]')
+    if (t) {
+      const group = t.closest('.nav-group')
+      const opening = group.classList.contains('is-closed')
+      if (opening) nav.querySelectorAll('.nav-group:not(.nav-group-bare)').forEach(g => { if (g !== group) setGroupOpen(g, false) })
+      setGroupOpen(group, opening)
+      return
+    }
+    const r = e.target.closest('.nav-row[data-hash]')
+    if (r) go(r.dataset.hash)
+  })
+}
+
 // Sidebar groups fold open and shut (JCM HQ, layout of 2026-10-15): one group
 // open at a time. Opening a group folds the others; the group holding the page
 // on screen opens by itself. A folded group shows a gold dot when one of its
@@ -97,19 +186,9 @@ function setGroupOpen(group, open) {
     btn.title = `${open ? 'Hide' : 'Show'} ${btn.dataset.groupToggle}`
   }
 }
-function wireNavGroups(root) {
-  root.querySelectorAll('[data-group-toggle]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const group = btn.closest('.nav-group')
-      const opening = group.classList.contains('is-closed')
-      if (opening) root.querySelectorAll('.nav-group:not(.nav-group-bare)').forEach(g => { if (g !== group) setGroupOpen(g, false) })
-      setGroupOpen(group, opening)
-    })
-  })
-}
 // The open page's group opens and the others fold, so the highlight is always in view.
 function openActiveGroup(root) {
-  const active = root.querySelector('.nav-row.active')
+  const active = root.querySelector('.nav-group:not(.nav-group-fav) .nav-row.active')
   const group = active?.closest('.nav-group')
   if (!group || group.classList.contains('nav-group-bare')) return
   root.querySelectorAll('.nav-group:not(.nav-group-bare)').forEach(g => setGroupOpen(g, g === group))
@@ -139,6 +218,7 @@ export async function refreshNavBadges() {
   const navs = document.querySelectorAll('.pinned-nav, .sidebar-menu')
   if (!navs.length) return
   const badges = await loadNavBadges()
+  lastBadges = badges
   navs.forEach(nav => paintNavBadges(nav, badges))
 }
 
@@ -237,15 +317,12 @@ export function mountPinnedSidebar({ profile }) {
   document.body.insertBefore(el, app)
   pinnedEl = el
 
-  wireNavGroups(el)
+  wireNav(el.querySelector('.pinned-nav'), hash => { window.location.hash = hash })
   setActiveNav(el)
   window.addEventListener('hashchange', () => setActiveNav(el))
 
-  el.querySelectorAll('.nav-row[data-hash]').forEach(btn => {
-    btn.addEventListener('click', () => { window.location.hash = btn.dataset.hash })
-  })
-
   loadNavBadges().then(badges => {
+    lastBadges = badges
     if (el.isConnected) paintNavBadges(el, badges)
   })
 
@@ -313,17 +390,11 @@ export function openSidebar() {
     setTimeout(() => overlay.remove(), 250)
   }
 
-  wireNavGroups(overlay)
+  wireNav(overlay.querySelector('.sidebar-menu'), hash => { close(); window.location.hash = hash })
   setActiveNav(overlay)
   wireThemeToggle('sidebar')
   overlay.addEventListener('click', e => { if (e.target === overlay) close() })
   document.getElementById('sidebarCloseBtn').addEventListener('click', close)
-  overlay.querySelectorAll('.nav-row[data-hash]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      close()
-      window.location.hash = btn.dataset.hash
-    })
-  })
   document.getElementById('sidebarProfileBtn').addEventListener('click', () => {
     close()
     window.location.hash = '#profile'
@@ -334,6 +405,7 @@ export function openSidebar() {
   })
 
   loadNavBadges().then(badges => {
+    lastBadges = badges
     if (overlay.isConnected) paintNavBadges(overlay, badges)
   })
 }

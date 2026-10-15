@@ -37,12 +37,17 @@ export function isAdminProfile(p = profile) {
 // not wide open.
 const OPEN_TABS = new Set(NAV_CONFIG.flatMap(section => section.items.filter(item => item.open).map(item => item.id)))
 
+// alias: a page that also opens for people who have another page ticked (Today's Follow-ups ← Payment Follow-up).
+const ALIAS = new Map(NAV_CONFIG.flatMap(section => section.items.filter(item => item.alias).map(item => [item.id, item.alias])))
+
 export function canSee(tabId, p = profile) {
   if (isAdminProfile(p)) return true
   if (OPEN_TABS.has(tabId)) return true
   const allowed = Array.isArray(p?.allowed_tabs) ? p.allowed_tabs : []
-  return allowed.includes(tabId)
+  return allowed.includes(tabId) || (ALIAS.has(tabId) && allowed.includes(ALIAS.get(tabId)))
 }
+
+export function currentProfile() { return profile }
 
 // NAV_CONFIG with unpermitted items dropped from the arrays entirely rather
 // than hidden with CSS, and sections that end up empty dropped with them so

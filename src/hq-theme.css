@@ -284,3 +284,28 @@ body.native-app { --hq-header-h: calc(56px + env(safe-area-inset-top)); }
 }
 /* Sidebar 2026-10-15: the daily pages on top have no heading. */
 .nav-group-bare { padding-top: 4px; }
+
+/* ---- Sidebar Favourites (2026-10-16): stars on every page row, Favourites group on top, Edit to reorder ---- */
+.nav-star { margin-left: 4px; flex-shrink: 0; width: 20px; text-align: center; font-size: 14px; line-height: 1; color: #8C96AA; opacity: 0; transition: opacity .12s; cursor: pointer; }
+.nav-badge + .nav-star { margin-left: 4px; }
+.nav-row-label { flex: 1 1 auto; text-align: left; }
+.nav-row:hover .nav-star, .nav-row:focus-visible .nav-star, .nav-star.on { opacity: 1; }
+.nav-star.on { color: var(--hq-gold, #D9AE55); }
+.nav-star:hover { color: var(--hq-gold, #D9AE55); }
+.sidebar-menu .nav-star { opacity: .55; font-size: 16px; width: 26px; }
+.sidebar-menu .nav-star.on { opacity: 1; }
+.nav-group-fav { margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid var(--hq-side-line, #1C2A44); }
+.nav-fav-head { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px 4px 10px; font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--hq-gold, #D9AE55); }
+.nav-fav-edit { border: 0; background: transparent; color: #8C96AA; font: inherit; font-size: 11px; letter-spacing: 0; text-transform: none; cursor: pointer; padding: 2px 4px; }
+.nav-fav-edit:hover { color: #fff; }
+.nav-fav-hint { font-size: 12px; color: #8C96AA; padding: 2px 10px 6px; }
+.nav-fav-row { display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 4px; color: #C9D0DC; font-size: 13.5px; }
+.nav-fav-row .nav-row-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-fav-row button { border: 1px solid #26344F; background: transparent; color: #C9D0DC; border-radius: 7px; width: 28px; height: 26px; font-size: 11px; cursor: pointer; flex-shrink: 0; }
+.nav-fav-row button:disabled { opacity: .3; cursor: default; }
+.nav-fav-row button:not(:disabled):hover { border-color: var(--hq-gold, #D9AE55); color: var(--hq-gold, #D9AE55); }
+.pinned-sidebar.collapsed .nav-star, .pinned-sidebar.collapsed .nav-fav-head, .pinned-sidebar.collapsed .nav-fav-hint { display: none; }
+.pinned-sidebar.collapsed .nav-fav-row button, .pinned-sidebar.collapsed .nav-fav-row .nav-row-label { display: none; }
+.nav-fav-row { gap: 3px; }
+.nav-fav-row button { width: 22px; height: 24px; font-size: 9.5px; border-radius: 6px; padding: 0; }
+.nav-fav-row .nav-row-icon { margin-right: 4px; }

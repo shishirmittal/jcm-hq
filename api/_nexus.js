@@ -37,13 +37,13 @@ const anyOf = (p, tabs) => tabs.some(t => canSee(p, t))
 // ---- Tools --------------------------------------------------------------------------------------
 // tabs = pages that unlock the tool; act = changes something (needs Confirm).
 const TOOLS = [
-  { name: 'find_customer', tabs: ['customers', 'payment-followup'], description: 'Find Busy customers / parties by name, mobile or Busy code. Returns code, name, mobile, city and what they owe now.',
+  { name: 'find_customer', tabs: ['customers', 'payment-followup', 'followup-today'], description: 'Find Busy customers / parties by name, mobile or Busy code. Returns code, name, mobile, city and what they owe now.',
     input_schema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
-  { name: 'customer_details', tabs: ['customers', 'payment-followup'], description: 'Everything about one customer by Busy code: contact, dues with ageing, ledger closing balance (Dr = owes us, Cr = credit in their favour), latest bills, JCM orders, follow-up history.',
+  { name: 'customer_details', tabs: ['customers', 'payment-followup', 'followup-today'], description: 'Everything about one customer by Busy code: contact, dues with ageing, ledger closing balance (Dr = owes us, Cr = credit in their favour), latest bills, JCM orders, follow-up history.',
     input_schema: { type: 'object', properties: { party_code: { type: 'string' } }, required: ['party_code'] } },
   { name: 'find_items', tabs: ['stock'], description: 'Search items (products) by name, code or alias: stock in Freeganj godown, MRP, sale rate, item group.',
     input_schema: { type: 'object', properties: { query: { type: 'string' }, in_stock_only: { type: 'boolean' } }, required: ['query'] } },
-  { name: 'followups_due', tabs: ['payment-followup'], description: "Today's payment follow-ups: parties due for a call, per person. who = 'me' (default) or 'everyone' (admins).",
+  { name: 'followups_due', tabs: ['payment-followup', 'followup-today'], description: "Today's payment follow-ups: parties due for a call, per person. who = 'me' (default) or 'everyone' (admins).",
     input_schema: { type: 'object', properties: { who: { type: 'string', enum: ['me', 'everyone'] } } } },
   { name: 'open_orders', tabs: ['floor-orders', 'material', 'order-log'], description: 'Open sales orders on the warehouse floor (stage, since when, invoice, boxes). Optional party name filter.',
     input_schema: { type: 'object', properties: { party: { type: 'string' } } } },
@@ -62,13 +62,13 @@ const TOOLS = [
   { name: 'db_schema', admin: true, description: 'Admins only. Column list of Busy-data tables whose name contains the given word.',
     input_schema: { type: 'object', properties: { table_like: { type: 'string' } }, required: ['table_like'] } },
   // ---- actions (Confirm first) ----
-  { name: 'send_ledger', act: true, tabs: ['customers', 'payment-followup'], description: "Send a customer's ledger statement PDF on WhatsApp. Needs Busy code; phone optional (default = their number in Busy).",
+  { name: 'send_ledger', act: true, tabs: ['customers', 'payment-followup', 'followup-today'], description: "Send a customer's ledger statement PDF on WhatsApp. Needs Busy code; phone optional (default = their number in Busy).",
     input_schema: { type: 'object', properties: { party_code: { type: 'string' }, phone: { type: 'string' } }, required: ['party_code'] } },
   { name: 'send_invoice', act: true, tabs: ['customers'], description: 'Send one invoice PDF to the customer on WhatsApp. Needs Busy code and invoice number (e.g. JCM/2627/34370); phone optional.',
     input_schema: { type: 'object', properties: { party_code: { type: 'string' }, vch_no: { type: 'string' }, phone: { type: 'string' } }, required: ['party_code', 'vch_no'] } },
   { name: 'add_task', act: true, tabs: ['tasks', 'dashboard'], description: `Add a Task Board task. type one of ${TASK_TYPES.join(', ')}; assign_to = a person's name (default the person asking); due_date YYYY-MM-DD (default today).`,
     input_schema: { type: 'object', properties: { text: { type: 'string' }, type: { type: 'string', enum: TASK_TYPES }, assign_to: { type: 'string' }, due_date: { type: 'string' } }, required: ['text'] } },
-  { name: 'save_followup_note', act: true, tabs: ['payment-followup'], description: `Save a payment follow-up note for a party (like the outcome form). outcome one of ${OUTCOMES.join(', ')}; optional remarks, promised_amount, promised_date, next_followup (YYYY-MM-DD).`,
+  { name: 'save_followup_note', act: true, tabs: ['payment-followup', 'followup-today'], description: `Save a payment follow-up note for a party (like the outcome form). outcome one of ${OUTCOMES.join(', ')}; optional remarks, promised_amount, promised_date, next_followup (YYYY-MM-DD).`,
     input_schema: { type: 'object', properties: { party_code: { type: 'string' }, outcome: { type: 'string', enum: OUTCOMES }, remarks: { type: 'string' }, promised_amount: { type: 'number' }, promised_date: { type: 'string' }, next_followup: { type: 'string' } }, required: ['party_code', 'outcome'] } },
 ]
 

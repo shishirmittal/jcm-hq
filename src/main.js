@@ -121,6 +121,10 @@ async function enterApp() {
     renderNoAccess()
     return
   }
+  // Started before the app's "open on the first tab" jump below, which returns early — Nexus and the bell
+  // never started in the phone app on a fresh open (16 Oct). Both are safe to call twice.
+  startNotifyBell()
+  startNexus()
   if (IS_NATIVE) {
     mountNativeShell()
     mountBackButton()
@@ -137,8 +141,6 @@ async function enterApp() {
     // Phones get the bottom tab bar too (CSS shows it below 800 px only).
     mountNativeShell()
   }
-  startNotifyBell()
-  startNexus()
   route()
 }
 
@@ -277,6 +279,8 @@ function route() {
     renderItemsManagement(app)
   } else if (hash === '#red-alerts') {
     renderRedAlerts(app)
+  } else if (hash === '#followups') {
+    renderPaymentFollowup(app, 'today', { standalone: true })
   } else if (hash === '#payment-followup' || hash.startsWith('#payment-followup/')) {
     renderPaymentFollowup(app, hash.split('/')[1] || null)
   } else if (hash === '#purchases') {

@@ -5,7 +5,7 @@
 export const PAGES = {
   '': 'Dashboard', '#tasks': 'Task Board', '#explain': 'My Explanations',
   '#customers': 'Customer Card', '#quotations': 'Quotations', '#leads': 'Project Leads', '#architects': 'Architects', '#electricians': 'Electricians',
-  '#payment-followup': 'Payment Follow-up', '#payments': 'Payments', '#gst-recon': 'GSTR-2A Reconciliation', '#cash-discount': 'Signify Cash Discount',
+  '#payment-followup': 'Payment Follow-up', '#followups': "Today's Follow-ups", '#payments': 'Payments', '#gst-recon': 'GSTR-2A Reconciliation', '#cash-discount': 'Signify Cash Discount',
   '#floor-orders': 'Orders', '#material': 'Pending Material', '#stock': 'Stock', '#order-log': 'Order Log',
   '#purchases': 'Purchase Summary', '#email-purchases': 'Email Purchases', '#order-planning': 'Reorder Planning', '#price-update': 'Price Update', '#items-management': 'Items Management',
   '#dashboard': 'Control Centre', '#red-alerts': 'Red Alerts',
@@ -20,14 +20,15 @@ People: Shishir (runs HQ), Dilip Mittal (Shishir's father, Busy login "0"), Ruch
 JCM HQ (hq.jcmretails.com, also the Android app "JCM HQ")
 One tool for the whole team. Sign in with your photo card + PIN. Each person only sees the pages they were given in Manage Users; admins see everything. On the phone a tab bar at the bottom gives Stock · Customers · Follow-up · Orders · Quotes · Tasks (the ones you may see). The bell at the top shows counts that need attention.
 
-SIDEBAR (top row, then six groups — one group open at a time)
-Top: Dashboard · Task Board · My Explanations.
+SIDEBAR (Favourites, top row, then six groups — one group open at a time)
+Favourites: every person stars (☆) the pages they use most; they show at the very top in their own order (Edit → ▲ ▼ to reorder, ✕ to remove) and stay in their usual group too. Saved to their profile, so the same on phone and computer.
+Top: Dashboard · Today's Follow-ups · Task Board · My Explanations.
 Sales: Customer Card · Quotations · Project Leads · Architects · Electricians.
-Accounts: Payment Follow-up · Payments · GSTR-2A Reconciliation · Signify Cash Discount.
+Accounts: Payments · GSTR-2A Reconciliation · Signify Cash Discount.
 Warehouse: Orders · Pending Material · Stock · Order Log.
 Purchase: Purchase Summary · Email Purchases · Reorder Planning · Price Update · Items Management.
 Reports: Control Centre · Red Alerts.
-Admin: WhatsApp · Manage Users · Warehouse & Devices · Sync status · Requests Tracker.
+Admin: Payment Follow-up (calls, WhatsApp reminders, Scheduled, Assign groups) · WhatsApp · Manage Users · Warehouse & Devices · Sync status · Requests Tracker.
 
 PAGES
 - Task Board (#tasks): tasks between team members in stacks (Payments, Material Orders, Client Requests, Service Urgencies, Pending Deliveries, Payment Follow Up, Other). Type a task, it guesses the stack, pick the person and due date. Tick done; reassign; edit. The 10:00 payment follow-up task is made automatically each morning and ticks itself when that person's list is empty.
@@ -36,6 +37,7 @@ PAGES
 - Quotations (#quotations): two tabs. "HQ quotations" = quotations made in HQ with brand catalogues, Print / PDF / WhatsApp. "From Busy" = quotations typed in Busy (QT/2627/…), refreshed every 10 minutes: search, open one, View PDF, Download PDF, Send on WhatsApp.
 - Project Leads, Architects, Electricians: contact lists and project tracking from the old CRM.
 - Payment Follow-up (#payment-followup): collections. Tabs: Follow-up calls (pick a Busy account group → parties with dues, Over 20 days / Over 40 days / All dues, Call, WhatsApp reminder, Ledger, tick boxes + "Send WhatsApp to N", "Hide resting" button hides greyed parties), Today's follow-ups (your due list: over 40 days → every 7 days, over 20 days → every 14 days, or the next date someone typed), WhatsApp reminders (bulk: tick parties → "Send now" or "⏰ Schedule for later" with date, time and repeat; the Automatic daily reminders box picks parties by itself), ⏰ Scheduled (cards of every scheduled list with an On/Off switch, open to edit name/time/parties, Send now, Delete; plus the one-customer reminders set from the WhatsApp Inbox with On/Off, Change time, Stop). After a call save the outcome (promised, paid, call later, no answer, dispute, wrong number, refused…), remarks, promised amount/date and next follow-up date. Each account group has one owner (Assign groups). "JCM Due DND" group never gets reminders. "Check balance" means HQ's figure differs from Busy — not sent. Every card shows a red 'Last follow-up' line (date, time, Call/WhatsApp, who), a green promise line and a blue auto-reminder line. After any contact a party rests: over 40 days → 7 days, over 20 days → 14 days (also while a promised date is ahead or an auto reminder is set) — its Call/WhatsApp buttons are greyed and ask before contacting again. 10:00 every owner gets a WhatsApp with their list (button "Due List PDF"); 19:00 admins get the summary.
+- Today's Follow-ups (#followups): the staff page — your follow-up list for today (over 40 days every 7 days, over 20 days every 14 days, or the date someone typed); Call, WhatsApp, Ledger, save the outcome. Same list as Payment Follow-up → Today's follow-ups.
 - Payments (#payments): payment records from the old CRM.
 - GSTR-2A Reconciliation (#gst-recon): Busy purchases vs the 2A data Busy downloads. Red flags: Missing in Busy, Not in 2A (→ "GSTR-1 reminder" WhatsApp to the supplier), Amount mismatch, Doc no. mismatch, Odd numbering, ₹0 value. Done / Ignore per row, Download Excel, Send to staff (PDF). Someone must press Busy's 2A download around the 14th each month.
 - Signify Cash Discount (#cash-discount, admins only — Dilip's monthly claim): Signify scheme from 1 Aug 2026 — paid within 0–5 days of invoice 1.5%, 6–10 days 1.0%, later 0%, FIFO, only fully cleared invoices, on GST-inclusive value. Pick invoice dates + Signify accounts → each invoice with the payment that cleared it, days, CD %, CD amount; totals; Download Excel; "Send to Signify" emails it (CC jc.mittal@hotmail.com). Settings: slabs, opening overrides, extra credit.

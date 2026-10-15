@@ -91,7 +91,7 @@ export async function callCollections(payload) {
 const call = callCollections
 
 export async function loadPaymentFollowupBadge() {
-  if (!canSee(TAB_ID)) return 0
+  if (!canSee(TAB_ID) && !canSee('followup-today')) return 0
   try {
     const data = await call({ action: 'count' })
     return data?.due || 0
@@ -166,8 +166,9 @@ export function syncNoteHtml(lastSync) {
   return `<div class="pf-sync">Dues as of ${esc(fmtDateTime(lastSync))}</div>`
 }
 
-export function renderPaymentFollowup(container, sub) {
-  if (!canSee(TAB_ID)) {
+export function renderPaymentFollowup(container, sub, { standalone = false } = {}) {
+  // #followups = the staff page "Today's Follow-ups" (own sidebar row; also for people with only that page).
+  if (!(standalone ? canSee('followup-today') : canSee(TAB_ID))) {
     container.innerHTML = '<div class="empty-state">You do not have access to this page.</div>'
     setTimeout(() => { window.location.hash = '' }, 1500)
     return
@@ -209,12 +210,12 @@ export function renderPaymentFollowup(container, sub) {
       <header class="app-header">
         <div style="display:flex;align-items:center;gap:10px">
           <button class="btn-ghost btn-hamburger" id="pfHamburger" aria-label="Menu">☰</button>
-          <span class="logo-small">Payment Follow-up</span>
+          <span class="logo-small">${standalone ? "Today's Follow-ups" : 'Payment Follow-up'}</span>
         </div>
         <button class="btn-ghost btn-small" id="pfRefresh">Refresh</button>
       </header>
       <main class="app-main">
-        ${pfTabsHtml(today ? 'today' : 'calls')}
+        ${standalone ? '' : pfTabsHtml(today ? 'today' : 'calls')}
         <div id="pfSync"></div>
         <div class="pf-tiles" id="pfTiles"></div>
         <div class="pf-people" id="pfPeople" ${today ? '' : 'hidden'}></div>
@@ -356,7 +357,7 @@ export function renderPaymentFollowup(container, sub) {
   $('pfTiles').addEventListener('click', e => {
     const t = e.target.closest('[data-goto]')
     if (!t) return
-    window.location.hash = '#payment-followup/today'
+    window.location.hash = canSee(TAB_ID) ? '#payment-followup/today' : '#followups'
   })
 
   // ---- Today tab: whose list, and who follows up which group ----

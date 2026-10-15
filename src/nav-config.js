@@ -37,6 +37,9 @@ export const NAV_CONFIG = [
   // profiles.allowed_tabs — only labels, order and groups do. `bare` = no heading.
   { section: 'Main', bare: true, items: [
     { id: 'dashboard', label: 'Dashboard', icon: 'grid', hash: '' },
+    // Staff page (2026-10-16): only the day's follow-up list. Anyone with the full Payment Follow-up page sees it too
+    // (alias). The full page (calls, reminders, scheduled) lives in Admin.
+    { id: 'followup-today', label: "Today's Follow-ups", icon: 'phone', hash: '#followups', badge: 'paymentFollowup', alias: 'payment-followup' },
     { id: 'tasks', label: 'Task Board', icon: 'clipboard', hash: '#tasks', badge: 'openTasks' },
     { id: 'explain', label: 'My Explanations', icon: 'question', hash: '#explain', open: true, badge: 'myExplain' },
   ] },
@@ -48,7 +51,6 @@ export const NAV_CONFIG = [
     { id: 'electricians', label: 'Electricians', icon: 'bolt', hash: '#electricians' },
   ] },
   { section: 'Accounts', items: [
-    { id: 'payment-followup', label: 'Payment Follow-up', icon: 'phone', hash: '#payment-followup', adminOnly: true, badge: 'paymentFollowup' },
     { id: 'payments', label: 'Payments', icon: 'rupee', hash: '#payments', adminOnly: true },
     { id: 'gst-recon', label: 'GSTR-2A Reconciliation', icon: 'percent', hash: '#gst-recon', adminOnly: true },
     { id: 'cash-discount', label: 'Signify Cash Discount', icon: 'percent', hash: '#cash-discount', adminOnly: true, grantable: false },
@@ -71,6 +73,7 @@ export const NAV_CONFIG = [
     { id: 'red-alerts', label: 'Red Alerts', icon: 'alert-triangle', hash: '#red-alerts', adminOnly: true, badge: 'redAlerts' },
   ] },
   { section: 'Admin', items: [
+    { id: 'payment-followup', label: 'Payment Follow-up', icon: 'phone', hash: '#payment-followup', adminOnly: true },
     { id: 'whatsapp', label: 'WhatsApp', icon: 'message', hash: '#whatsapp', adminOnly: true, badge: 'waUnread' },
     { id: 'users', label: 'Manage Users', icon: 'users', hash: '#admin', adminOnly: true, grantable: false },
     { id: 'warehouse', label: 'Warehouse & Devices', icon: 'monitor', hash: '#warehouse', adminOnly: true },

@@ -52,6 +52,8 @@ const SUPABASE_URL = 'https://cmtnzmfuasniicsdxyle.supabase.co'      // HQ / CRM
 const SUPABASE_BUSY_URL = 'https://jlkjjqnmhsgefpluemyz.supabase.co' // Busy-data project (dues)
 
 const TAB_ID = 'payment-followup'
+const TODAY_TAB = 'followup-today'
+const TODAY_ACTIONS = new Set(['count', 'meta', 'list', 'history', 'save', 'send-template', 'send-ledger', 'send-reminders'])
 const DND_GROUP = 'JCM Due DND'
 // Credit younger than this is not chased: the page shows only parties with
 // something unpaid on bills older than this, unless "All dues" is picked.
@@ -126,8 +128,13 @@ export default async function handler(req, res) {
   }
   if (!profile || profile.active === false) return send(res, 403, { error: 'Your account is not active.' })
   const isAdmin = profile.is_admin === true || profile.role === 'admin'
-  const granted = Array.isArray(profile.allowed_tabs) && profile.allowed_tabs.includes(TAB_ID)
-  if (!isAdmin && !granted) return send(res, 403, { error: 'You do not have access to Payment Follow-up.' })
+  const tabs = Array.isArray(profile.allowed_tabs) ? profile.allowed_tabs : []
+  const granted = tabs.includes(TAB_ID)
+  // Staff with only "Today's Follow-ups" (sidebar row under Dashboard, 2026-10-16): their list, calls, notes and
+  // one-party WhatsApp / ledger — not group settings, reminder lists or schedules.
+  const todayOnly = !isAdmin && !granted && tabs.includes(TODAY_TAB)
+  if (!isAdmin && !granted && !todayOnly) return send(res, 403, { error: 'You do not have access to Payment Follow-up.' })
+  if (todayOnly && !TODAY_ACTIONS.has(String((req.body || {}).action || ''))) return send(res, 403, { error: 'That part of Payment Follow-up is for admins.' })
   const me = { id: profile.id, name: profile.name || profile.email || 'Someone', isAdmin }
 
   const body = req.body || {}
@@ -290,7 +297,7 @@ async function loadOwners(busy) {
 async function loadPeople(hq) {
   const rows = check(await hq.from('profiles').select('id, name, email, role, is_admin, active, allowed_tabs, whatsapp'), 'people')
   return rows
-    .filter(p => p.active !== false && (p.is_admin === true || p.role === 'admin' || (Array.isArray(p.allowed_tabs) && p.allowed_tabs.includes(TAB_ID))))
+    .filter(p => p.active !== false && (p.is_admin === true || p.role === 'admin' || (Array.isArray(p.allowed_tabs) && (p.allowed_tabs.includes(TAB_ID) || p.allowed_tabs.includes(TODAY_TAB)))))
     .map(p => ({ id: p.id, name: p.name || p.email || 'Someone', whatsapp: p.whatsapp || null, isAdmin: p.is_admin === true || p.role === 'admin' }))
     .sort((a, b) => a.name.localeCompare(b.name))
 }

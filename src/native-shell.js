@@ -14,7 +14,7 @@ import { openSidebar } from './sidebar.js'
 const TABS = [
   { id: 'stock', label: 'Stock', hash: '#stock', icon: 'warehouse' },
   { id: 'customers', label: 'Customers', hash: '#customers', icon: 'idcard' },
-  { id: 'payment-followup', label: 'Follow-up', hash: '#payment-followup', icon: 'phone' },
+  { id: 'followup-today', label: 'Follow-up', hash: '#followups', icon: 'phone' },
   { id: 'floor-orders', label: 'Orders', hash: '#floor-orders', icon: 'package' },
   { id: 'quotations', label: 'Quotes', hash: '#quotations', icon: 'file' },
   { id: 'tasks', label: 'Tasks', hash: '#tasks', icon: 'clipboard' },
