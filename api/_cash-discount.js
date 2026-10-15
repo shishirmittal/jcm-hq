@@ -288,7 +288,7 @@ async function buildExcelBase64(d) {
   const XLSX = await import('xlsx')
   const wb = XLSX.utils.book_new()
   const lines = []
-  for (const a of d.result) {
+  for (const a of d.result.filter(x => x.rows.length)) {
     for (const r of a.rows) lines.push({ Account: a.party_name, 'Invoice date': niceDate(r.date), 'Invoice no.': r.vch_no || '', 'Invoice amount (incl. GST)': r.amount, 'Payment date': r.pay_date ? niceDate(r.pay_date) : '', 'Payment no.': r.pay_no || '', 'Payment amount': r.pay_amount ?? '', 'Paid from': r.pay_account || '', Days: r.days ?? '', 'CD %': r.pct, 'CD amount': r.cd, Status: r.status })
     const purchases = a.rows.filter(r => r.kind === 'purchase')
     lines.push({ Account: `Total — ${a.party_name}`, 'Invoice no.': `${purchases.length} invoices`, 'Invoice amount (incl. GST)': r2(purchases.reduce((s, r) => s + r.amount, 0)), 'CD amount': r2(a.rows.reduce((s, r) => s + r.cd, 0)) })
@@ -301,7 +301,7 @@ async function buildExcelBase64(d) {
   XLSX.utils.sheet_add_json(ws, lines, { origin: 'A5' })
   ws['!cols'] = [{ wch: 44 }, { wch: 13 }, { wch: 20 }, { wch: 22 }, { wch: 13 }, { wch: 20 }, { wch: 16 }, { wch: 6 }, { wch: 6 }, { wch: 14 }, { wch: 34 }]
   XLSX.utils.book_append_sheet(wb, ws, 'CD claim')
-  const sum = d.result.map(a => ({ Account: a.party_name, 'Busy code': a.party_code, Invoices: a.rows.filter(r => r.kind === 'purchase').length, 'Invoice total': r2(a.rows.filter(r => r.kind === 'purchase').reduce((t, r) => t + r.amount, 0)), 'CD amount': r2(a.rows.reduce((t, r) => t + r.cd, 0)), 'Paid through': d.pools.find(p => p.id === a.pool)?.hub_name || '' }))
+  const sum = d.result.filter(x => x.rows.length).map(a => ({ Account: a.party_name, 'Busy code': a.party_code, Invoices: a.rows.filter(r => r.kind === 'purchase').length, 'Invoice total': r2(a.rows.filter(r => r.kind === 'purchase').reduce((t, r) => t + r.amount, 0)), 'CD amount': r2(a.rows.reduce((t, r) => t + r.cd, 0)), 'Paid through': d.pools.find(p => p.id === a.pool)?.hub_name || '' }))
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sum), 'Summary')
   return XLSX.write(wb, { type: 'base64', bookType: 'xlsx' })
 }
@@ -312,7 +312,7 @@ function buildMail(d, message, signature) {
   const th = 'style="text-align:left;padding:6px 10px;background:#F6F7FB;font-size:12px;color:#6B7280"'
   const td = 'style="padding:6px 10px;border-top:1px solid #E5E7EB;font-size:14px"'
   const tdr = td.replace('font-size', 'text-align:right;font-size')
-  const rows = d.result.map(a => {
+  const rows = d.result.filter(x => x.rows.length).map(a => {
     const p = a.rows.filter(r => r.kind === 'purchase')
     return `<tr><td ${td}>${escHtml(a.party_name)}</td><td ${tdr}>${p.length}</td><td ${tdr}>${inr(p.reduce((s, r) => s + r.amount, 0))}</td><td ${tdr}>${inr(a.rows.reduce((s, r) => s + r.cd, 0))}</td></tr>`
   }).join('')

@@ -249,7 +249,8 @@ export async function renderCashDiscount(container) {
     if (!d.result.length) { $('cdList').innerHTML = '<div class="empty-state">No Signify account chosen. Open "Accounts" and tick the ones you want.</div>'; return }
     const parts = []
     for (const pool of d.pools) {
-      const members = d.result.filter(a => a.pool === pool.id)
+      // Only accounts with invoices in the chosen dates; a pool with none is skipped altogether.
+      const members = d.result.filter(a => a.pool === pool.id && a.rows.length)
       if (!members.length) continue
       const multi = pool.members.length > 1
       const openingWhy = pool.openings.filter(o => o.opening).map(o => `${esc(o.party_name)} ${money(o.opening)}${o.source === 'typed' ? ' (typed)' : ''}`).join(', ') || 'nothing found in Busy for 31 March (taken as ₹0)'
@@ -257,7 +258,7 @@ export async function renderCashDiscount(container) {
         <div class="cd-pool">
           <div class="cd-pool-head">
             <div>
-              <div class="cd-pool-title">${multi ? `Paid through <strong>${esc(pool.hub_name)}</strong> — ${pool.members.length} accounts together` : `<strong>${esc(pool.hub_name)}</strong> — paid on its own account`}</div>
+              <div class="cd-pool-title">${multi ? `Paid through <strong>${esc(pool.hub_name)}</strong> — ${members.length} of ${pool.members.length} accounts had bills this period` : `<strong>${esc(pool.hub_name)}</strong> — paid on its own account`}</div>
               <div class="pur-bill-meta">${multi ? 'Bills of these accounts are moved into the paying account by journal in Busy, so FIFO runs on all of them as one. ' : ''}Opening 1 Apr: ${openingWhy} · balance now ${money(Math.abs(pool.totals.closing))} ${pool.totals.closing < 0 ? 'advance with Signify' : 'payable'} · ${pool.open_bills} bill${pool.open_bills === 1 ? '' : 's'} still open (${money(pool.open_amount)})${pool.ignored.length ? ` · ${pool.ignored.length} credit / debit note${pool.ignored.length === 1 ? '' : 's'} not counted (switch above)` : ''}</div>
             </div>
             <div class="pur-bill-side"><div class="pur-amount">${money(pool.cd)}</div><small class="cd-sub">CD on ${pool.invoices} invoice${pool.invoices === 1 ? '' : 's'}</small></div>
@@ -265,6 +266,7 @@ export async function renderCashDiscount(container) {
           ${members.map(a => accountCard(a, multi)).join('')}
         </div>`)
     }
+    if (!parts.length) { $('cdList').innerHTML = `<div class="empty-state">No Signify invoices between ${esc(fmtDate(d.from))} and ${esc(fmtDate(d.to))} on the chosen accounts.</div>`; return }
     const t = d.totals
     parts.push(`
       <section class="pur-bill cd-grand">
@@ -319,7 +321,7 @@ export async function renderCashDiscount(container) {
     const wb = XLSX.utils.book_new()
     const title = `Signify Cash Discount claim — ${d.from === monthRange(-1)[0] && d.to === monthRange(-1)[1] ? monthName(d.from) : `${fmtDate(d.from)} to ${fmtDate(d.to)}`}`
     const lines = []
-    for (const a of d.result) {
+    for (const a of d.result.filter(x => x.rows.length)) {
       for (const r of a.rows) lines.push({ Account: a.party_name, 'Invoice date': fmtDate(r.date), 'Invoice no.': r.vch_no || '', 'Invoice amount (incl. GST)': r.amount, 'Payment date': r.pay_date ? fmtDate(r.pay_date) : '', 'Payment no.': r.pay_no || '', 'Payment amount': r.pay_amount ?? '', 'Paid from': r.pay_account || '', Days: r.days ?? '', 'CD %': r.pct, 'CD amount': r.cd, Status: r.status })
       const purchases = a.rows.filter(r => r.kind === 'purchase')
       lines.push({ Account: `Total — ${a.party_name}`, 'Invoice date': '', 'Invoice no.': `${purchases.length} invoices`, 'Invoice amount (incl. GST)': Math.round(purchases.reduce((s, r) => s + r.amount, 0) * 100) / 100, 'Payment date': '', 'Payment no.': '', 'Payment amount': '', Days: '', 'CD %': '', 'CD amount': Math.round(a.rows.reduce((s, r) => s + r.cd, 0) * 100) / 100, Status: '' })
@@ -332,7 +334,7 @@ export async function renderCashDiscount(container) {
     XLSX.utils.sheet_add_json(ws, lines, { origin: 'A5' })
     ws['!cols'] = [{ wch: 44 }, { wch: 13 }, { wch: 20 }, { wch: 22 }, { wch: 13 }, { wch: 20 }, { wch: 16 }, { wch: 30 }, { wch: 6 }, { wch: 6 }, { wch: 14 }, { wch: 34 }]
     XLSX.utils.book_append_sheet(wb, ws, 'CD claim')
-    const summary = d.result.map(a => ({ Account: a.party_name, 'Busy code': a.party_code, Invoices: a.rows.filter(r => r.kind === 'purchase').length, 'Invoice total': Math.round(a.rows.filter(r => r.kind === 'purchase').reduce((s, r) => s + r.amount, 0) * 100) / 100, 'CD amount': Math.round(a.rows.reduce((s, r) => s + r.cd, 0) * 100) / 100, 'Paid through': d.pools.find(p => p.id === a.pool)?.hub_name || '' }))
+    const summary = d.result.filter(x => x.rows.length).map(a => ({ Account: a.party_name, 'Busy code': a.party_code, Invoices: a.rows.filter(r => r.kind === 'purchase').length, 'Invoice total': Math.round(a.rows.filter(r => r.kind === 'purchase').reduce((s, r) => s + r.amount, 0) * 100) / 100, 'CD amount': Math.round(a.rows.reduce((s, r) => s + r.cd, 0) * 100) / 100, 'Paid through': d.pools.find(p => p.id === a.pool)?.hub_name || '' }))
     const ws2 = XLSX.utils.json_to_sheet(summary)
     ws2['!cols'] = [{ wch: 44 }, { wch: 10 }, { wch: 9 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }]
     XLSX.utils.book_append_sheet(wb, ws2, 'Summary')
