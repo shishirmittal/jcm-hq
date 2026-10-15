@@ -7,6 +7,7 @@
 // payload does that). It only shows a name next to a number: the ledger name of the last template we
 // sent there, else a customer whose mobile matches (shown as "maybe").
 import { sendText, sendMedia, toWaNumber } from './_wa-cloud.js'
+import { staffPeople } from './_staff-alerts.js'
 
 // Ledger-only accounts (Nexus Enterprises, Silver Electric House, Cash) are never a chat's customer.
 const LEDGER_ONLY_CODES = new Set(['40355', '65494', '56680'])
@@ -126,6 +127,11 @@ export async function listConversations(busy, { limit = 200 } = {}) {
       }
     }
   }
+  // Our own team (Manage Users → WhatsApp number) is always shown as that person, never as a customer —
+  // a ledger sent to a staff phone as a test must not make that phone "Satish Electricals" (2026-10-16).
+  let staff = new Map()
+  try { for (const p of await staffPeople()) { const n = toWaNumber(p.whatsapp); if (n) staff.set(n, p.name) } } catch { /* CRM unreachable: names as before */ }
+  for (const n of numbers) if (staff.has(n)) names.set(n, { name: staff.get(n), how: 'staff', code: null })
   // Inbox tools (2026-10-16): pin / done / assigned person / label per chat (wa_conversations).
   const st = new Map()
   if (numbers.length) {
@@ -136,6 +142,7 @@ export async function listConversations(busy, { limit = 200 } = {}) {
   return list.map(c => ({
     ...convFlags(st.get(c.number), c),
     number: c.number, display: `+91 ${c.number.slice(-10, -5)} ${c.number.slice(-5)}`,
+    staff: names.get(c.number)?.how === 'staff',
     name: names.get(c.number)?.name || c.profile || null, nameHow: names.get(c.number)?.how || (c.profile ? 'whatsapp profile' : null), code: names.get(c.number)?.code || null,
     unread: c.unread, count: c.count, last: { text: c.last.text, direction: c.last.direction, kind: c.last.kind, at: c.last.created_at, status: c.last.status, by: c.last.sent_by },
     windowOpen: !!c.lastIn && now - Date.parse(c.lastIn) < WINDOW_H * 3600e3,

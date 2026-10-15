@@ -298,3 +298,5 @@ body.dark-mode .wa-tools .btn-ghost, body.dark-mode .wa-cust .btn-ghost { border
 body.dark-mode .wa-cust-due b { color: #F0C873; }
 body.dark-mode .ws-seg button.on { background: #D9AE55; color: #0E1A2E; }
 .wa-head-acts a.wa-hbtn { text-decoration: none; }
+.wa-staff { font-size: 10.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; background: #e0e7ff; color: #3730a3; border-radius: 5px; padding: 1px 6px; }
+body.dark-mode .wa-staff { background: rgba(165,180,252,.18); color: #c7d2fe; }

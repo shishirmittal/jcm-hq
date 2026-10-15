@@ -173,7 +173,7 @@ function renderInbox(el, number) {
       return `
       <button type="button" class="wa-conv ${c.number === state.number ? 'active' : ''} ${c.unread ? 'unread' : ''} ${c.done ? 'is-done' : ''}" data-number="${esc(c.number)}">
         <div class="wa-conv-top"><span class="wa-conv-name">${c.pinned ? '<span class="wa-pin" title="Pinned">📌</span>' : ''}${esc(c.name || c.display)}</span><span class="wa-conv-time">${esc(when(c.last.at))}</span></div>
-        <div class="wa-conv-sub">${c.name ? `<span class="wa-muted">${esc(c.display)}${c.nameHow === 'maybe' ? ' · maybe' : ''}</span> · ` : ''}${c.last.direction === 'out' ? '↗ ' : ''}${esc((c.last.text || '').slice(0, 70))}</div>
+        <div class="wa-conv-sub">${c.staff ? '<span class="wa-staff">Staff</span> ' : ''}${c.name ? `<span class="wa-muted">${esc(c.display)}${c.nameHow === 'maybe' ? ' · maybe' : ''}</span> · ` : ''}${c.last.direction === 'out' ? '↗ ' : ''}${esc((c.last.text || '').slice(0, 70))}</div>
         <div class="wa-conv-flags">${c.unread ? `<span class="wa-unread">${c.unread}</span>` : ''}${c.waiting ? `<span class="pf-pill pf-tone-${waitMin > 120 ? 'red' : 'amb'}">waiting ${esc(ago(c.waiting))}</span>` : ''}${c.done ? `<span class="pf-pill pf-tone-grey">✓ done${c.doneBy ? ` · ${esc(c.doneBy)}` : ''}</span>` : c.windowOpen ? '<span class="pf-pill pf-tone-grn">can reply</span>' : ''}${c.label ? `<span class="wa-label wa-label-${esc(c.label.toLowerCase())}">${esc(c.label)}</span>` : ''}${c.assignedName ? `<span class="wa-who">👤 ${esc(c.assignedName)}</span>` : ''}</div>
       </button>`
     }).join('')
@@ -209,6 +209,7 @@ function renderInbox(el, number) {
   function drawCust(t) {
     const c = conv(state.number), box = TH.querySelector('#waCust')
     if (!box) return
+    if (c.staff) { box.innerHTML = `<span class="wa-muted">${esc(c.name)} is in our team (Manage Users) — customer tools are not shown for staff numbers.</span>`; return }
     if (!c.code) { box.innerHTML = '<span class="wa-muted">Customer not known for this number — use ⏰ Schedule reminder → search to link one.</span>'; return }
     const p = state.party[c.code]
     box.innerHTML = `
@@ -285,10 +286,10 @@ function renderInbox(el, number) {
       th.innerHTML = `
         <div class="wa-thread-head">
           <button type="button" class="wa-back" id="waBack" aria-label="Back to chats">‹</button>
-          <div class="wa-head-info"><div class="wa-conv-name">${c.pinned ? '📌 ' : ''}${esc(c.name || c.display || number)}</div><div class="wa-muted wa-head-sub">${esc(c.display || number)}${c.nameHow ? `<span class="wa-name-how"> · name from ${esc(c.nameHow === 'maybe' ? 'a matching customer record (maybe)' : c.nameHow === 'whatsapp profile' ? 'their WhatsApp profile' : 'the last ' + (KIND_LABEL[c.nameHow] || c.nameHow).toLowerCase() + ' we sent')}</span>` : ''}</div></div>
+          <div class="wa-head-info"><div class="wa-conv-name">${c.pinned ? '📌 ' : ''}${esc(c.name || c.display || number)}</div><div class="wa-muted wa-head-sub">${esc(c.display || number)}${c.nameHow ? `<span class="wa-name-how"> · name from ${esc(c.nameHow === 'maybe' ? 'a matching customer record (maybe)' : c.nameHow === 'whatsapp profile' ? 'their WhatsApp profile' : c.nameHow === 'staff' ? 'Manage Users (our staff)' : 'the last ' + (KIND_LABEL[c.nameHow] || c.nameHow).toLowerCase() + ' we sent')}</span>` : ''}</div></div>
           <div class="wa-head-acts">
             ${c.code ? `<a class="btn-ghost btn-small wa-hbtn" href="#customers/${esc(c.code)}" title="Customer card" aria-label="Customer card">👤<span class="wa-btn-text"> Customer card</span></a>` : ''}
-            <button type="button" class="btn-primary btn-small wa-hbtn wa-hbtn-main" id="waSched" title="Schedule payment reminder" aria-label="Schedule reminder">⏰<span class="wa-btn-text"> Schedule reminder</span></button>
+            <button type="button" class="btn-primary btn-small wa-hbtn wa-hbtn-main" id="waSched" ${c.staff ? 'hidden' : ''} title="Schedule payment reminder" aria-label="Schedule reminder">⏰<span class="wa-btn-text"> Schedule reminder</span></button>
             <button type="button" class="btn-ghost btn-small wa-hbtn wa-more-btn" id="waMore" title="More: Done, Pin, Assign, Label, Ledger, QR" aria-label="More" aria-expanded="false">⋯</button>
           </div>
         </div>
