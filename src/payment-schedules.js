@@ -195,7 +195,8 @@ export function openBatchEditor({ batch = null, parties = null, tier = 20, respe
   return new Promise(resolve => {
     const at = batch && batch.status !== 'done' ? istParts(batch.send_at) : tomorrow11()
     const st = {
-      list: (batch ? batch.parties : parties || []).map(p => ({ code: String(p.code ?? p.party_code), name: p.name ?? p.party_name, group: p.group ?? p.group_name, balance: Number(p.balance) || 0 })),
+      list: (batch ? batch.parties : parties || []).map(p => ({ code: String(p.code ?? p.party_code), name: p.name ?? p.party_name, group: p.group ?? p.group_name, balance: Number(p.balance) || 0, overdueBy: p.overdueBy || null, note: null })),
+      groups: [], loadedGroups: new Set(),
       ticked: null, repeat: batch?.repeat || 'none', results: batch?.results || {},
     }
     st.ticked = new Set(st.list.map(p => p.code))
@@ -210,6 +211,10 @@ export function openBatchEditor({ batch = null, parties = null, tier = 20, respe
         <label class="ps-f">Only dues over<select data-tier><option value="20" ${(batch?.tier || tier) !== 40 ? 'selected' : ''}>20 days</option><option value="40" ${(batch?.tier || tier) === 40 ? 'selected' : ''}>40 days</option></select></label>
         <label class="ps-check"><input type="checkbox" data-gap ${(batch ? batch.respect_gap : respectGap) ? 'checked' : ''}> Skip anyone contacted recently (7 / 14 days)</label>
       </div>
+      <div class="ps-gpick">
+        <label class="ps-f">Add a whole account group<select data-group><option value="">Loading groups…</option></select></label>
+        <div class="pf-muted ps-gnote" data-gnote>Every party in the group with dues is added; parties that can't get a reminder (no number, check balance, nothing over the days chosen, resting) come in unticked.</div>
+      </div>
       <div class="ps-plist-head"><b data-count></b><span><button type="button" class="pf-link" data-all>Tick all</button> · <button type="button" class="pf-link" data-none>Untick all</button></span></div>
       <div class="ps-plist" data-plist></div>
       <div class="ps-add"><input type="search" data-q placeholder="+ Add a party — search name or Busy code" autocomplete="off"><div class="ps-results" data-results></div></div>
@@ -221,14 +226,60 @@ export function openBatchEditor({ batch = null, parties = null, tier = 20, respe
     const q = s => ov.querySelector(s)
     const done = v => { ov.remove(); resolve(v) }
     const err = m => { q('[data-err]').textContent = m; q('[data-err]').hidden = !m }
+    const tierNow = () => Number(q('[data-tier]').value) === 40 ? 40 : 20
+    const overdueOf = p => p.overdueBy ? Math.min(Number(p.overdueBy[tierNow()] ?? p.balance) || 0, p.balance) : null
     function drawList() {
       const n = st.ticked.size, total = st.list.filter(p => st.ticked.has(p.code)).reduce((s, p) => s + p.balance, 0)
       q('[data-count]').textContent = `${n} of ${st.list.length} ticked · ${shortRupees(total)} due`
-      q('[data-plist]').innerHTML = st.list.length ? st.list.map(p => {
-        const r = st.results[p.code]
-        return `<label class="ps-prow ${st.ticked.has(p.code) ? '' : 'is-out'}"><input type="checkbox" data-code="${esc(p.code)}" ${st.ticked.has(p.code) ? 'checked' : ''}><span class="ps-pname">${esc(p.name)}<span class="pf-muted"> · ${esc(p.group || p.code)}</span></span><span class="ps-pamt">${esc(rupees(p.balance))}</span>${r ? `<span class="pf-pill pf-tone-${r.s === 'sent' ? 'grn' : 'grey'}">${esc(RESULT_TEXT[r.s] || r.s)}</span>` : ''}</label>`
-      }).join('') : '<div class="empty-state">No parties yet — search below to add.</div>'
+      if (!st.list.length) { q('[data-plist]').innerHTML = '<div class="empty-state">No parties yet — pick a group above or search below.</div>'; return }
+      // Group-wise: one header per account group with ticked / total receivable.
+      const byGroup = new Map()
+      for (const p of st.list) { const g = p.group || 'Other'; if (!byGroup.has(g)) byGroup.set(g, []); byGroup.get(g).push(p) }
+      q('[data-plist]').innerHTML = [...byGroup.entries()].map(([g, ps]) => {
+        const tk = ps.filter(p => st.ticked.has(p.code))
+        const sum = ps.reduce((s, p) => s + p.balance, 0), tsum = tk.reduce((s, p) => s + p.balance, 0)
+        return `<div class="ps-ghead"><span class="ps-gname">${esc(g)}</span><span class="ps-gsum">${tk.length} of ${ps.length} · <b>${esc(shortRupees(tsum))}</b> of ${esc(shortRupees(sum))}</span>
+            <span class="ps-gacts"><button type="button" class="pf-link" data-gtick="${esc(g)}">Tick</button> · <button type="button" class="pf-link" data-guntick="${esc(g)}">Untick</button> · <button type="button" class="pf-link" data-gremove="${esc(g)}">Remove</button></span></div>` +
+          ps.map(p => {
+            const r = st.results[p.code], od = overdueOf(p)
+            return `<label class="ps-prow ${st.ticked.has(p.code) ? '' : 'is-out'}"><input type="checkbox" data-code="${esc(p.code)}" ${st.ticked.has(p.code) ? 'checked' : ''}><span class="ps-pname">${esc(p.name)}${p.note ? `<span class="pf-pill pf-tone-grey ps-pnote">${esc(p.note)}</span>` : ''}</span><span class="ps-pamt">${esc(rupees(p.balance))}${od !== null && od < p.balance ? `<span class="pf-muted ps-pod">${esc(rupees(od))} over ${tierNow()} d</span>` : ''}</span>${r ? `<span class="pf-pill pf-tone-${r.s === 'sent' ? 'grn' : 'grey'}">${esc(RESULT_TEXT[r.s] || r.s)}</span>` : ''}</label>`
+          }).join('')
+      }).join('')
     }
+    // Account groups with what they owe (same numbers as the WhatsApp reminders tab).
+    call({ action: 'meta' }).then(m => {
+      st.groups = (m.groups || []).filter(g => !g.dnd)
+      const sel = q('[data-group]')
+      if (!sel) return
+      const all = st.groups.reduce((a, g) => ({ parties: a.parties + g.parties, total: a.total + g.total }), { parties: 0, total: 0 })
+      sel.innerHTML = `<option value="">Pick a group to add its parties…</option>
+        <option value="__all">All groups (except DND) — ${all.parties} parties · ${shortRupees(all.total)}</option>` +
+        st.groups.map(g => `<option value="${esc(g.group_name)}">${esc(g.group_name)} — ${g.parties} · ${esc(shortRupees(g.total))}${g.byStep?.[20] ? ` (over 20 d: ${g.byStep[20].parties} · ${esc(shortRupees(g.byStep[20].total))})` : ''}</option>`).join('')
+    }).catch(e => { const sel = q('[data-group]'); if (sel) sel.innerHTML = `<option value="">${esc(e.message)}</option>` })
+    async function addGroup(name) {
+      const sel = q('[data-group]'), note = q('[data-gnote]')
+      sel.disabled = true; note.textContent = 'Loading parties…'
+      try {
+        const d = name === '__all' ? await call({ action: 'list', view: 'all' }) : await call({ action: 'list', view: 'group', group: name })
+        const gap = q('[data-gap]').checked
+        let added = 0, ticked = 0
+        for (const p of (d.parties || []).filter(x => !x.dnd && x.balance > 0).sort((a, b) => b.balance - a.balance)) {
+          const code = String(p.party_code)
+          if (st.list.some(x => x.code === code)) continue
+          const od = Math.min(Number(p.overdueBy?.[tierNow()] ?? p.overdue ?? p.balance) || 0, p.balance)
+          const why = !p.whatsapp ? 'No number' : p.needs_review ? 'Check balance' : od < 1 ? `Nothing over ${tierNow()} d` : gap && p.hold ? 'Resting' : null
+          st.list.push({ code, name: p.party_name, group: p.group_name || name, balance: Number(p.balance) || 0, overdueBy: p.overdueBy || null, note: why })
+          if (!why) { st.ticked.add(code); ticked++ }
+          added++
+        }
+        if (!q('[data-title]').value.trim() && name !== '__all') q('[data-title]').value = name
+        note.textContent = added ? `Added ${added} part${added === 1 ? 'y' : 'ies'} — ${ticked} ticked, ${added - ticked} can't get a reminder now (unticked).` : 'Everyone in that group is already in the list.'
+        drawList()
+      } catch (x) { note.textContent = x.message }
+      finally { sel.disabled = false; sel.value = '' }
+    }
+    q('[data-group]').addEventListener('change', e => { if (e.target.value) addGroup(e.target.value) })
+    q('[data-tier]').addEventListener('change', drawList)
     drawList()
     let timer = null
     q('[data-q]').addEventListener('input', () => {
@@ -253,6 +304,16 @@ export function openBatchEditor({ batch = null, parties = null, tier = 20, respe
       const r = e.target.closest('[data-rep]')
       if (r) { st.repeat = r.dataset.rep; ov.querySelectorAll('[data-rep]').forEach(b => b.classList.toggle('on', b === r)); return }
       if (e.target.closest('[data-all]')) { st.list.forEach(p => st.ticked.add(p.code)); return drawList() }
+      const gt = e.target.closest('[data-gtick],[data-guntick],[data-gremove]')
+      if (gt) {
+        e.preventDefault()
+        const g = gt.dataset.gtick ?? gt.dataset.guntick ?? gt.dataset.gremove
+        const inG = p => (p.group || 'Other') === g
+        if (gt.dataset.gtick != null) st.list.filter(inG).forEach(p => st.ticked.add(p.code))
+        else if (gt.dataset.guntick != null) st.list.filter(inG).forEach(p => st.ticked.delete(p.code))
+        else { st.list.filter(inG).forEach(p => st.ticked.delete(p.code)); st.list = st.list.filter(p => !inG(p)) }
+        return drawList()
+      }
       if (e.target.closest('[data-none]')) { st.ticked.clear(); return drawList() }
       const add = e.target.closest('[data-add]')
       if (add) {
