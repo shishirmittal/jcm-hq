@@ -25,6 +25,9 @@ function closeAnyOverlay() {
     else document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     return true
   }
+  // A full-screen WhatsApp chat on the phone (2026-10-16): back returns to the chat list.
+  const chatBack = document.body.classList.contains('wa-chat-full') && document.getElementById('waBack')
+  if (chatBack) { chatBack.click(); return true }
   return false
 }
 

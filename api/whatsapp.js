@@ -293,6 +293,25 @@ export default async function handler(req, res) {
       try { const id = await replyText(busy, number, text, me.name); return send(res, 200, { ok: true, messageId: id }) }
       catch (err) { return send(res, 502, { error: err.message }) }
     }
+    if (body.action === 'reply-media') {
+      // Photo or PDF typed on the Inbox (phone camera / gallery / file), inside the 24 h window only.
+      const number = toWaNumber(body.number)
+      if (!number) return send(res, 400, { error: 'Bad number.' })
+      const mime = String(body.mime || '').toLowerCase()
+      const isImg = /^image\/(jpeg|png)$/.test(mime)
+      const isDoc = !isImg && /^(application\/pdf|application\/vnd\.openxmlformats-officedocument\.(spreadsheetml\.sheet|wordprocessingml\.document)|application\/vnd\.ms-excel|application\/msword|text\/plain)$/.test(mime)
+      if (!isImg && !isDoc) return send(res, 400, { error: 'Only photos (JPG / PNG), PDF, Excel, Word or text files can be sent.' })
+      const buf = Buffer.from(String(body.base64 || ''), 'base64')
+      if (!buf.length) return send(res, 400, { error: 'The file is empty.' })
+      if (buf.length > 3_200_000) return send(res, 413, { error: 'That file is over 3 MB — too big to pass through HQ. Send a smaller one.' })
+      const t = await loadThread(busy, number, { markSeen: false })
+      if (!t.windowOpen) return send(res, 400, { error: 'This person has not written in the last 24 hours, so WhatsApp only allows an approved template now.' })
+      const filename = String(body.filename || (isImg ? 'photo.jpg' : 'file.pdf')).replace(/[^\w.\- ]+/g, '_').slice(0, 80)
+      try {
+        const id = await replyMedia(busy, number, buf, { kind: isImg ? 'image' : 'document', mime, filename, caption: String(body.caption || '').trim().slice(0, 900) }, me.name)
+        return send(res, 200, { ok: true, messageId: id })
+      } catch (err) { return send(res, 502, { error: err.message }) }
+    }
     if (body.action === 'templates') {
       const live = await listTemplates()
       // Last real send per template (what actually happened), so the tab answers "is it working?".

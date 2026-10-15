@@ -125,10 +125,6 @@
 @media (max-width: 560px) { .wal-rule { flex-direction: column; } }
 
 /* Inbox thread: Customer card + Schedule reminder (2026-10-16) — classes wa-head-acts / ws-* (src/wa-schedule.js) */
-.wa-thread-head > div.wa-head-acts { flex: 0 1 auto; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; }
-.wa-sched-chip { flex-basis: 100%; text-align: right; font-size: 12px; color: var(--grn-dk, #166534); }
-.wa-sched-chip:empty { display: none; }
-@media (max-width: 640px) { .wa-thread-head { flex-wrap: wrap; } .wa-thread-head > div.wa-head-acts { flex-basis: 100%; justify-content: flex-start; } .wa-sched-chip { text-align: left; } }
 .ws-modal { width: min(560px, calc(100vw - 24px)); max-height: 90vh; overflow-y: auto; }
 .ws-sub { font-size: 12.5px; color: var(--muted); }
 .ws-party { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 4px; }
@@ -188,3 +184,58 @@
 .wa-filters { flex-wrap: wrap; overflow: visible; }
 .wa-thread-head .wa-muted { overflow-wrap: anywhere; }
 @media (max-width: 800px) { .wa-tools, .wa-cust { flex-wrap: wrap; overflow: visible; } }
+
+/* Photo / file reply (2026-10-16). */
+.wa-reply { flex-direction: column; align-items: stretch; }
+.wa-reply-row { display: flex; gap: 6px; align-items: flex-end; }
+.wa-reply-row textarea { flex: 1 1 auto; min-width: 0; padding: 8px 10px; border: 1px solid #ccc; border-radius: 8px; font: inherit; resize: vertical; }
+.wa-attach { display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; border: 1px solid var(--line, #d7dbe0); border-radius: 10px; cursor: pointer; font-size: 18px; flex: 0 0 auto; background: var(--surface, #fff); }
+.wa-attach:hover { background: var(--hover, #f6f8fb); }
+.wa-cam { display: none; }
+.wa-att-prev { display: flex; gap: 10px; align-items: center; padding: 6px 8px; border: 1px dashed var(--line, #cfd5dc); border-radius: 10px; }
+.wa-att-prev[hidden] { display: none; }
+.wa-att-prev img { width: 54px; height: 54px; object-fit: cover; border-radius: 8px; }
+.wa-att-ico { font-size: 28px; }
+.wa-att-name { flex: 1; min-width: 0; font-size: 13px; overflow-wrap: anywhere; }
+@media (max-width: 800px) { .wa-cam { display: inline-flex; } }
+
+/* Chat header, compact (2026-10-16). */
+.wa-thread-head { gap: 8px; }
+.wa-head-info { flex: 1; min-width: 0; }
+.wa-head-info .wa-conv-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wa-head-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wa-thread-head > .wa-head-acts { flex: 0 0 auto; flex-wrap: nowrap; }
+.wa-hbtn { white-space: nowrap; }
+.wa-more-btn { display: none; }
+.wa-back { display: none; border: 0; background: transparent; color: inherit; font-size: 30px; line-height: 1; padding: 0 6px 4px 0; cursor: pointer; }
+.wa-sched-chip:empty { display: none; }
+.wa-sched-chip { padding: 5px 12px; font-size: 12.5px; background: #eef6ff; color: #1e40af; border-bottom: 1px solid var(--line, #eee); }
+
+/* Phone: an open chat takes the whole screen — page header, tabs, bottom tab bar and Nexus step aside. */
+@media (max-width: 800px) {
+  .wa-back { display: inline-block; }
+  .wa-name-how { display: none; }
+  .wa-btn-text { display: none; }
+  .wa-hbtn { width: 40px; height: 40px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; font-size: 18px; text-decoration: none; }
+  .wa-more-btn { display: inline-flex; font-size: 22px; }
+  .wa-thread:not(.wa-tools-open) .wa-tools, .wa-thread:not(.wa-tools-open) .wa-cust { display: none; }
+  .wa-tools-open .wa-more-btn { background: var(--hover, #eef2f7); }
+  body.wa-chat-full .wa-show-thread .wa-thread {
+    position: fixed; inset: 0; z-index: 80; border: 0; border-radius: 0; max-height: none; height: 100dvh;
+    padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); box-sizing: border-box;
+    background: var(--surface, #fff);
+  }
+  body.wa-chat-full .wa-show-thread .wa-msgs { min-height: 0; }
+  body.wa-chat-full .app-tabs, body.wa-chat-full .nx-root { display: none !important; }
+  body.wa-chat-full { overflow: hidden; }
+  .wa-thread-head { padding: 8px 10px 8px 6px; }
+  .wa-reply { padding: 8px 10px; }
+}
+.wa-thread-head { flex-wrap: nowrap; }
+.wa-thread-head > .wa-head-acts { display: flex; gap: 6px; align-items: center; }
+.wa-thread > * { flex: 0 0 auto; }
+.wa-thread > .wa-msgs { flex: 1 1 auto; }
+.wa-reply .wa-quick { flex: 0 0 auto; }
+.wa-reply .wa-quick .wa-chip { padding: 6px 12px; }
+.wa-reply-row textarea { width: auto; flex: 1 1 0; min-height: 40px; }
+.wa-reply-row .btn-primary { flex: 0 0 auto; height: 40px; }

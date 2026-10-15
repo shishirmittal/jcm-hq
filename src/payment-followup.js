@@ -196,6 +196,7 @@ export function renderPaymentFollowup(container, sub) {
     scope: 20,          // 20 / 40 (days) or 'all'
     graceDays: 20,
     graceSteps: [20, 40],
+    hideRest: store('pf.hideRest') === '1', // Follow-up calls: hide greyed (resting) parties — remembered per browser
     picked: new Set(),   // ticked parties (party_code) for "Send WhatsApp to N"
     bulkSending: false,
   }
@@ -228,6 +229,7 @@ export function renderPaymentFollowup(container, sub) {
             <button type="button" data-scope="all">All dues</button>
           </div>
           <span class="pf-muted" id="pfScopeNote"></span>
+          <button type="button" class="pf-rest-toggle" id="pfHideRest" ${today ? 'hidden' : ''}></button>
         </div>
         <div class="pf-pickbar" id="pfPickBar" hidden></div>
         <div id="pfList" class="pf-list"><div class="loading-state">Loading…</div></div>
@@ -325,6 +327,11 @@ export function renderPaymentFollowup(container, sub) {
   $('pfSearch').addEventListener('input', e => {
     clearTimeout(searchTimer)
     searchTimer = setTimeout(() => { state.q = e.target.value.trim().toLowerCase(); drawList() }, 150)
+  })
+  $('pfHideRest').addEventListener('click', () => {
+    state.hideRest = !state.hideRest
+    store('pf.hideRest', state.hideRest ? '1' : '0')
+    drawList()
   })
   $('pfSort').addEventListener('change', e => { state.sort = e.target.value; store('pf.sort', state.sort); drawList() })
   $('pfScope').addEventListener('click', e => {
@@ -581,8 +588,20 @@ export function renderPaymentFollowup(container, sub) {
 
   // Parties on screen for the chosen scope (the due-today view always shows everyone it has).
   function visible() {
-    if (state.scope === 'all' || state.view === 'due') return state.parties
-    return state.parties.filter(p => overdueOf(p) >= 1)
+    if (state.view === 'due') return state.parties
+    const inScope = state.scope === 'all' ? state.parties : state.parties.filter(p => overdueOf(p) >= 1)
+    return state.hideRest ? inScope.filter(p => !p.hold) : inScope
+  }
+  // "Hide resting" button (calls tab): how many greyed parties are in the current scope.
+  function drawRestToggle() {
+    const b = $('pfHideRest')
+    if (!b || state.view === 'due') return
+    const inScope = state.scope === 'all' ? state.parties : state.parties.filter(p => overdueOf(p) >= 1)
+    const n = inScope.filter(p => p.hold).length
+    b.hidden = !n && !state.hideRest
+    b.classList.toggle('on', state.hideRest)
+    b.textContent = state.hideRest ? `👁 Show ${n} resting` : `⏸ Hide ${n} resting`
+    b.title = 'Resting = contacted in the last 7 days (over 40 d) or 14 days (over 20 d), a promised date ahead, or an auto reminder set'
   }
   // What the party owes on bills older than the chosen number of days.
   function overdueOf(p, days = state.scope === 'all' ? state.graceDays : state.scope) {
@@ -816,6 +835,7 @@ export function renderPaymentFollowup(container, sub) {
   }
 
   function drawList() {
+    drawRestToggle()
     const listEl = $('pfList')
     const q = state.q
     const qDigits = q.replace(/\D/g, '')
@@ -828,6 +848,7 @@ export function renderPaymentFollowup(container, sub) {
       const hiddenRecent = state.scope !== 'all' && state.view !== 'due' ? state.parties.length : 0
       listEl.innerHTML = `<div class="empty-state">${q ? 'No party matches that search.'
         : state.view === 'due' ? (state.doneToday.length ? 'Nothing left to call today. 🎉' : 'No follow-ups due today.')
+        : state.hideRest && state.parties.some(p => p.hold) ? 'Everyone left is resting (contacted recently, promised or auto reminder). Tap “Show resting” to see them.'
         : hiddenRecent ? `Nobody here has dues older than ${state.scope} days. ${hiddenRecent} part${hiddenRecent === 1 ? 'y has' : 'ies have'} only recent credit — tap “All dues” to see them.`
         : 'Nobody in this group owes money.'}</div>`
       return

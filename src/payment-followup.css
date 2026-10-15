@@ -286,3 +286,7 @@ body.pf-modal-open { overflow: hidden; }
 .pf-hold { font-size: 12px; color: var(--muted); margin: 4px 0; max-width: 260px; }
 .pf-row.is-held .btn-call, .pf-row.is-held .btn-whatsapp, .pf-row.is-held [data-act="send-ledger"] { filter: grayscale(1); opacity: .45; }
 .pf-row.is-held .pf-phone { color: var(--muted); }
+
+/* "Hide resting" button on Follow-up calls (2026-10-16). */
+.pf-rest-toggle { margin-left: auto; border: 1px solid var(--line, #d7dbe0); background: var(--surface, #fff); color: inherit; border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.pf-rest-toggle.on { background: #eef2ff; border-color: #a5b4fc; color: #3730a3; }

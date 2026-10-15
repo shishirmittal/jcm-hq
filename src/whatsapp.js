@@ -114,7 +114,7 @@ function renderInbox(el, number) {
       </aside>
       <section class="wa-thread" id="waThread"><div class="empty-state">Pick a conversation.</div></section>
     </div>`
-  const state = { convs: [], number: number || null, timer: null, thread: null, filter: store.get('wa.filter', 'open'), label: '', quick: [], labels: [], me: null, people: null, party: {} }
+  const state = { convs: [], number: number || null, timer: null, thread: null, filter: store.get('wa.filter', 'open'), label: '', quick: [], labels: [], me: null, people: null, party: {}, media: {}, att: null, sig: null, convSig: null }
   if (!FILTERS.some(f => f[0] === state.filter)) state.filter = 'open'
   const $ = id => el.querySelector('#' + id)
   const conv = n => state.convs.find(x => x.number === n) || {}
@@ -124,6 +124,9 @@ function renderInbox(el, number) {
       const d = await call({ action: 'inbox', withPeople: !state.people })
       if (!el.isConnected) return
       if (d.setup) { $('waConvs').innerHTML = '<div class="pf-warn">Run the WhatsApp inbox SQL in Supabase first (ask in the HQ chat).</div>'; return }
+      const sig = JSON.stringify(d.conversations) + Math.floor(Date.now() / 120000)
+      const changed = sig !== state.convSig
+      state.convSig = sig
       state.convs = d.conversations
       state.quick = d.quick || []
       state.me = d.me || null
@@ -132,7 +135,7 @@ function renderInbox(el, number) {
         state.labels = d.labels
         $('waLabelF').insertAdjacentHTML('beforeend', d.labels.map(l => `<option>${esc(l)}</option>`).join(''))
       }
-      drawConvs()
+      if (changed || !silent) drawConvs()
       if (!state.number && state.convs.length && window.innerWidth > 800) { const first = visible()[0]; if (first) openThread(first.number) }
     } catch (err) { if (!silent) $('waConvs').innerHTML = `<div class="empty-state">${esc(err.message)}</div>` }
   }
@@ -202,21 +205,22 @@ function renderInbox(el, number) {
       ${t.windowOpen ? '<button type="button" class="btn-ghost btn-small" data-send="qr">💳 Send payment QR</button>' : ''}`
   }
 
-  async function openThread(number) {
-    state.number = number
-    drawConvs()
-    history.replaceState(null, '', `#whatsapp/inbox/${number}`)
-    const th = $('waThread')
-    th.innerHTML = '<div class="loading-state">Loading…</div>'
-    try {
-      const t = await call({ action: 'thread', number })
-      if (!el.isConnected || state.number !== number) return
-      state.thread = t
-      const c = conv(number)
-      for (const x of state.convs) if (x.number === number) x.unread = 0
-      drawConvs(); refreshNavBadges?.()
-      let lastDay = ''
-      const rows = t.items.map(m => {
+  // Smooth refresh (2026-10-16): the 20-second refresh asks for the open chat quietly and only touches the
+  // messages box when something changed (new message, a tick turned blue) — header, buttons, what you are
+  // typing and the photo you picked stay as they are; scroll stays put unless you were at the bottom.
+  // Photos already opened in this chat stay visible when the messages box is redrawn.
+  function showLoadedImages(root) {
+    for (const [mid, d] of Object.entries(state.media)) {
+      const img = root.querySelector(`#waImg${mid}`)
+      if (!img || img.innerHTML) continue
+      img.innerHTML = `<img src="data:${d.mime};base64,${d.base64}" alt="" style="cursor:pointer">`
+      img.querySelector('img').addEventListener('click', () => openPdfViewer(d))
+    }
+  }
+  const threadSig = t => `${t.windowOpen}|${t.items.map(m => `${m.id}:${m.status}`).join(',')}`
+  function msgsHtml(t) {
+    let lastDay = ''
+    return t.items.map(m => {
         const day = dayOf(m.at)
         const sep = day !== lastDay ? `<div class="wa-day">${esc(day)}</div>` : ''
         lastDay = day
@@ -224,25 +228,72 @@ function renderInbox(el, number) {
         const who = m.direction === 'out' ? `<span class="wa-muted">${esc(m.by || 'HQ')}</span>` : ''
         const text = m.kind === 'template' ? `<span class="wa-template">📨 ${esc(m.template)}</span><div class="wa-muted">${esc((m.text || '').replace(/^\[[^\]]+\]\s*/, ''))}</div>` : m.kind === 'button' ? `<span class="wa-tap">↩ tapped <strong>${esc(m.text)}</strong></span>` : m.media ? `<button type="button" class="wa-file" data-media="${m.mid}">${m.kind === 'image' ? '🖼' : m.kind === 'video' ? '🎬' : m.kind === 'audio' ? '🎙' : '📎'} ${esc(String(m.text || m.kind).replace(/^[🖼📄]\s*/u, ''))}<span class="wa-muted"> · tap to ${m.kind === 'image' || /\.pdf\b/i.test(m.text || '') ? 'open' : IS_APP ? 'open / save' : 'download'}</span></button>${m.kind === 'image' ? `<div class="wa-img" id="waImg${m.mid}"></div>` : ''}` : esc(m.text || '')
         return `${sep}<div class="wa-msg wa-${m.direction} ${m.kind === 'template' ? 'wa-tpl' : ''}"><div class="wa-bubble">${text}${m.error && m.direction === 'out' ? `<div class="wa-err">${esc(m.error)}</div>` : ''}<div class="wa-meta">${who} ${esc(timeOnly(m.at))} ${st}</div></div></div>`
-      }).join('')
+    }).join('') || '<div class="empty-state">Nothing here yet.</div>'
+  }
+  function closeThread() {
+    state.number = null
+    history.replaceState(null, '', '#whatsapp/inbox')
+    el.classList.remove('wa-show-thread')
+    document.body.classList.remove('wa-chat-full')
+    drawConvs()
+  }
+  async function openThread(number, silent = false) {
+    const th = $('waThread')
+    const quiet = silent && state.number === number && th.querySelector('#waMsgs')
+    if (!quiet) {
+      state.number = number
+      state.att = null; state.media = {}
+      drawConvs()
+      history.replaceState(null, '', `#whatsapp/inbox/${number}`)
+      th.innerHTML = '<div class="loading-state">Loading…</div>'
+    }
+    try {
+      const t = await call({ action: 'thread', number })
+      if (!el.isConnected || state.number !== number) return
+      const sig = threadSig(t)
+      if (quiet) {
+        if (sig === state.sig) return
+        if (t.windowOpen === state.thread?.windowOpen) {
+          const box = th.querySelector('#waMsgs')
+          const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80
+          box.innerHTML = msgsHtml(t)
+          showLoadedImages(box)
+          if (atBottom) box.scrollTop = 1e9
+          state.thread = t; state.sig = sig
+          return
+        }
+      }
+      const typed = th.querySelector('#waReplyText')?.value || ''
+      state.thread = t; state.sig = sig
+      const c = conv(number)
+      for (const x of state.convs) if (x.number === number) x.unread = 0
+      drawConvs(); refreshNavBadges?.()
+      const rows = msgsHtml(t)
       const fill = s => s.replace(/\{name\}/g, c.name || '')
       th.innerHTML = `
         <div class="wa-thread-head">
-          <button type="button" class="btn-ghost btn-small wa-back" id="waBack">‹ Back</button>
-          <div><div class="wa-conv-name">${c.pinned ? '📌 ' : ''}${esc(c.name || c.display || number)}</div><div class="wa-muted">${esc(c.display || number)}${c.nameHow ? ` · name from ${esc(c.nameHow === 'maybe' ? 'a matching customer record (maybe)' : c.nameHow === 'whatsapp profile' ? 'their WhatsApp profile' : 'the last ' + (KIND_LABEL[c.nameHow] || c.nameHow).toLowerCase() + ' we sent')}` : ''}</div></div>
+          <button type="button" class="wa-back" id="waBack" aria-label="Back to chats">‹</button>
+          <div class="wa-head-info"><div class="wa-conv-name">${c.pinned ? '📌 ' : ''}${esc(c.name || c.display || number)}</div><div class="wa-muted wa-head-sub">${esc(c.display || number)}${c.nameHow ? `<span class="wa-name-how"> · name from ${esc(c.nameHow === 'maybe' ? 'a matching customer record (maybe)' : c.nameHow === 'whatsapp profile' ? 'their WhatsApp profile' : 'the last ' + (KIND_LABEL[c.nameHow] || c.nameHow).toLowerCase() + ' we sent')}</span>` : ''}</div></div>
           <div class="wa-head-acts">
-            ${c.code ? `<a class="btn-ghost btn-small" href="#customers/${esc(c.code)}">👤 Customer card</a>` : ''}
-            <button type="button" class="btn-primary btn-small" id="waSched">⏰ Schedule reminder</button>
-            <div class="wa-sched-chip" id="waSchedChip"></div>
+            ${c.code ? `<a class="btn-ghost btn-small wa-hbtn" href="#customers/${esc(c.code)}" title="Customer card" aria-label="Customer card">👤<span class="wa-btn-text"> Customer card</span></a>` : ''}
+            <button type="button" class="btn-primary btn-small wa-hbtn wa-hbtn-main" id="waSched" title="Schedule payment reminder" aria-label="Schedule reminder">⏰<span class="wa-btn-text"> Schedule reminder</span></button>
+            <button type="button" class="btn-ghost btn-small wa-hbtn wa-more-btn" id="waMore" title="More: Done, Pin, Assign, Label, Ledger, QR" aria-label="More" aria-expanded="false">⋯</button>
           </div>
         </div>
+        <div class="wa-sched-chip" id="waSchedChip"></div>
         <div class="wa-tools" id="waTools"></div>
         <div class="wa-cust" id="waCust"></div>
-        <div class="wa-msgs" id="waMsgs">${rows || '<div class="empty-state">Nothing here yet.</div>'}</div>
+        <div class="wa-msgs" id="waMsgs">${rows}</div>
         <div class="wa-reply">
           ${t.windowOpen
             ? `${state.quick.length || state.me?.isAdmin ? `<div class="wa-quick">${state.quick.map((q, i) => `<button type="button" class="wa-chip" data-quick="${i}" title="${esc(fill(q))}">${esc(fill(q).slice(0, 34))}${q.length > 34 ? '…' : ''}</button>`).join('')}${state.me?.isAdmin ? '<button type="button" class="wa-chip wa-chip-edit" id="waQuickEdit" title="Change the saved replies">✎ Edit</button>' : ''}</div>` : ''}
-               <textarea id="waReplyText" rows="2" placeholder="Type a reply… (they wrote within the last 24 h, so a free message is allowed)"></textarea><button class="btn-primary btn-small" id="waReplySend">Send</button>`
+               <div class="wa-att-prev" id="waAttPrev" hidden></div>
+               <div class="wa-reply-row">
+                 <label class="wa-attach" title="Send a photo, PDF, Excel or Word file">📎<input type="file" id="waFile" accept="image/*,application/pdf,.pdf,.xlsx,.xls,.docx,.doc,.txt" hidden></label>
+                 <label class="wa-attach wa-cam" title="Take a photo">📷<input type="file" id="waCam" accept="image/*" capture="environment" hidden></label>
+                 <textarea id="waReplyText" rows="2" placeholder="Type a reply…"></textarea>
+                 <button class="btn-primary btn-small" id="waReplySend">Send</button>
+               </div>`
             : `<div class="wa-muted">They have not written in the last 24 hours, so WhatsApp allows only an approved template now. Use 📄 Send ledger above, ⏰ Schedule reminder, or a payment reminder from Payment Follow-up.</div>`}
           <p class="pf-error" id="waReplyErr" hidden></p>
         </div>`
@@ -254,13 +305,15 @@ function renderInbox(el, number) {
       }).catch(() => {})
       else if (c.code) call({ action: 'schedule-list', party_code: c.code }).then(d => { const a = d.schedules.find(x => x.status === 'active'); const chip = th.querySelector('#waSchedChip'); if (a && chip) chip.textContent = scheduleChip(a) }).catch(() => {})
       th.querySelector('#waMsgs').scrollTop = 1e9
-      th.querySelector('#waBack').addEventListener('click', () => { state.number = null; history.replaceState(null, '', '#whatsapp/inbox'); el.classList.remove('wa-show-thread'); drawConvs() })
+      th.querySelector('#waBack').addEventListener('click', closeThread)
+      th.querySelector('#waMore').addEventListener('click', e => { const on = th.classList.toggle('wa-tools-open'); e.currentTarget.setAttribute('aria-expanded', String(on)) })
       el.classList.add('wa-show-thread')
+      document.body.classList.add('wa-chat-full')
       th.querySelector('#waTools').addEventListener('click', e => {
         const b = e.target.closest('button[data-t]')
         if (!b) return
         const x = conv(number), t2 = b.dataset.t
-        if (t2 === 'unread') return op({ op: 'unread' }, () => { x.unread = 1; state.number = null; th.innerHTML = '<div class="empty-state">Marked unread.</div>'; el.classList.remove('wa-show-thread'); history.replaceState(null, '', '#whatsapp/inbox'); refreshNavBadges?.() })
+        if (t2 === 'unread') return op({ op: 'unread' }, () => { x.unread = 1; closeThread(); th.innerHTML = '<div class="empty-state">Marked unread.</div>'; refreshNavBadges?.() })
         op({ op: t2 }, () => { if (t2 === 'done') { x.done = true; x.doneBy = 'you'; x.waiting = null } if (t2 === 'reopen') x.done = false; if (t2 === 'pin') x.pinned = true; if (t2 === 'unpin') x.pinned = false })
       })
       th.querySelector('#waTools').addEventListener('change', e => {
@@ -301,8 +354,8 @@ function renderInbox(el, number) {
           const img = el.querySelector(`#waImg${b.dataset.media}`)
           if (img && d.mime.startsWith('image/') && !img.innerHTML) {
             // Photos show right in the chat; tap the photo to see it full screen (Save / share there).
-            img.innerHTML = `<img src="data:${d.mime};base64,${d.base64}" alt="" style="cursor:pointer">`
-            img.querySelector('img').addEventListener('click', () => openPdfViewer(d))
+            state.media[b.dataset.media] = d
+            showLoadedImages(el)
           } else if (/pdf|^image\//.test(d.mime)) {
             await openPdfViewer(d) // opens on screen; "Save / share" button inside
           } else {
@@ -315,29 +368,86 @@ function renderInbox(el, number) {
         finally { b.disabled = false }
       })
       th.querySelector('#waSched').addEventListener('click', () => openScheduler({ number, code: c.code, name: c.name, onSaved: sch => { const chip = th.querySelector('#waSchedChip'); if (chip) chip.textContent = scheduleChip(sch) } }))
+      if (typed && th.querySelector('#waReplyText')) th.querySelector('#waReplyText').value = typed
+      for (const id of ['waFile', 'waCam']) th.querySelector('#' + id)?.addEventListener('change', e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) pickFile(f) })
+      th.querySelector('#waAttPrev')?.addEventListener('click', e => { if (e.target.closest('[data-att-x]')) { state.att = null; drawAtt() } })
       th.querySelector('#waReplySend')?.addEventListener('click', sendReply)
       th.querySelector('#waReplyText')?.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) sendReply() })
     } catch (err) { th.innerHTML = `<div class="empty-state">${esc(err.message)}</div>` }
   }
+  // Photo / file reply (2026-10-16): photos are shrunk on the phone (1600 px JPEG) so they pass through HQ fast.
+  async function pickFile(f) {
+    const err = el.querySelector('#waReplyErr')
+    err.hidden = true
+    try {
+      if (/^image\//.test(f.type) && !/gif|svg/.test(f.type)) state.att = await shrinkImage(f)
+      else {
+        if (f.size > 3_000_000) throw new Error(`${f.name} is ${(f.size / 1e6).toFixed(1)} MB — WhatsApp from HQ takes files up to 3 MB.`)
+        const mime = f.type || (/\.pdf$/i.test(f.name) ? 'application/pdf' : /\.xlsx$/i.test(f.name) ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : /\.docx$/i.test(f.name) ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : '')
+        state.att = { kind: 'document', mime, filename: f.name, size: f.size, base64: await fileBase64(f) }
+      }
+      drawAtt()
+      el.querySelector('#waReplyText')?.focus()
+    } catch (e) { err.textContent = e.message; err.hidden = false }
+  }
+  function drawAtt() {
+    const box = el.querySelector('#waAttPrev'), ta = el.querySelector('#waReplyText')
+    if (!box) return
+    const a = state.att
+    box.hidden = !a
+    box.innerHTML = a ? `${a.kind === 'image' ? `<img src="data:${a.mime};base64,${a.base64}" alt="">` : '<span class="wa-att-ico">📄</span>'}
+      <span class="wa-att-name">${esc(a.filename)}<span class="wa-muted"> · ${(a.size / 1e6 >= 0.1 ? (a.size / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(a.size / 1e3)) + ' KB')}</span></span>
+      <button type="button" class="btn-ghost btn-small" data-att-x aria-label="Remove">✕</button>` : ''
+    if (ta) ta.placeholder = a ? 'Add a caption (optional)…' : 'Type a reply…'
+  }
   async function sendReply() {
     const ta = el.querySelector('#waReplyText'), btn = el.querySelector('#waReplySend'), err = el.querySelector('#waReplyErr')
     const text = ta.value.trim()
-    if (!text) return
-    btn.disabled = true; err.hidden = true
-    try { await call({ action: 'reply', number: state.number, text }); ta.value = ''; await openThread(state.number); loadConvs(true) }
+    const att = state.att
+    if (!text && !att) return
+    btn.disabled = true; err.hidden = true; btn.textContent = att ? 'Sending…' : 'Send'
+    try {
+      if (att) await call({ action: 'reply-media', number: state.number, base64: att.base64, mime: att.mime, filename: att.filename, caption: text })
+      else await call({ action: 'reply', number: state.number, text })
+      ta.value = ''; state.att = null; drawAtt()
+      await openThread(state.number, true); el.querySelector('#waMsgs').scrollTop = 1e9; loadConvs(true)
+    }
     catch (e) { err.textContent = e.message; err.hidden = false }
-    finally { btn.disabled = false }
+    finally { btn.disabled = false; btn.textContent = 'Send' }
   }
 
+  // Leaving the Inbox (another tab or page) always gives the header and tab bar back.
+  const onHash = () => { if (!el.isConnected || !location.hash.startsWith('#whatsapp/inbox/')) { document.body.classList.remove('wa-chat-full'); if (!el.isConnected) window.removeEventListener('hashchange', onHash) } }
+  window.addEventListener('hashchange', onHash)
   loadConvs().then(() => { if (number) openThread(number) })
   // Every 20 s: list always; the open chat only when nobody is typing or picking from a dropdown.
   state.timer = setInterval(() => {
-    if (!el.isConnected) { clearInterval(state.timer); return }
+    if (!el.isConnected) { clearInterval(state.timer); document.body.classList.remove('wa-chat-full'); return }
     loadConvs(true)
-    const busyHere = el.querySelector('#waReplyText')?.value || el.querySelector('.wa-tools select:focus') || document.querySelector('.hq-dlg, .modal-overlay')
-    if (state.number && !busyHere) openThread(state.number)
+    if (state.number && !document.querySelector('.hq-dlg, .modal-overlay') && !el.querySelector('#waReplySend:disabled')) openThread(state.number, true)
   }, 20000)
-  return { refresh: () => { loadConvs(); if (state.number) openThread(state.number) } }
+  return { refresh: () => { loadConvs(); if (state.number) openThread(state.number, true) } }
+}
+
+function fileBase64(f) {
+  return new Promise((ok, bad) => {
+    const r = new FileReader()
+    r.onload = () => ok(String(r.result).split(',')[1] || '')
+    r.onerror = () => bad(new Error('Could not read that file.'))
+    r.readAsDataURL(f)
+  })
+}
+async function shrinkImage(f, max = 1600) {
+  const url = URL.createObjectURL(f)
+  try {
+    const img = await new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => bad(new Error('That photo could not be opened (try a JPG or PNG).')); i.src = url })
+    const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight))
+    const c = document.createElement('canvas')
+    c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k)
+    const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height)
+    const base64 = c.toDataURL('image/jpeg', 0.8).split(',')[1]
+    return { kind: 'image', mime: 'image/jpeg', filename: (f.name || 'photo').replace(/\.\w+$/, '') + '.jpg', size: Math.round(base64.length * 0.75), base64 }
+  } finally { URL.revokeObjectURL(url) }
 }
 
 // ---- Templates --------------------------------------------------------------
