@@ -36,3 +36,7 @@
 
 body.native-app .nb-bell { color: var(--app-navy-ink); border-color: rgba(255, 255, 255, 0.28); }
 body.native-app .nb-count { box-shadow: 0 0 0 2px var(--app-navy); }
+/* On the navy Stock header the bell matches the Refresh button beside it. */
+.stock-header .nb-bell { width: 44px; height: 44px; border: 1px solid rgba(255, 255, 255, 0.28); border-radius: 12px; color: #fff; background: transparent; }
+.stock-header .nb-bell:active { background: rgba(255, 255, 255, 0.12); }
+.stock-header .nb-count { box-shadow: 0 0 0 2px var(--app-navy, #12213b); }

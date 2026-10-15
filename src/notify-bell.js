@@ -107,7 +107,10 @@ function openPanel(btn) {
   document.body.appendChild(panel)
   const r = btn.getBoundingClientRect()
   panel.style.top = `${Math.round(r.bottom + 8)}px`
-  panel.style.right = `${Math.max(8, Math.round(window.innerWidth - r.right))}px`
+  // Keep the panel on screen: hug the bell's right edge, never past the left edge.
+  const width = Math.min(360, window.innerWidth - 16)
+  const right = Math.max(8, Math.min(Math.round(window.innerWidth - r.right), window.innerWidth - width - 8))
+  panel.style.right = `${right}px`
   panel.addEventListener('click', e => { if (e.target.closest('.nb-item')) closePanel() })
   // Opening the bell = "I have seen these numbers".
   writeSeen(Object.fromEntries(items().map(i => [i.key, i.n])))
@@ -130,9 +133,12 @@ function onDocClick(e) {
 // with a right-hand control (Refresh, etc.); the bell goes just before it.
 function attach() {
   let added = false
-  document.querySelectorAll('.app-header').forEach(h => {
-    if (h.querySelector('.nb-bell')) return
+  document.querySelectorAll('.app-header').forEach(header => {
+    if (header.querySelector('.nb-bell')) return
     added = true
+    // A stacked header (Stock: title row, search, filters) marks its title row
+    // with data-bell-row so the bell sits beside Refresh, not under the filters.
+    const h = header.querySelector('[data-bell-row]') || header
     const btn = document.createElement('button')
     btn.type = 'button'
     btn.className = 'btn-ghost nb-bell'

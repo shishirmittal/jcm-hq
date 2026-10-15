@@ -4,9 +4,11 @@
 .qtn-tab.active { color: var(--blue); border-bottom-color: var(--blue); }
 .qb-note { color: var(--muted); font-size: 12.5px; margin: 8px 0 10px; }
 .qb-rows { display: flex; flex-direction: column; gap: 8px; }
-.qb-row { display: flex; justify-content: space-between; gap: 12px; width: 100%; text-align: left; font: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; cursor: pointer; color: var(--ink); }
+.qb-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; width: 100%; text-align: left; font: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; cursor: pointer; color: var(--ink); }
 .qb-row:hover { box-shadow: 0 2px 8px var(--shadow); }
 .qb-row.is-cancelled { opacity: .6; }
+.qb-row-actions { display: inline-flex; gap: 6px; flex-shrink: 0; }
+.qb-row-actions .btn-small { display: inline-flex; align-items: center; gap: 5px; }
 .qb-main { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .qb-side { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; }
 .qb-name { font-weight: 700; font-size: 14.5px; overflow-wrap: anywhere; }
@@ -22,4 +24,6 @@
 .qb-send { margin-top: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); display: flex; flex-direction: column; gap: 8px; }
 .qb-send input { margin-left: 8px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; font: inherit; width: 160px; }
 .qb-ok { color: var(--grn-dk); font-weight: 600; }
-@media (max-width: 640px) { .qb-row { flex-direction: column; } .qb-side { align-items: flex-start; } .qb-table { font-size: 12px; } }
+@media (max-width: 640px) { .qb-row { flex-direction: column; align-items: stretch; } .qb-row-actions { justify-content: flex-end; } .qb-side { align-items: flex-start; } .qb-table { font-size: 12px; } }
+/* The HQ layout is display:flex, which would beat the hidden attribute when the From Busy tab is open. */
+.quotations-layout[hidden], #qtnBusy[hidden] { display: none !important; }

@@ -6,6 +6,7 @@ import { supabase } from './supabase.js'
 import { apiUrl } from './native.js'
 import { esc, formatMoney } from './utils.js'
 import { openPdfViewer } from './pdf-viewer.js'
+import { shareBase64 } from './share-pdf.js'
 import { hqAlert } from './hq-dialog.js'
 import './quotations-busy.css'
 
@@ -21,6 +22,7 @@ async function call(payload) {
 }
 const day = s => (s ? new Date(s + (String(s).length === 10 ? 'T00:00:00' : '')).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '')
 const pretty = d => /^[6-9]\d{9}$/.test(d) ? `${d.slice(0, 5)} ${d.slice(5)}` : d
+const DL = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>'
 const WA = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18a8 8 0 0 1-4.1-1.1l-.3-.2-3 .8.8-2.9-.2-.3A8 8 0 1 1 12 20zm4.4-6c-.2-.1-1.4-.7-1.6-.8s-.4-.1-.5.1l-.8.9c-.1.2-.3.2-.5.1a6.5 6.5 0 0 1-3.3-2.9c-.2-.4.3-.4.8-1.3.1-.2 0-.3 0-.4l-.7-1.7c-.2-.5-.4-.4-.5-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.7 11.8 11.8 0 0 0 4.5 4c1.7.7 2.3.8 3.1.6a2.6 2.6 0 0 0 1.7-1.2 2 2 0 0 0 .2-1.2c-.1-.1-.3-.2-.5-.3z"/></svg>'
 
 export function renderBusyQuotations(host) {
@@ -38,9 +40,26 @@ export function renderBusyQuotations(host) {
   let t = null
   $('qbSearch').addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => { state.q = $('qbSearch').value.trim(); state.page = 0; load() }, 300) })
   $('qbList').addEventListener('click', e => {
+    const dl = e.target.closest('[data-dl]')
+    if (dl) { downloadPdf(dl.dataset.dl, dl); return }
+    const send = e.target.closest('[data-send]')
+    if (send) { openQuote(send.dataset.send, { send: true }); return }
     const row = e.target.closest('[data-key]')
     if (row) openQuote(row.dataset.key)
   })
+  $('qbList').addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return
+    const row = e.target.closest('.qb-row'); if (!row) return
+    e.preventDefault(); openQuote(row.dataset.key)
+  })
+
+  // Download (web) / share sheet (app) of the quotation PDF, from a row or the detail sheet.
+  async function downloadPdf(key, b) {
+    const was = b.innerHTML; b.disabled = true; b.textContent = 'Making PDF…'
+    try { const r = await call({ action: 'busy-quote-pdf', vch_key: key }); await shareBase64(r.base64, r.filename, 'application/pdf', { title: r.filename }) }
+    catch (err) { hqAlert(err.message) }
+    b.disabled = false; b.innerHTML = was
+  }
   $('qbPager').addEventListener('click', e => {
     const b = e.target.closest('[data-page]'); if (!b) return
     state.page = Number(b.dataset.page); load()
@@ -66,7 +85,7 @@ export function renderBusyQuotations(host) {
     if (!d.rows.length) { $('qbList').innerHTML = '<div class="empty-state">No quotation matches.</div>'; $('qbPager').innerHTML = ''; return }
     $('qbList').innerHTML = `
       <div class="qb-rows">${d.rows.map(r => `
-        <button type="button" class="qb-row ${r.cancelled ? 'is-cancelled' : ''}" data-key="${esc(r.vch_key)}">
+        <div class="qb-row ${r.cancelled ? 'is-cancelled' : ''}" data-key="${esc(r.vch_key)}" role="button" tabindex="0">
           <span class="qb-main">
             <span class="qb-name">${esc(r.billed_name || r.party_name || '—')}</span>
             <span class="qb-sub">${esc(r.vch_no || '')} · ${esc(day(r.quote_date))}${r.city ? ` · ${esc(r.city)}` : ''}${r.entered_by ? ` · by ${esc(r.entered_by)}` : ''}</span>
@@ -75,7 +94,11 @@ export function renderBusyQuotations(host) {
             <span class="qb-amt">${r.cancelled ? '<span class="pf-pill pf-tone-red">Cancelled</span>' : esc(formatMoney(r.quote_total || 0))}</span>
             <span class="qb-sub">${r.item_count} item${r.item_count === 1 ? '' : 's'}${r.mobile ? ` · ${esc(pretty(String(r.mobile).replace(/\D/g, '').slice(-10)))}` : ' · no mobile'}</span>
           </span>
-        </button>`).join('')}</div>`
+          <span class="qb-row-actions">
+            <button type="button" class="btn-ghost btn-small" data-dl="${esc(r.vch_key)}" title="Download PDF">${DL} PDF</button>
+            <button type="button" class="btn-contact btn-whatsapp btn-small" data-send="${esc(r.vch_key)}" title="Send on WhatsApp" ${r.cancelled ? 'disabled' : ''}>${WA} Send</button>
+          </span>
+        </div>`).join('')}</div>`
     const pages = Math.max(1, Math.ceil(d.total / d.pageSize))
     $('qbPager').innerHTML = pages > 1 ? `
       <button type="button" class="btn-ghost btn-small" data-page="${Math.max(0, d.page - 1)}" ${d.page === 0 ? 'disabled' : ''}>‹ Prev</button>
@@ -83,7 +106,7 @@ export function renderBusyQuotations(host) {
       <button type="button" class="btn-ghost btn-small" data-page="${Math.min(pages - 1, d.page + 1)}" ${d.page >= pages - 1 ? 'disabled' : ''}>Next ›</button>` : ''
   }
 
-  async function openQuote(key) {
+  async function openQuote(key, { send = false } = {}) {
     const ov = document.createElement('div')
     ov.className = 'modal-overlay'
     ov.innerHTML = '<div class="modal qb-modal" role="dialog" aria-modal="true"><div class="loading-state">Loading…</div></div>'
@@ -108,7 +131,8 @@ export function renderBusyQuotations(host) {
         <tfoot><tr><td colspan="5" class="num"><b>Total (GST incl.)</b></td><td class="num"><b>${esc(formatMoney(q.quote_total || 0))}</b></td></tr></tfoot>
       </table>
       <div class="qb-actions">
-        <button type="button" class="btn-ghost" id="qbPdf">PDF</button>
+        <button type="button" class="btn-ghost" id="qbPdf">View PDF</button>
+        <button type="button" class="btn-ghost" id="qbDl">${DL} Download PDF</button>
         <button type="button" class="btn-contact btn-whatsapp" id="qbSend" ${q.cancelled ? 'disabled' : ''}>${WA} Send on WhatsApp</button>
       </div>
       <div class="qb-send" id="qbSendBox" hidden>
@@ -122,9 +146,12 @@ export function renderBusyQuotations(host) {
       const b = ov.querySelector('#qbPdf'); b.disabled = true; b.textContent = 'Making PDF…'
       try { const r = await call({ action: 'busy-quote-pdf', vch_key: key }); await openPdfViewer({ base64: r.base64, filename: r.filename }) }
       catch (err) { hqAlert(err.message) }
-      b.disabled = false; b.textContent = 'PDF'
+      b.disabled = false; b.textContent = 'View PDF'
     })
-    ov.querySelector('#qbSend').addEventListener('click', () => { ov.querySelector('#qbSendBox').hidden = false; ov.querySelector('#qbPhone').focus() })
+    ov.querySelector('#qbDl').addEventListener('click', () => downloadPdf(key, ov.querySelector('#qbDl')))
+    const showSend = () => { ov.querySelector('#qbSendBox').hidden = false; ov.querySelector('#qbPhone').focus() }
+    ov.querySelector('#qbSend').addEventListener('click', showSend)
+    if (send && !q.cancelled) showSend()
     ov.querySelector('#qbNo').addEventListener('click', () => { ov.querySelector('#qbSendBox').hidden = true })
     ov.querySelector('#qbYes').addEventListener('click', async () => {
       const phone = ov.querySelector('#qbPhone').value.replace(/\D/g, '')

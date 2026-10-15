@@ -36,10 +36,10 @@ export async function renderStock(container) {
   container.innerHTML = `
     <div class="app-layout">
       <header class="app-header stock-header">
-        <div class="stock-head-row">
+        <div class="stock-head-row" data-bell-row>
           <button class="btn-ghost btn-hamburger" id="hamburgerBtn" aria-label="Menu">☰</button>
           <span class="logo-small">Stock</span>
-          <button type="button" class="stock-refresh" id="stockRefresh" aria-label="Refresh">${icon('clock', 17)}</button>
+          <button type="button" class="stock-refresh" id="stockRefresh" aria-label="Refresh stock" title="Refresh stock">${icon('refresh', 17)}</button>
         </div>
         <div class="stock-search-wrap">
           ${icon('box', 16)}
