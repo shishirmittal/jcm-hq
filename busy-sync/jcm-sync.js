@@ -42,6 +42,8 @@ const JOBS = [
   { id: 'stock', name: 'Stock (live)', args: ['sync-stock-live.js'], every: 10, timeout: 9, hours: ['09:00', '21:00'] },
   { id: 'red-alerts', name: 'Red Alerts', args: ['sync-red-alerts.js'], every: 15, timeout: 14 },
   { id: 'purchases', name: 'Purchase Summary (+ WhatsApps)', args: ['sync-purchases.js'], every: 15, timeout: 14 },
+  // Brand invoices arriving by email (Gmail → Claude → email_bills) for the Email Purchase Summary page.
+  { id: 'email-purchases', name: 'Email Purchase Summary (Gmail)', args: ['sync-email-purchases.js'], every: 15, timeout: 14 },
   { id: 'dues', name: 'Dues (Payment Follow-up)', args: ['-r', './dues-env.js', 'sync-dues-final.js'], every: 30, timeout: 25, logFile: 'dues.log' },
   { id: 'ledger', name: 'Customer ledger', args: ['sync-ledger.js'], every: 30, timeout: 25 },
   // Payment Follow-up: 10:00 WhatsApp + Task Board task per person, 19:00 summary to admins.
