@@ -251,11 +251,11 @@ async function main() {
       }
       candidates.sort((a, b) => (a.date || 0) - (b.date || 0));
 
-      // Which of these were already looked at?
+      // Which of these were already looked at? A mail that failed last time is tried again.
       const seen = new Set();
       for (let i = 0; i < candidates.length; i += 200) {
         const ids = candidates.slice(i, i + 200).map((c) => c.messageId);
-        const { data, error } = await supabase.from('email_scan_mails').select('message_id').in('message_id', ids);
+        const { data, error } = await supabase.from('email_scan_mails').select('message_id').in('message_id', ids).neq('status', 'failed');
         if (error) throw new Error(`reading email_scan_mails: ${error.message}`);
         for (const r of data || []) seen.add(r.message_id);
       }
