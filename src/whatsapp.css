@@ -264,3 +264,37 @@ body.dark-mode .wa-label { background: rgba(255,255,255,.1); color: #e5e7eb; }
 body.dark-mode .wa-conv.active { background: rgba(200,169,110,.14); }
 body.dark-mode .wa-conv:hover { background: rgba(255,255,255,.04); }
 body.dark-mode .wa-chip.on { background: var(--gold, #C8A96E); border-color: var(--gold, #C8A96E); color: #12213B; }
+
+/* ===== Night mode for the whole WhatsApp page (2026-10-16 v2) — HQ navy, not the day-time beige. ===== */
+body.dark-mode .wa-msgs { background: #0B1526; }
+body.dark-mode .wa-bubble { background: #1E2D47; color: #E6E9F0; box-shadow: none; }
+body.dark-mode .wa-out .wa-bubble { background: #17402F; }
+body.dark-mode .wa-tpl .wa-bubble { background: #33290F; }
+body.dark-mode .wa-bubble .wa-template, body.dark-mode .wa-bubble strong { color: #F0C873; }
+body.dark-mode .wa-bubble .wa-muted, body.dark-mode .wa-bubble .wa-meta { color: #8C96AA; }
+body.dark-mode .wa-bubble .wa-tap { color: #9FE3C2; }
+body.dark-mode .wa-st-read { color: #6CB4FF; }
+body.dark-mode .wa-err { color: #FF8A8A; }
+body.dark-mode .wa-day { background: #16243C; color: #8C96AA; }
+body.dark-mode .wa-file { background: #0E1A2E; border-color: #26344F; color: #E6E9F0; }
+body.dark-mode .wa-file:hover { background: #13213A; }
+/* panels */
+body.dark-mode .wa-conv-list, body.dark-mode .wa-thread { background: var(--surface); border-color: var(--line); }
+body.dark-mode .wa-thread-head, body.dark-mode .wa-tools, body.dark-mode .wa-cust, body.dark-mode .wa-reply, body.dark-mode .wa-conv { border-color: var(--line); }
+body.dark-mode .wa-conv-sub, body.dark-mode .wa-conv-time, body.dark-mode .wa-muted { color: var(--muted); }
+body.dark-mode .wa-conv-name { color: var(--ink); }
+body.dark-mode .wa-conv.is-done { opacity: .55; }
+/* reply box */
+body.dark-mode .wa-reply textarea, body.dark-mode .wa-reply-row textarea, body.dark-mode .wa-search input {
+  background: #0E1A2E; color: var(--text); border-color: var(--line);
+}
+body.dark-mode .wa-reply textarea::placeholder, body.dark-mode .wa-search input::placeholder { color: #6F7F9C; }
+body.dark-mode .wa-chip { background: transparent; border-color: var(--line); color: var(--body); }
+body.dark-mode .wa-chip.hot:not(.on) { border-color: #D9AE55; color: #F0C873; }
+body.dark-mode .wa-att-prev { border-color: var(--line); }
+body.dark-mode .wa-hbtn.btn-ghost { border-color: var(--line); }
+/* tool row buttons */
+body.dark-mode .wa-tools .btn-ghost, body.dark-mode .wa-cust .btn-ghost { border-color: var(--line); color: var(--text); background: transparent; }
+body.dark-mode .wa-cust-due b { color: #F0C873; }
+body.dark-mode .ws-seg button.on { background: #D9AE55; color: #0E1A2E; }
+.wa-head-acts a.wa-hbtn { text-decoration: none; }
