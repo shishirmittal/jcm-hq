@@ -1,13 +1,14 @@
 import { applyCors } from './_cors.js'
 import { createClient } from '@supabase/supabase-js'
 import { waConfigured, sendTemplate, wabaSubscription, toWaNumber, waSwitches, sendLogged, BANNER, HQ_URL, niceDate, listTemplates, fetchMedia } from './_wa-cloud.js'
-import { handleIncoming, busyClient, ledgerNameByCode } from './_wa-replies.js'
+import { handleIncoming, busyClient, ledgerNameByCode, qrPng } from './_wa-replies.js'
 import { runOutbox, TXN } from './_wa-outbox.js'
-import { listConversations, loadThread, replyText, unreadCount } from './_wa-inbox.js'
+import { listConversations, loadThread, replyText, replyMedia, unreadCount, convOp, markAllRead, quickReplies, quickRepliesSave, LABELS } from './_wa-inbox.js'
+import { sendLedger } from './_send-docs.js'
 import { db as ordersDb } from './_orders/lib/db.js'
 import { materialOverview } from './_orders/lib/material.js'
 import { partySearch, scheduleList, scheduleSave, scheduleStop, runSchedules } from './_schedules.js'
-import { runEmailAlerts, runItemAlerts, alertsGet, alertSave, alertRemove } from './_staff-alerts.js'
+import { runEmailAlerts, runItemAlerts, alertsGet, alertSave, alertRemove, staffPeople } from './_staff-alerts.js'
 
 // WhatsApp via Meta's Cloud API — the HQ "WhatsApp" admin page (src/whatsapp-test.js at #whatsapp-test),
 // the Meta webhook, and the outbox of customer transaction messages (api/_wa-outbox.js).
@@ -229,8 +230,41 @@ export default async function handler(req, res) {
       try { return send(res, 200, body.action === 'alert-save' ? await alertSave(busy, body, me) : await alertRemove(busy, body)) }
       catch (err) { return send(res, err.status || 500, { error: err.message }) }
     }
+    // Inbox tools (2026-10-16): pin / done / assign / label / mark unread, mark all read, quick replies,
+    // send ledger or payment QR from the chat.
+    if (body.action === 'conv-op') {
+      try { return send(res, 200, await convOp(busy, body, me, body.op === 'assign' ? await staffPeople() : [])) }
+      catch (err) { return send(res, err.status || 500, { error: err.message }) }
+    }
+    if (body.action === 'read-all') return send(res, 200, await markAllRead(busy))
+    if (body.action === 'quick-save') {
+      if (!me.isAdmin) return send(res, 403, { error: 'Only admins can change the saved replies.' })
+      return send(res, 200, await quickRepliesSave(busy, body.quick))
+    }
+    if (body.action === 'chat-ledger') {
+      const out = await sendLedger(busy, { party_code: body.code, phone: body.number }, me.name)
+      return send(res, out.error ? 400 : 200, out)
+    }
+    if (body.action === 'chat-qr') {
+      const number = toWaNumber(body.number)
+      const code = String(body.code || '').replace(/\D/g, '')
+      if (!number || !code) return send(res, 400, { error: 'Pick the customer first.' })
+      if (['40355', '65494', '56680'].includes(code)) return send(res, 400, { error: 'That is a ledger-only account.' })
+      const t = await loadThread(busy, number, { markSeen: false })
+      if (!t.windowOpen) return send(res, 400, { error: 'They have not written in the last 24 hours, so WhatsApp does not allow a free image now. Send the ledger instead — it has a QR Code button.' })
+      const name = await ledgerNameByCode(busy, code)
+      if (!name) return send(res, 400, { error: 'No customer with that Busy code.' })
+      try {
+        const png = await qrPng(name)
+        await replyMedia(busy, number, png, { kind: 'image', mime: 'image/png', filename: 'JCM-payment-details.png', caption: `*${name}*\nScan to pay JCM. Bank details are on the card.` }, me.name)
+        return send(res, 200, { ok: true })
+      } catch (err) { return send(res, 502, { error: err.message }) }
+    }
     if (body.action === 'inbox') {
-      try { return send(res, 200, { conversations: await listConversations(busy) }) }
+      try {
+        const [conversations, quick, people] = await Promise.all([listConversations(busy), quickReplies(busy), body.withPeople ? staffPeople() : null])
+        return send(res, 200, { conversations, quick, labels: LABELS, me: { id: me.id, isAdmin: me.isAdmin }, ...(people ? { people: people.map(p => ({ id: p.id, name: p.name })) } : {}) })
+      }
       catch (err) { if (err.message === 'SETUP') return send(res, 200, { conversations: [], setup: true }); throw err }
     }
     if (body.action === 'thread') {

@@ -126,14 +126,87 @@ export async function listConversations(busy, { limit = 200 } = {}) {
       }
     }
   }
+  // Inbox tools (2026-10-16): pin / done / assigned person / label per chat (wa_conversations).
+  const st = new Map()
+  if (numbers.length) {
+    const w = await busy.from('wa_conversations').select('*').in('number', numbers)
+    for (const x of w.data || []) st.set(x.number, x)
+  }
   const now = Date.now()
   return list.map(c => ({
+    ...convFlags(st.get(c.number), c),
     number: c.number, display: `+91 ${c.number.slice(-10, -5)} ${c.number.slice(-5)}`,
     name: names.get(c.number)?.name || c.profile || null, nameHow: names.get(c.number)?.how || (c.profile ? 'whatsapp profile' : null), code: names.get(c.number)?.code || null,
     unread: c.unread, count: c.count, last: { text: c.last.text, direction: c.last.direction, kind: c.last.kind, at: c.last.created_at, status: c.last.status, by: c.last.sent_by },
     windowOpen: !!c.lastIn && now - Date.parse(c.lastIn) < WINDOW_H * 3600e3,
     lastIn: c.lastIn,
   }))
+}
+
+// Done stays done only until the customer writes again (a new message reopens the chat).
+function convFlags(row, c) {
+  const done = !!row?.done_at && (!c.lastIn || row.done_at >= c.lastIn)
+  return {
+    pinned: !!row?.pinned, done, doneBy: done ? row.done_by : null, label: row?.label || null,
+    assignedTo: row?.assigned_to || null, assignedName: row?.assigned_to ? row.assigned_name : null,
+    // Waiting for us = the newest message in the chat is theirs (not an HQ reply).
+    waiting: !done && c.last.direction === 'in' ? c.last.created_at : null,
+  }
+}
+
+export const LABELS = ['Payment', 'Order', 'Complaint', 'Enquiry', 'Other']
+
+export async function convOp(busy, body, me, people = []) {
+  const number = toWaNumber(body.number) || String(body.number || '').replace(/\D/g, '')
+  if (!number) throw Object.assign(new Error('No chat chosen.'), { status: 400 })
+  const op = String(body.op || '')
+  if (op === 'unread') {
+    const last = await busy.from('wa_messages').select('id').eq('number', number).eq('direction', 'in').order('created_at', { ascending: false }).limit(1)
+    if (!last.data?.length) throw Object.assign(new Error('They have not written anything yet.'), { status: 400 })
+    await busy.from('wa_messages').update({ seen_at: null }).eq('id', last.data[0].id)
+    return { ok: true }
+  }
+  const patch = { number, updated_at: new Date().toISOString(), updated_by: me.name }
+  if (op === 'pin') patch.pinned = true
+  else if (op === 'unpin') patch.pinned = false
+  else if (op === 'done') { patch.done_at = new Date().toISOString(); patch.done_by = me.name }
+  else if (op === 'reopen') { patch.done_at = null; patch.done_by = null }
+  else if (op === 'label') patch.label = LABELS.includes(body.label) ? body.label : null
+  else if (op === 'assign') {
+    const p = people.find(x => x.id === body.person)
+    patch.assigned_to = p ? p.id : null
+    patch.assigned_name = p ? p.name : null
+  } else throw Object.assign(new Error('Unknown action.'), { status: 400 })
+  const r = await busy.from('wa_conversations').upsert(patch, { onConflict: 'number' })
+  if (r.error) throw new Error(r.error.message)
+  return { ok: true }
+}
+
+export async function markAllRead(busy) {
+  const r = await busy.from('wa_messages').update({ seen_at: new Date().toISOString() }).eq('direction', 'in').is('seen_at', null).select('id')
+  if (r.error) throw new Error(r.error.message)
+  return { ok: true, marked: (r.data || []).length }
+}
+
+// Quick replies (saved short answers) — wa_settings key 'quick_replies' = JSON array of strings. {name} = chat name.
+const QUICK_DEFAULT = [
+  'Thank you, payment received. 🙏',
+  'Please share the payment screenshot / UTR number.',
+  'Our team will call you shortly.',
+  'Noted, thank you. We will update you soon.',
+  'Please share your order details (item, quantity).',
+  'Dhanyavaad! Aapka message mil gaya hai, hum jaldi sampark karenge.',
+]
+export async function quickReplies(busy) {
+  const r = await busy.from('wa_settings').select('value').eq('key', 'quick_replies').maybeSingle()
+  try { const v = JSON.parse(r.data?.value || 'null'); if (Array.isArray(v)) return v } catch { /* bad JSON */ }
+  return QUICK_DEFAULT
+}
+export async function quickRepliesSave(busy, list) {
+  const clean = (Array.isArray(list) ? list : []).map(x => String(x || '').trim().slice(0, 500)).filter(Boolean).slice(0, 20)
+  const r = await busy.from('wa_settings').upsert({ key: 'quick_replies', value: JSON.stringify(clean), updated_at: new Date().toISOString() }, { onConflict: 'key' })
+  if (r.error) throw new Error(r.error.message)
+  return { ok: true, quick: clean }
 }
 
 // One thread: wa_messages (in + out) merged with wa_log template sends to that number.
