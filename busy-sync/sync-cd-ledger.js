@@ -43,12 +43,13 @@ function log(message) {
 
 // Same names as sync-ledger.js / sync-red-alerts.js.
 const VOUCHER_TYPES = {
-  2: 'Purchase', 3: 'Sales return', 4: 'Purchase return', 9: 'Sales', 14: 'Receipt', 15: 'Contra', 16: 'Journal',
+  2: 'Purchase', 3: 'Sales return', 9: 'Sales', 10: 'Purchase return', 14: 'Receipt', 15: 'Contra', 16: 'Journal',
   17: 'Debit note', 18: 'Credit note', 19: 'Payment',
 };
-// Drafts and stock-only vouchers never post to an account. (4 = purchase return DOES post — it is
-// kept, unlike sync-ledger.js; found 2026-10-15 when Dilip's August working had returns the copy lacked.)
-const SKIP_TYPES = [8, 10, 11, 12, 13, 26, 61];
+// Drafts and stock-only vouchers never post to an account. Type 10 is the PURCHASE RETURN (not a
+// challan — checked in Busy 2026-10-15 when Dilip's August working had returns the copy lacked) and
+// does post to the supplier, so unlike sync-ledger.js it is kept here.
+const SKIP_TYPES = [4, 8, 11, 12, 13, 26, 61];
 
 function currentBusyDb() {
   const now = new Date();
