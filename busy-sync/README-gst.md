@@ -6,7 +6,7 @@ Once a month — the 5th at 06:00 (JCM Sync job `gst`, `monthlyOn`), or "Run now
 | Busy | Supabase (JCM-Busysql) | What |
 |---|---|---|
 | `GSTR2AInfo` (one row per tax rate) | `gst_2a_rows` (one row per invoice / note) | the 2A data Busy downloaded: supplier GSTIN, invoice no. and date, taxable, CGST/SGST/IGST, which GSTR-1 it came in (`filed_period`), when the supplier filed, when Busy pulled it (`pulled_at`) |
-| `Tran1` VchType 2 + `VchGSTSumItemWise` | `gst_purchase_rows` | every purchase voucher with party GSTIN, taxable, CGST/SGST/IGST (IGST = TaxAmt where TaxRate1 is 0), total (`VchAmtBaseCur`; 0 = FOC / scheme document) |
+| `Tran1` VchType 2 + `VchGSTSumItemWise` (+ VchType 16 journals = Registered Expense bills, invoice no./party from the GST summary rows) | `gst_purchase_rows` | every purchase voucher and registered-expense bill with party GSTIN, taxable, CGST/SGST/IGST (IGST = TaxAmt where TaxRate1 is 0), total (`VchAmtBaseCur`; 0 = FOC / scheme document) |
 | `Master1` type 2 + `MasterAddressInfo` | `gst_parties` | mobile / WhatsApp / email of parties that have a GSTIN |
 
 The matching (missing in Busy, not in 2A, amount mismatch, doc-no mismatch, sequence, ₹0)

@@ -5,7 +5,8 @@
 //   GSTR2AInfo          → gst_2a_rows        the 2A data Busy downloaded through its GSP
 //                                           (GST → Misc. Utilities → Download GSTR JSON Data),
 //                                           one row per supplier invoice / note
-//   Tran1 + VchGSTSumItemWise → gst_purchase_rows   every purchase voucher (VchType 2) with its
+//   Tran1 + VchGSTSumItemWise → gst_purchase_rows   every purchase voucher (VchType 2) and every
+//                                           Registered Expense journal (VchType 16) with its
 //                                           GST summary: party GSTIN, taxable, CGST/SGST/IGST
 //   Master1 + MasterAddressInfo → gst_parties   contacts (mobile / WhatsApp / email) of parties
 //                                           that have a GSTIN, for supplier reminders
@@ -30,6 +31,8 @@ const path = require('path');
 
 const CHECK = process.argv.includes('--check');
 const PURCHASE = 2; // Busy voucher type: Purchase
+const EXPENSE_JOURNAL = 16; // Busy voucher type: Journal — carries Registered Expense (B2B) bills
+const JCM_GSTIN = '23AAPFJ0607D1ZT';
 
 const LOG_FILE = path.join(__dirname, 'gst.log');
 function log(message) {
@@ -115,7 +118,42 @@ async function readPurchases(pool) {
     LEFT JOIN entered e ON e.Code = t1.VchCode AND e.rn = 1
     WHERE t1.VchType = ${PURCHASE}
       AND ISNULL(t1.Cancelled, 0) = 0 AND ISNULL(t1.VchCancelled, 0) = 0`);
-  return r.recordset;
+
+  // Registered Expense (B2B) bills are booked as journals (VchType 16) with GST details, e.g.
+  // a printing/stationery bill. They are inward supplies too, so they must match their 2A row.
+  // The supplier's invoice no., party and amounts sit on the GST summary rows, not on Tran1.
+  const j = await pool.request().query(`
+    WITH gstsum AS (
+      SELECT VchCode,
+             MAX(LTRIM(RTRIM(VchNo))) AS VchNo, MAX(VchDate) AS VchDate, MAX(PartyCode) AS PartyCode,
+             SUM(TaxableAmt) AS Taxable,
+             SUM(CASE WHEN TaxRate1 > 0 THEN TaxAmt  ELSE 0 END) AS CGST,
+             SUM(CASE WHEN TaxRate1 > 0 THEN TaxAmt1 ELSE 0 END) AS SGST,
+             SUM(CASE WHEN TaxRate1 = 0 THEN TaxAmt  ELSE 0 END) AS IGST,
+             SUM(ISNULL(ACessAmt, 0) + ISNULL(StateCessAmt, 0)) AS Cess,
+             MAX(GSTIN) AS GSTIN
+      FROM VchGSTSumItemWise WHERE VchType = ${EXPENSE_JOURNAL}
+      GROUP BY VchCode
+    ),
+    entered AS (
+      SELECT Code, UserName, ActionTime,
+             ROW_NUMBER() OVER (PARTITION BY Code ORDER BY ActionTime) AS rn
+      FROM CheckList WHERE Type = 2 AND Action = 1
+    )
+    SELECT g.VchCode, g.VchNo, CONVERT(VARCHAR(10), g.VchDate, 23) AS VchDate,
+           g.PartyCode, p.Name AS PartyName, 'Registered Expense (journal)' AS Series,
+           g.Taxable + g.CGST + g.SGST + g.IGST + g.Cess AS Total,
+           g.Taxable, g.CGST, g.SGST, g.IGST, g.Cess,
+           ISNULL(NULLIF(LTRIM(RTRIM(g.GSTIN)), ''), LTRIM(RTRIM(a.GSTNo))) AS GSTIN,
+           e.UserName AS EnteredBy, CONVERT(VARCHAR(19), e.ActionTime, 126) AS EnteredAt
+    FROM gstsum g
+    JOIN Tran1 t1 ON t1.VchCode = g.VchCode
+    LEFT JOIN Master1 p ON p.Code = g.PartyCode
+    LEFT JOIN MasterAddressInfo a ON a.MasterCode = g.PartyCode
+    LEFT JOIN entered e ON e.Code = g.VchCode AND e.rn = 1
+    WHERE ISNULL(t1.Cancelled, 0) = 0 AND ISNULL(t1.VchCancelled, 0) = 0
+      AND ISNULL(g.VchNo, '') <> ''`);
+  return [...r.recordset, ...j.recordset.filter((x) => x.GSTIN && x.GSTIN !== JCM_GSTIN)];
 }
 
 async function readParties(pool) {
