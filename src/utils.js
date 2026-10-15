@@ -51,6 +51,16 @@ export function formatDate(dateStr) {
   return parseLocalDate(dateStr).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+// Exact date + time for a timestamp column (not a date-only one, so no
+// parseLocalDate — this is a real instant, and the viewer's own timezone is
+// the correct one to render it in). Used where "when exactly" matters more
+// than "how long ago", e.g. an activity log.
+export function formatDateTime(timestamp) {
+  return new Date(timestamp).toLocaleString('en-IN', {
+    day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit',
+  })
+}
+
 export function digitsOnly(phone) {
   return String(phone || '').replace(/\D/g, '')
 }

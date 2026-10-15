@@ -1,7 +1,7 @@
 import { supabase, getCurrentProfile } from './supabase.js'
 import { openSidebar, avatarColor, refreshNavBadges } from './sidebar.js'
 import { isAdminProfile } from './permissions.js'
-import { esc, todayISO, addDays, parseLocalDate, skeletonList } from './utils.js'
+import { esc, todayISO, addDays, parseLocalDate, skeletonList, formatDateTime } from './utils.js'
 import { icon } from './icons.js'
 
 // ---------------------------------------------------------------------------
@@ -93,6 +93,27 @@ const HISTORY_VERBS = {
   due_changed: 'changed the due date',
   edited: 'edited the text',
 }
+
+// Plain labels for the Activity Log's filter dropdown — a dropdown option
+// reads oddly in sentence form ("filed this for"), so this is a second,
+// short-form view of the same action keys rather than a rename of them.
+const LOG_ACTION_LABELS = {
+  filed: 'Filed',
+  passed: 'Passed on',
+  sent_back: 'Sent back',
+  done: 'Marked done',
+  due_changed: 'Due date changed',
+  edited: 'Text edited',
+}
+
+// How far back the Activity Log's date-range filter looks, in days. 'all'
+// is handled separately (no cutoff at all).
+const LOG_RANGES = [
+  { id: 'all', label: 'All time' },
+  { id: '1', label: 'Today' },
+  { id: '7', label: 'Last 7 days' },
+  { id: '30', label: 'Last 30 days' },
+]
 
 const DAY_STRIP_LENGTH = 15
 
@@ -392,6 +413,19 @@ export async function renderTaskBoard(container) {
     // Stacks default to open on a device that has never folded one.
     collapsedStacks: loadCollapsedStacks(),
     scope: 'in',
+    // 'board' | 'history' — which of the two screens under the Task Board
+    // tabs is showing. The log is loaded lazily, on first switch to it, so
+    // nobody who never opens it pays for the extra query.
+    view: 'board',
+    history: {
+      loaded: false,
+      loading: false,
+      error: null,
+      rows: [],
+      filterAction: 'all',
+      filterPerson: 'all',
+      filterRange: 'all',
+    },
     compose: {
       personId: null,
       typeId: null,
@@ -476,6 +510,46 @@ async function loadHistory(taskId, token) {
   ui.historyByTask[taskId] = data || []
 }
 
+// The whole-board Activity Log, as opposed to loadHistory()'s per-task rows.
+// RLS is what actually decides which rows this returns — an admin's "admins
+// see all history" policy, everyone else's "see history of my tasks" — so
+// this is a plain unfiltered read, same as loadTasks(). Capped at 500: a
+// read-only log going back further than that is a job for the database, not
+// a chat screen someone leaves open all day.
+//
+// Each row only carries a task_id, so which task it was on is filled in with
+// a second query. That second query is subject to team_tasks' own RLS too,
+// which is the right behaviour: a non-admin loses the task text on a row for
+// a task they can no longer see (passed away before this policy existed to
+// let them keep watching it) rather than being shown it anyway.
+async function loadHistoryLog(token) {
+  ui.history.loading = true
+  const { data, error } = await supabase
+    .from('team_task_history')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(500)
+  if (token !== mountToken || !ui) return
+  if (error) {
+    ui.history.loading = false
+    ui.history.error = error.message
+    ui.history.rows = []
+    return
+  }
+  const rows = data || []
+  const taskIds = [...new Set(rows.map(r => r.task_id))]
+  let tasksById = {}
+  if (taskIds.length) {
+    const { data: taskRows } = await supabase.from('team_tasks').select('id, body, task_type').in('id', taskIds)
+    if (token !== mountToken || !ui) return
+    tasksById = Object.fromEntries((taskRows || []).map(t => [t.id, t]))
+  }
+  ui.history.loading = false
+  ui.history.error = null
+  ui.history.loaded = true
+  ui.history.rows = rows.map(r => ({ ...r, _task: tasksById[r.task_id] || null }))
+}
+
 // Realtime carries no payload worth trusting here — an UPDATE that moves a
 // task out of the viewer's RLS visibility arrives as a DELETE, and a row filed
 // by someone else arrives without its history — so every event just re-reads
@@ -503,6 +577,11 @@ function subscribe(token) {
     clearTimeout(reloadTimer)
     reloadTimer = setTimeout(async () => {
       await loadTasks(token)
+      if (token !== mountToken) return
+      // Only re-read the log if it has already been opened once — a board
+      // nobody has switched to History on shouldn't pay for it on every
+      // change anyone makes anywhere.
+      if (ui.history.loaded) await loadHistoryLog(token)
       if (token !== mountToken) return
       renderBoard()
       refreshNavBadges()
@@ -540,8 +619,16 @@ function renderBoard() {
   const el = document.getElementById('tbBoard')
   if (!el || !ui) return
 
+  if (ui.view === 'history') {
+    el.innerHTML = viewTabsHtml() + historyViewHtml()
+    wireViewTabs(el)
+    wireHistoryView(el)
+    return
+  }
+
   if (ui.error) {
-    el.innerHTML = `<div class="empty-state">Could not load the board: ${esc(ui.error)}</div>`
+    el.innerHTML = viewTabsHtml() + `<div class="empty-state">Could not load the board: ${esc(ui.error)}</div>`
+    wireViewTabs(el)
     return
   }
 
@@ -551,8 +638,9 @@ function renderBoard() {
   // across and the caret put back at the end.
   const draft = el.querySelector('.tb-task-edit')?.value
   suppressEditBlur = true
-  el.innerHTML = headHtml(visible) + kpiHtml(visible) + gridHtml(visible)
+  el.innerHTML = viewTabsHtml() + headHtml(visible) + kpiHtml(visible) + gridHtml(visible)
   suppressEditBlur = false
+  wireViewTabs(el)
   wireBoard(el)
 
   ui.toneSignature = toneSignature()
@@ -563,6 +651,34 @@ function renderBoard() {
     editing.focus()
     editing.setSelectionRange(editing.value.length, editing.value.length)
   }
+}
+
+// The Board / History switch itself — drawn above both screens, so it's
+// always there to switch back with rather than being part of either one.
+function viewTabsHtml() {
+  return `
+    <div class="tb-views" role="tablist">
+      <button type="button" class="tb-view${ui.view === 'board' ? ' active' : ''}" data-view="board" role="tab" aria-selected="${ui.view === 'board'}">${icon('clipboard', 14)}<span>Board</span></button>
+      <button type="button" class="tb-view${ui.view === 'history' ? ' active' : ''}" data-view="history" role="tab" aria-selected="${ui.view === 'history'}">${icon('history', 14)}<span>History</span></button>
+    </div>
+  `
+}
+
+function wireViewTabs(root) {
+  root.querySelectorAll('[data-view]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const next = btn.dataset.view
+      if (next === ui.view) return
+      ui.view = next
+      if (next === 'history' && !ui.history.loaded) {
+        renderBoard() // paint the skeleton immediately, don't wait on the fetch
+        const token = mountToken
+        loadHistoryLog(token).then(() => { if (token === mountToken) renderBoard() })
+        return
+      }
+      renderBoard()
+    })
+  })
 }
 
 function headHtml(visible) {
@@ -788,6 +904,92 @@ function historyHtml(task) {
       }).join('')}
     </div>
   `
+}
+
+// ---------------------------------------------------------------------------
+// Activity Log (the board-wide History view)
+// ---------------------------------------------------------------------------
+
+// Read-only, newest first. Who sees which rows is entirely RLS's call
+// (loadHistoryLog's comment has the detail) — this only narrows what's
+// already come back, by action type, by person, and by how recent.
+function filteredHistoryRows() {
+  const { rows, filterAction, filterPerson, filterRange } = ui.history
+  let out = rows
+  if (filterAction !== 'all') out = out.filter(r => r.action === filterAction)
+  if (filterPerson !== 'all') out = out.filter(r => r.actor === filterPerson || r.to_user === filterPerson)
+  if (filterRange !== 'all') {
+    const cutoff = Date.now() - Number(filterRange) * 86400000
+    out = out.filter(r => new Date(r.created_at).getTime() >= cutoff)
+  }
+  return out
+}
+
+function truncateText(text, max) {
+  const s = String(text || '')
+  return s.length > max ? s.slice(0, max - 1) + '…' : s
+}
+
+function historyViewHtml() {
+  if (ui.history.loading && !ui.history.loaded) return skeletonList(5)
+  if (ui.history.error) return `<div class="empty-state">Could not load the history: ${esc(ui.history.error)}</div>`
+
+  const rows = filteredHistoryRows()
+  return `
+    <div class="tb-log-head">
+      <div class="tb-head-title">
+        <div class="tb-title">History</div>
+        <div class="tb-sub">${rows.length} ${rows.length === 1 ? 'entry' : 'entries'}${ui.history.rows.length !== rows.length ? ` of ${ui.history.rows.length}` : ''}</div>
+      </div>
+      <div class="tb-log-filters">
+        <select class="tb-log-select" data-log-filter="action" aria-label="Filter by action">
+          <option value="all">All actions</option>
+          ${Object.entries(LOG_ACTION_LABELS).map(([id, label]) => `<option value="${esc(id)}"${ui.history.filterAction === id ? ' selected' : ''}>${esc(label)}</option>`).join('')}
+        </select>
+        <select class="tb-log-select" data-log-filter="person" aria-label="Filter by person">
+          <option value="all">Everyone</option>
+          ${ui.roster.map(p => `<option value="${esc(p.id)}"${ui.history.filterPerson === p.id ? ' selected' : ''}>${esc(personName(p))}</option>`).join('')}
+        </select>
+        <select class="tb-log-select" data-log-filter="range" aria-label="Filter by date range">
+          ${LOG_RANGES.map(range => `<option value="${esc(range.id)}"${ui.history.filterRange === range.id ? ' selected' : ''}>${esc(range.label)}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="tb-log-list">
+      ${rows.length ? rows.map(logRowHtml).join('') : '<div class="tb-stack-empty">Nothing matches this filter.</div>'}
+    </div>
+  `
+}
+
+function logRowHtml(row) {
+  const actor = ui.rosterById[row.actor]
+  const target = row.to_user ? ui.rosterById[row.to_user] : null
+  const verb = HISTORY_VERBS[row.action] || row.action
+  const task = row._task
+  const typeLabel = task ? (TYPE_BY_ID[task.task_type]?.label || task.task_type) : null
+  const exact = formatDateTime(row.created_at)
+  return `
+    <div class="tb-log-row">
+      ${avatarHtml(actor, 22)}
+      <div class="tb-log-main">
+        <span class="tb-log-text"><strong>${esc(firstName(actor))}</strong> ${esc(verb)}${target ? ` <strong>${esc(firstName(target))}</strong>` : ''}</span>
+        <span class="tb-log-task" title="${task ? esc(task.body) : ''}">${task ? esc(truncateText(task.body, 90)) : 'A task you no longer have visibility into'}${typeLabel ? ` · ${esc(typeLabel)}` : ''}</span>
+      </div>
+      <span class="tb-log-when" title="${esc(exact)}">${esc(exact)}</span>
+    </div>
+  `
+}
+
+function wireHistoryView(root) {
+  root.querySelectorAll('[data-log-filter]').forEach(select => {
+    select.addEventListener('change', () => {
+      const key = select.dataset.logFilter
+      if (key === 'action') ui.history.filterAction = select.value
+      else if (key === 'person') ui.history.filterPerson = select.value
+      else if (key === 'range') ui.history.filterRange = select.value
+      renderBoard()
+    })
+  })
 }
 
 function wireBoard(root) {
