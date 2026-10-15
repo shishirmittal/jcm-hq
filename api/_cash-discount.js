@@ -138,11 +138,13 @@ export function calcAccount(rowsIn, opening, s, from, to, hub = null) {
   pays.sort((a, b) => a.date.localeCompare(b.date) || (a.vch_code || 0) - (b.vch_code || 0))
 
   // Two ways to decide which bills a payment clears:
-  //   'amount' (how JCM pays): each NEFT is made for particular bills, so its amount equals
-  //            those bills exactly — find that set among the open entries (oldest first);
-  //            when no exact set exists, fall back to FIFO for that payment.
+  //   'amount' (how JCM pays): a payment is made for particular invoices, from the PDF mails,
+  //            sometimes before the bill is even typed into Busy. So a payment clears exactly
+  //            the bills its amount adds up to — nothing else. A payment that fits nothing is
+  //            an ADVANCE waiting for its bill (never "the oldest open bill"). A payment made in
+  //            parts is found by trying it together with the next one or two payments.
   //   'fifo'   (Signify's rule): every payment goes to the oldest open entry, full stop.
-  // Credit notes / returns always go FIFO (they are not made out for particular bills).
+  // Credit notes / returns, when counted, always go oldest-first (they are not made out for bills).
   const byAmount = (s.match_mode || 'amount') === 'amount'
   const apply = (p, e) => {
     const take = r2(Math.min(p.remaining, e.remaining))
@@ -151,13 +153,37 @@ export function calcAccount(rowsIn, opening, s, from, to, hub = null) {
     ;(e.parts ||= []).push({ date: p.date, no: p.no, amount: p.amount, applied: take, kind: p.kind })
     if (e.remaining <= 0.004) e.settledBy = p
   }
-  for (const p of pays) {
-    if (byAmount && p.kind === 'payment') {
-      const open = queue.filter(e => e.remaining > 0.004 && e.date <= p.date)
-      const set = exactSet(open.map(e => Math.round(e.remaining * 100)), Math.round(p.remaining * 100))
-      if (set) { for (const i of set) apply(p, open[i]); p.matched = true; continue }
+  const fifo = p => { for (const e of queue) { if (p.remaining <= 0.004) break; if (e.remaining > 0.004) apply(p, e) } }
+  const windowDays = Number(s.slab_b_days ?? 10)
+  if (!byAmount) {
+    for (const p of pays) fifo(p)
+  } else {
+    for (const p of pays) {
+      if (p.kind === 'payment') {
+        const open = queue.filter(e => e.remaining > 0.004 && e.date <= p.date)
+        const set = exactSet(open.map(e => Math.round(e.remaining * 100)), Math.round(p.remaining * 100))
+        if (set) { for (const i of set) apply(p, open[i]); p.matched = true; continue }
+        // No exact set: the payment goes in order to bills inside its discount window or later
+        // (an advance for bills not in Busy yet) — never back to an older bill: a payment made
+        // in October is not for an August bill.
+        for (const e of queue) {
+          if (p.remaining <= 0.004) break
+          if (e.remaining <= 0.004 || e.kind === 'opening') continue
+          if (dayDiff(e.date, p.date) > windowDays) continue
+          apply(p, e)
+        }
+        continue
+      }
+      fifo(p) // opening advance, and credit notes / returns when the switch is on
     }
-    for (const e of queue) { if (p.remaining <= 0.004) break; if (e.remaining > 0.004) apply(p, e) }
+    // Whatever is left of a payment is an advance; it clears bills that arrive later, in order.
+    for (const p of pays) {
+      if (p.kind !== 'payment' || p.remaining <= 0.004) continue
+      for (const e of queue) {
+        if (p.remaining <= 0.004) break
+        if (e.remaining > 0.004 && e.kind !== 'opening' && e.date >= p.date) apply(p, e)
+      }
+    }
   }
 
   const aDays = Number(s.slab_a_days ?? 5), bDays = Number(s.slab_b_days ?? 10)
@@ -184,7 +210,7 @@ export function calcAccount(rowsIn, opening, s, from, to, hub = null) {
     }
     if (b.date < schemeFrom) row.status = 'Before the scheme'
     else if (!e) row.status = `Not yet moved to the paying account`
-    else if (!e.settledBy) row.status = e.parts ? `Part paid — ${e.remaining.toFixed(2)} still open` : 'Not paid yet'
+    else if (!e.settledBy) row.status = e.parts ? `Part paid — ${e.remaining.toFixed(2)} still open` : (byAmount ? 'No matching payment' : 'Not paid yet')
     // Paid before the bill date = advance pay term (Category C): only Slab A applies.
     else if (row.days < 0) { row.slab = 'A'; row.pct = aPct; row.status = `Slab A — paid in advance (${aPct}%)` }
     else if (row.days <= aDays) { row.slab = 'A'; row.pct = aPct; row.status = `Slab A (${aPct}%)` }
@@ -208,6 +234,7 @@ export function calcAccount(rowsIn, opening, s, from, to, hub = null) {
     totals: { credits: totalCr, debits: totalDr, closing: r2(op + totalCr - totalDr) },
     open_bills: openEntries.length, open_amount: r2(openEntries.reduce((t, e) => t + e.remaining, 0)),
     unapplied: r2(pays.reduce((t, p) => t + p.remaining, 0)),
+    advances: pays.filter(p => p.remaining > 0.004 && p.kind !== 'note').map(p => ({ date: p.date, no: p.no, amount: p.amount, remaining: p.remaining })),
     ignored: ignored.map(p => ({ date: p.date, no: p.no, amount: p.amount, type_name: p.typeName, party_name: p.party_name })),
     unmatched,
     entries: hubRows.length,
@@ -272,7 +299,7 @@ async function summary(busy, body) {
     pools.push({
       id: poolId, hub_code: hub, hub_name: byName.get(hub)?.party_name || hub, members: members.map(c => ({ party_code: c, party_name: byName.get(c)?.party_name || c })),
       opening: calc.opening, opening_date: calc.opening_date, opening_1apr: opening, openings: openings.map(o => ({ ...o, party_name: byName.get(o.code)?.party_name || o.code })),
-      totals: calc.totals, open_bills: calc.open_bills, open_amount: calc.open_amount, unapplied: calc.unapplied, ignored: calc.ignored, unmatched: calc.unmatched, entries: calc.entries,
+      totals: calc.totals, open_bills: calc.open_bills, open_amount: calc.open_amount, unapplied: calc.unapplied, advances: calc.advances, ignored: calc.ignored, unmatched: calc.unmatched, entries: calc.entries,
       cd: r2(calc.rows.reduce((t, r) => t + r.cd, 0)), invoices: calc.rows.filter(r => r.kind === 'purchase').length,
     })
     for (const c of members) {
