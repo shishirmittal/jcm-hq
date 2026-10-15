@@ -82,9 +82,10 @@ export async function lastInvoicesText(busy, code, name) {
   const dateCol = pick(cols, ['vch_date', 'invoice_date', 'date']) || 'vch_date'
   const noCol = pick(cols, ['vch_no', 'voucher_no', 'invoice_no', 'bill_no', 'vch_number'])
   const amtCol = pick(cols, ['total_amount', 'amount', 'net_amount', 'invoice_value'])
-  const r = await busy.from('invoices').select('*').eq('party_code', Number(code)).order(dateCol, { ascending: false }).limit(3)
+  // Cancelled bills stay in Busy as ₹0 vouchers with no items (e.g. CRM/2627/4105) — never list those (Shishir, 2026-10-15).
+  const r = await busy.from('invoices').select('*').eq('party_code', Number(code)).order(dateCol, { ascending: false }).limit(12)
   if (r.error) throw new Error(r.error.message)
-  const rows = r.data || []
+  const rows = (r.data || []).filter(x => !amtCol || Number(x[amtCol]) > 0).slice(0, 3)
   const link = `${PORTAL}`
   if (!rows.length) {
     return `*${name}*\nWe could not find recent bills on your account here. Our team will share them with you shortly.\n\nInvoice portal: ${link}`
