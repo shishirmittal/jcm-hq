@@ -1,0 +1,60 @@
+/* Signify Cash Discount (#cash-discount, src/cash-discount.js) — on top of the pur-* styles */
+.cd-tiles { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.cd-note { font-size: 12px; color: var(--muted); text-align: right; }
+.cd-note em { font-style: normal; font-weight: 700; }
+.cd-accbtn { display: inline-flex; align-items: center; gap: 6px; }
+.cd-code { color: var(--faint); font-weight: 500; font-size: 12px; margin-left: 6px; }
+.cd-sub { color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+.cd-account { border-left-color: var(--navy); }
+.cd-acchead { cursor: default; }
+.cd-acchead:hover { background: transparent; }
+.cd-grand { border-left-color: var(--grn); background: var(--grn-bg); }
+.cd-grand .pur-bill-head:hover { background: transparent; }
+.cd-grand-amt { font-size: 22px; color: var(--grn-dk); }
+.cd-table th, .cd-table td { white-space: nowrap; }
+.cd-table td:nth-child(2) { white-space: normal; min-width: 120px; }
+.cd-table .cd-cd { font-weight: 700; color: var(--grn-dk); }
+.cd-row.cd-bad .cd-cd, .cd-row.cd-quiet .cd-cd { color: var(--faint); font-weight: 500; }
+.cd-dash { color: var(--faint); }
+.pur-flag-b { background: #e0ecff; color: #1d4ed8; }
+.cd-table .pur-flag { white-space: normal; }
+
+/* Send to Signify */
+.cd-send { background: var(--surface); border: 2px solid var(--navy); border-radius: 12px; padding: 14px 16px; margin: 4px 0 14px; }
+.cd-send[hidden] { display: none; }
+.cd-send-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.cd-send-head h3 { margin: 0 0 4px; font-size: 16px; color: var(--ink); display: inline-flex; align-items: center; gap: 8px; }
+.cd-send-head .pur-hint { margin: 0; max-width: 640px; }
+.cd-send-btn { display: inline-flex; align-items: center; gap: 8px; font-size: 15px; padding: 10px 18px; flex: none; }
+.cd-send-btn:disabled { opacity: .5; cursor: not-allowed; }
+.cd-send-body { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.cd-emails-label { font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 4px; }
+.cd-emails { display: flex; flex-wrap: wrap; gap: 6px; min-height: 30px; }
+.cd-email { display: inline-flex; align-items: center; gap: 4px; background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 4px 6px 4px 12px; font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.cd-email-x { display: inline-flex; border: none; background: transparent; color: var(--muted); cursor: pointer; padding: 2px; border-radius: 50%; }
+.cd-email-x:hover { background: var(--red-bg); color: var(--red-dk); }
+.cd-noemail { font-size: 13px; color: var(--amb-dk); font-weight: 600; }
+.cd-addrow { display: flex; gap: 6px; margin-top: 8px; max-width: 520px; }
+.cd-addrow input { flex: 1; min-width: 0; height: 34px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); padding: 0 10px; font-size: 13px; }
+.cd-msg { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 700; color: var(--muted); max-width: 640px; }
+.cd-msg textarea, .cd-sig { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); padding: 8px 10px; font: inherit; font-size: 13px; font-weight: 500; resize: vertical; width: 100%; box-sizing: border-box; }
+.cd-lastsent { font-size: 12.5px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+/* drawers */
+.cd-accrow { display: flex; gap: 14px; margin: 0 0 8px; }
+.cd-person { grid-template-columns: 1fr 24px; }
+.cd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.cd-grid label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.cd-grid input { height: 34px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); padding: 0 8px; font-size: 13px; }
+.cd-openings { display: flex; flex-direction: column; gap: 8px; }
+.cd-opening { border: 1px solid var(--line-soft); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.cd-opening small { color: var(--muted); }
+.cd-inc { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.cd-openrow { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; }
+.cd-openrow input { min-width: 0; height: 32px; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--card); color: inherit; padding: 0 8px; font: inherit; font-size: 13px; }
+
+@media (max-width: 900px) {
+  .cd-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cd-note { text-align: left; }
+  .cd-grid { grid-template-columns: 1fr; }
+}

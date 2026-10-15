@@ -46,6 +46,8 @@ const JOBS = [
   { id: 'email-purchases', name: 'Email Purchase Summary (Gmail)', args: ['sync-email-purchases.js'], every: 15, timeout: 14 },
   { id: 'dues', name: 'Dues (Payment Follow-up)', args: ['-r', './dues-env.js', 'sync-dues-final.js'], every: 30, timeout: 25, logFile: 'dues.log' },
   { id: 'ledger', name: 'Customer ledger', args: ['sync-ledger.js'], every: 30, timeout: 25 },
+  // Signify accounts' ledger (bills + payments) for the Signify Cash Discount page (#cash-discount).
+  { id: 'cd-ledger', name: 'Signify ledger (Cash Discount)', args: ['sync-cd-ledger.js'], every: 30, timeout: 10 },
   // Payment Follow-up: 10:00 WhatsApp + Task Board task per person, 19:00 summary to admins.
   // HQ decides what is due; this only asks every 15 minutes (see followup-notify.js).
   { id: 'followup-notify', name: 'Payment follow-up WhatsApps + tasks', args: ['followup-notify.js'], every: 15, timeout: 5 },
