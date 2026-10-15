@@ -293,6 +293,8 @@ async function main() {
           const mail = { from: c.from, subject: c.subject, date: c.date ? c.date.toISOString() : '', text: otherFiles.length ? `(other attachments not read: ${otherFiles.join(', ')})\n${text}` : text };
 
           const { docs, usage } = await askClaude(apiKey, mail, pdfs);
+          // The mail row first: every bill points at it.
+          await saveMail(supabase, { ...base, status: 'reading', note: `Claude ${usage}` });
           let saved = 0;
           const noteParts = [];
           for (let i = 0; i < docs.length; i++) {
