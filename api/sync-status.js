@@ -1,5 +1,6 @@
 import { applyCors } from './_cors.js'
 import { createClient } from '@supabase/supabase-js'
+import { handleTracker } from './_tracker.js'
 
 // Sync status (JCM HQ → Admin → #sync-status) — page src/sync-status.js.
 //
@@ -9,6 +10,7 @@ import { createClient } from '@supabase/supabase-js'
 // in the JCM-Busysql project (supabase/jcm-sync-setup.sql), closed to the browser.
 //
 // Access: admins, or anyone given 'sync-status' in Manage Users.
+// Also serves the Requests Tracker (actions tracker-*, api/_tracker.js, page id 'tracker').
 //
 // Actions (POST JSON):
 //   list                    jobs + whether JCM Sync itself is alive
@@ -44,11 +46,17 @@ export default async function handler(req, res) {
     .select('id, name, email, role, is_admin, active, allowed_tabs').eq('id', u.user.id).maybeSingle()
   if (!profile || profile.active === false) return send(res, 403, { error: 'Your account is not active.' })
   const isAdmin = profile.is_admin === true || profile.role === 'admin'
+  const body = req.body || {}
+  // Requests Tracker (api/_tracker.js) shares this function; its own page id 'tracker'.
+  if (String(body.action || '').startsWith('tracker-')) {
+    if (!isAdmin && !(Array.isArray(profile.allowed_tabs) && profile.allowed_tabs.includes('tracker'))) return send(res, 403, { error: 'You do not have access to the Requests Tracker.' })
+    try { return send(res, 200, await handleTracker(body.action, body, { hq, me: { name: profile.name || profile.email || 'Someone' } })) }
+    catch (err) { console.error('tracker error:', err); return send(res, err.status || 500, { error: err.status ? err.message : 'Something went wrong. Try again.' }) }
+  }
   if (!isAdmin && !(Array.isArray(profile.allowed_tabs) && profile.allowed_tabs.includes(TAB_ID))) {
     return send(res, 403, { error: 'You do not have access to Sync status.' })
   }
 
-  const body = req.body || {}
   try {
     if (body.action === 'list') {
       const r = await busy.from('sync_jobs').select('*').order('sort_order', { ascending: true })

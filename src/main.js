@@ -21,6 +21,7 @@ import { renderExplain } from './explain.js'
 import { renderPaymentFollowup } from './payment-followup.js'
 import { renderCustomers } from './customers.js'
 import { renderSyncStatus, unmountSyncStatus } from './sync-status.js'
+import { renderTracker } from './tracker.js'
 import { startPhoneTables } from './phone-tables.js'
 import { renderWhatsapp } from './whatsapp.js'
 import './whatsapp.css'
@@ -282,6 +283,8 @@ function route() {
     renderGstRecon(app)
   } else if (hash === '#sync-status') {
     renderSyncStatus(app)
+  } else if (hash === '#tracker') {
+    renderTracker(app)
   } else if (hash === '#whatsapp-test') {
     renderWhatsapp(app, 'settings')
   } else if (hash === '#whatsapp' || hash.startsWith('#whatsapp/')) {

@@ -74,5 +74,6 @@ export const NAV_CONFIG = [
     { id: 'users', label: 'Manage Users', icon: 'users', hash: '#admin', adminOnly: true, grantable: false },
     { id: 'warehouse', label: 'Warehouse & Devices', icon: 'monitor', hash: '#warehouse', adminOnly: true },
     { id: 'sync-status', label: 'Sync status', icon: 'history', hash: '#sync-status', adminOnly: true },
+    { id: 'tracker', label: 'Requests Tracker', icon: 'check', hash: '#tracker', adminOnly: true },
   ] },
 ]
