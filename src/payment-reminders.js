@@ -19,6 +19,7 @@ import {
   callCollections as call, pfTabsHtml, syncNoteHtml, rupees, shortRupees, fmtDateTime, daysBetween, store,
 } from './payment-followup.js'
 import { hqConfirm } from './hq-dialog.js'
+import { openBatchEditor } from './payment-schedules.js'
 
 const BATCH = 10
 
@@ -83,7 +84,7 @@ export function renderPaymentReminders(container) {
                   <option value="20" selected>20 days</option><option value="40">40 days</option>
                 </select>
               </label>
-              <label><input type="checkbox" id="pfrGap" checked> Skip anyone contacted recently (6 / 13 days)</label>
+              <label><input type="checkbox" id="pfrGap" checked> Skip anyone contacted recently (7 / 14 days)</label>
             </div>
             <div class="pfr-bulkbar" id="pfrBulk"></div>
             <div id="pfrList" class="pfr-list"><div class="empty-state">Pick an account group above.</div></div>
@@ -96,7 +97,10 @@ export function renderPaymentReminders(container) {
             <p class="pf-error" id="pfrError" hidden></p>
             <div class="pfr-progress" id="pfrProgress" hidden><div class="pfr-progress-bar" id="pfrProgressBar"></div><span id="pfrProgressText"></span></div>
             <div class="pfr-confirm" id="pfrConfirm" hidden></div>
-            <button class="btn-whatsapp-solid pfr-send" id="pfrSend" disabled>Send WhatsApp</button>
+            <div class="pfr-actions">
+              <button class="btn-whatsapp-solid pfr-send" id="pfrSend" disabled>Send now</button>
+              <button class="btn-ghost pfr-later" id="pfrLater" disabled>⏰ Schedule for later</button>
+            </div>
             <div class="pfr-summary" id="pfrSummary"></div>
           </aside>
         </div>
@@ -142,6 +146,15 @@ export function renderPaymentReminders(container) {
     drawBulk(); drawSend(); drawPreview()
   })
   $('pfrSend').addEventListener('click', askConfirm)
+  $('pfrLater').addEventListener('click', async () => {
+    const picked = state.parties.filter(p => state.selected.has(p.party_code))
+    if (!picked.length) return
+    const groupName = state.group === '__all' ? 'All groups' : state.group
+    const saved = await openBatchEditor({ parties: picked, tier: state.overDays || 20, respectGap: state.respectGap, title: groupName })
+    if (!saved) return
+    state.selected.clear(); draw()
+    $('pfrSummary').innerHTML = `<strong>Scheduled:</strong> “${esc(saved.title)}” — ${saved.parties.length} part${saved.parties.length === 1 ? 'y' : 'ies'}, ${esc(new Date(saved.send_at).toLocaleString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' }))}. <a href="#payment-followup/scheduled">See it on the Scheduled tab →</a>`
+  })
 
   loadMeta()
   loadList()
@@ -172,6 +185,7 @@ export function renderPaymentReminders(container) {
     el.innerHTML = `
       <h3>Automatic daily reminders</h3>
       <label class="pfr-auto-row"><input type="checkbox" data-auto="on" ${st.reminders_on ? 'checked' : ''}> <strong>${st.reminders_on ? 'On' : 'Off'}</strong> — HQ sends by itself every day</label>
+      <div class="pfr-auto-hint">This one picks parties <b>by itself</b> from all groups every day — it does <b>not</b> use the tick boxes on the left. To send the ticked parties at a time you choose, use <b>⏰ Schedule for later</b> below.</div>
       <div class="pfr-auto-grid">
         <label>At <input type="time" data-auto="at" value="${esc(st.reminders_at)}"></label>
         <label><input type="checkbox" data-auto="t20" ${st.reminders_tiers.includes(20) ? 'checked' : ''}> over 20 days (amber)</label>
@@ -299,7 +313,7 @@ export function renderPaymentReminders(container) {
     if (p.last_reminder && Date.now() - Date.parse(p.last_reminder) < 20 * 3600e3) return 'Reminded today'
     if (state.respectGap && p.latest?.created_at) {
       const red = overdueOf(p, 40) >= 1
-      const gap = red ? 6 : 13
+      const gap = red ? 7 : 14
       const d = daysBetween(new Date(new Date(p.latest.created_at).getTime() + 5.5 * 3600e3).toISOString().slice(0, 10), state.today)
       if (d < gap) return `Contacted ${d === 0 ? 'today' : `${d} d ago`}`
     }
@@ -363,7 +377,9 @@ export function renderPaymentReminders(container) {
     const n = state.selected.size
     const ready = !!state.meta?.whatsappReady
     $('pfrSend').disabled = !n || state.sending || !ready
-    $('pfrSend').textContent = state.sending ? 'Sending…' : n ? `Send WhatsApp to ${n} part${n === 1 ? 'y' : 'ies'}` : 'Tick parties to send'
+    $('pfrSend').textContent = state.sending ? 'Sending…' : n ? `Send now to ${n} part${n === 1 ? 'y' : 'ies'}` : 'Tick parties to send'
+    $('pfrLater').disabled = !n || state.sending
+    $('pfrLater').textContent = n ? `⏰ Schedule ${n} for later` : '⏰ Schedule for later'
   }
 
   function drawPreview() {
@@ -381,15 +397,15 @@ export function renderPaymentReminders(container) {
     if (!n || state.sending) return
     const total = state.parties.filter(p => state.selected.has(p.party_code)).reduce((s, p) => s + p.balance, 0)
     $('pfrConfirm').innerHTML = `
-      <p>Send the WhatsApp reminder to <strong>${n} part${n === 1 ? 'y' : 'ies'}</strong> (${esc(shortRupees(total))} due)? It can't be taken back.</p>
+      <p>Send the WhatsApp reminder <strong>right now</strong> to <strong>${n} part${n === 1 ? 'y' : 'ies'}</strong> (${esc(shortRupees(total))} due)? It can't be taken back. (To send later, press Cancel and use ⏰ Schedule for later.)</p>
       <div class="pf-modal-actions">
         <button class="btn-ghost btn-small" id="pfrNo">Cancel</button>
         <button class="btn-whatsapp-solid btn-small" id="pfrYes">Yes, send</button>
       </div>`
     $('pfrConfirm').hidden = false
-    $('pfrSend').hidden = true
-    $('pfrNo').addEventListener('click', () => { $('pfrConfirm').hidden = true; $('pfrSend').hidden = false })
-    $('pfrYes').addEventListener('click', () => { $('pfrConfirm').hidden = true; $('pfrSend').hidden = false; sendAll() })
+    $('pfrSend').hidden = true; $('pfrLater').hidden = true
+    $('pfrNo').addEventListener('click', () => { $('pfrConfirm').hidden = true; $('pfrSend').hidden = false; $('pfrLater').hidden = false })
+    $('pfrYes').addEventListener('click', () => { $('pfrConfirm').hidden = true; $('pfrSend').hidden = false; $('pfrLater').hidden = false; sendAll() })
   }
 
   function showError(msg) {

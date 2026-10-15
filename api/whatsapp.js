@@ -8,6 +8,7 @@ import { sendLedger } from './_send-docs.js'
 import { db as ordersDb } from './_orders/lib/db.js'
 import { materialOverview } from './_orders/lib/material.js'
 import { partySearch, scheduleList, scheduleSave, scheduleStop, runSchedules } from './_schedules.js'
+import { runBatches } from './_batches.js'
 import { runEmailAlerts, runItemAlerts, alertsGet, alertSave, alertRemove, staffPeople } from './_staff-alerts.js'
 
 // WhatsApp via Meta's Cloud API — the HQ "WhatsApp" admin page (src/whatsapp-test.js at #whatsapp-test),
@@ -40,6 +41,7 @@ async function tick(busy, force) {
   try { out.emailAlerts = await runEmailAlerts(busy, sw) } catch (err) { out.emailAlerts = { error: String(err.message || err).slice(0, 200) } }
   try { out.itemAlerts = await runItemAlerts(busy, sw) } catch (err) { out.itemAlerts = { error: String(err.message || err).slice(0, 200) } }
   try { out.schedules = await runSchedules(busy, sw) } catch (err) { out.schedules = { error: String(err.message || err).slice(0, 200) } }
+  try { out.batches = await runBatches(busy, sw) } catch (err) { out.batches = { error: String(err.message || err).slice(0, 200) } }
   const at = sw.get('orders_daily_at') || '17:30'
   const last = sw.get('last_orders_daily')
   const today = todayIST()

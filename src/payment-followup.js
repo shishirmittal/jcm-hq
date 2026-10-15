@@ -19,6 +19,7 @@ import './payment-followup.css'
 // must always lift it, or the next page would open frozen.
 window.addEventListener('hashchange', () => document.body.classList.remove('pf-modal-open'))
 import { renderPaymentReminders } from './payment-reminders.js'
+import { renderPaymentSchedules } from './payment-schedules.js'
 import { hqConfirm } from './hq-dialog.js'
 
 // Wording for the bulk "Send WhatsApp to N" result (statuses from api/collections.js send-reminders).
@@ -150,6 +151,7 @@ export function pfTabsHtml(active) {
       <a href="#payment-followup" class="pf-tab ${active === 'calls' ? 'active' : ''}">Follow-up calls</a>
       <a href="#payment-followup/today" class="pf-tab ${active === 'today' ? 'active' : ''}">Today's follow-ups<span class="pf-tab-count" id="pfTabToday"></span></a>
       <a href="#payment-followup/reminders" class="pf-tab ${active === 'reminders' ? 'active' : ''}">WhatsApp reminders</a>
+      <a href="#payment-followup/scheduled" class="pf-tab ${active === 'scheduled' ? 'active' : ''}">⏰ Scheduled</a>
     </nav>`
 }
 
@@ -171,6 +173,7 @@ export function renderPaymentFollowup(container, sub) {
     return
   }
   if (sub === 'reminders') return renderPaymentReminders(container)
+  if (sub === 'scheduled') return renderPaymentSchedules(container)
 
   const today = sub === 'today'   // Today's follow-ups tab: the due list, by person
   const storedView = store('pf.view')

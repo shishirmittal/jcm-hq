@@ -86,7 +86,7 @@ export async function scheduleSave(busy, body, me) {
   const promised = Number(body.promised_amount) || null
   const note = String(body.note || '').trim().slice(0, 500) || null
   // One live schedule per customer: a new one replaces the old.
-  await busy.from('collection_schedules').update({ status: 'stopped', stop_reason: 'replaced by a new schedule', stopped_by: me.name, stopped_at: new Date().toISOString() }).eq('party_code', code).eq('status', 'active')
+  await busy.from('collection_schedules').update({ status: 'stopped', stop_reason: 'replaced by a new schedule', stopped_by: me.name, stopped_at: new Date().toISOString() }).eq('party_code', code).in('status', ['active', 'paused'])
   const ins = await busy.from('collection_schedules').insert({
     party_code: code, party_name: party.name, number: String(body.number || '').replace(/\D/g, '') || null,
     first_at: first, next_at: first, repeat, promised_amount: promised, note, balance_at_create: party.due,
@@ -155,10 +155,10 @@ export async function runSchedules(busy, switches) {
     }
   }
   // Repeating schedules that are waiting for their next time also stop the moment a payment shows.
-  const waiting = await busy.from('collection_schedules').select('id, party_code, created_at').eq('status', 'active').gt('sent_count', 0).limit(100)
+  const waiting = await busy.from('collection_schedules').select('id, party_code, created_at').in('status', ['active', 'paused']).gt('sent_count', 0).limit(100)
   for (const s of waiting.data || []) {
     const paid = await paidSince(busy, s.party_code, s.created_at)
-    if (paid) { await busy.from('collection_schedules').update({ status: 'stopped', stop_reason: paid, stopped_by: 'HQ', stopped_at: new Date().toISOString(), next_at: null }).eq('id', s.id).eq('status', 'active'); counts.stopped++ }
+    if (paid) { await busy.from('collection_schedules').update({ status: 'stopped', stop_reason: paid, stopped_by: 'HQ', stopped_at: new Date().toISOString(), next_at: null }).eq('id', s.id).in('status', ['active', 'paused']); counts.stopped++ }
   }
   return counts
 }

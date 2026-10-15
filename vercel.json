@@ -22,6 +22,12 @@
   "functions": {
     "api/db-chat.js": {
       "maxDuration": 60
+    },
+    "api/collections.js": {
+      "maxDuration": 60
+    },
+    "api/whatsapp.js": {
+      "maxDuration": 60
     }
   }
 }

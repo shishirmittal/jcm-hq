@@ -11,7 +11,7 @@ const inr = n => '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN')
 const when = iso => iso ? new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', ...IST }) : ''
 const tomorrowIST = () => new Date(Date.now() + 5.5 * 3600e3 + 86400e3).toISOString().slice(0, 10)
 const REPEAT = [['none', 'Once'], ['daily', 'Daily'], ['weekly', 'Weekly'], ['monthly', 'Monthly']]
-const STATE = { active: ['Active', 'grn'], done: ['Done', 'grey'], stopped: ['Stopped', 'grey'] }
+const STATE = { active: ['Active', 'grn'], paused: ['Off', 'amb'], done: ['Done', 'grey'], stopped: ['Stopped', 'grey'] }
 
 export function scheduleChip(s) {
   return s ? `⏰ Reminder ${when(s.next_at)}${s.repeat !== 'none' ? ` · ${s.repeat}` : ''}` : ''

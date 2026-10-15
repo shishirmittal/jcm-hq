@@ -1,0 +1,56 @@
+/* Payment Follow-up → Scheduled tab + schedule editor (2026-10-16). Classes ps-*. */
+.ps-head { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; margin: 4px 0 12px; flex-wrap: wrap; }
+.ps-head > div { flex: 1 1 260px; min-width: 0; }
+.ps-h { font-size: 17px; margin: 0 0 4px; }
+.ps-h2 { margin: 26px 0 10px; }
+.ps-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.ps-card { border: 1px solid var(--line, #e3e3e3); border-radius: 14px; background: var(--surface, #fff); padding: 14px; display: grid; gap: 6px; min-width: 0; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+.ps-card.is-off { opacity: .6; }
+.ps-card.is-done { background: var(--hover, #f8fafc); }
+.ps-card-top { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+.ps-title { font: inherit; font-weight: 700; font-size: 15.5px; color: inherit; background: none; border: 0; padding: 0; text-align: left; cursor: pointer; text-decoration: none; min-width: 0; overflow-wrap: anywhere; }
+.ps-title:hover { text-decoration: underline; }
+.ps-when { font-weight: 600; font-size: 14px; }
+.ps-meta, .ps-status { font-size: 13px; }
+.ps-names { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ps-by { font-size: 11.5px; }
+.ps-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+.ps-danger { color: #b91c1c; }
+/* On / Off switch */
+.ps-switch { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; cursor: pointer; font: inherit; font-size: 12px; color: var(--muted, #6b7280); padding: 2px; }
+.ps-switch span { width: 40px; height: 22px; border-radius: 999px; background: #cbd5e1; position: relative; transition: background .15s; }
+.ps-switch span::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .15s; }
+.ps-switch.on span { background: #16a34a; }
+.ps-switch.on span::after { transform: translateX(18px); }
+.ps-switch.on b { color: #15803d; }
+.ps-card.is-off .ps-switch { opacity: 1; }
+/* Editor */
+.ps-modal { max-width: 620px; display: grid; gap: 10px; }
+.ps-modal .modal-header { margin-bottom: 0; }
+.ps-modal-small { max-width: 420px; }
+.ps-f { display: grid; gap: 4px; font-size: 13px; font-weight: 600; min-width: 0; }
+.ps-f input, .ps-f select, .ps-add input { padding: 9px 10px; border: 1px solid var(--line, #ccc); border-radius: 9px; font: inherit; font-weight: 400; background: var(--surface, #fff); color: inherit; min-width: 0; width: 100%; box-sizing: border-box; }
+.ps-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: end; }
+.ps-check { display: flex; gap: 6px; align-items: center; font-size: 13px; }
+.ps-seg { display: flex; gap: 0; border: 1px solid var(--line, #ccc); border-radius: 9px; overflow: hidden; }
+.ps-seg button { flex: 1; border: 0; background: transparent; color: inherit; font: inherit; font-weight: 500; padding: 8px 4px; cursor: pointer; }
+.ps-seg button + button { border-left: 1px solid var(--line, #ccc); }
+.ps-seg button.on { background: var(--navy, #1A2E3B); color: #fff; }
+.ps-plist-head { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; flex-wrap: wrap; margin-top: 4px; }
+.ps-plist { max-height: 38vh; overflow-y: auto; border: 1px solid var(--line, #e3e3e3); border-radius: 10px; }
+.ps-prow { display: flex; gap: 8px; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--line, #eee); font-size: 13.5px; cursor: pointer; }
+.ps-prow:last-child { border-bottom: 0; }
+.ps-prow.is-out { opacity: .5; }
+.ps-pname { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.ps-pamt { font-weight: 600; white-space: nowrap; }
+.ps-results { display: grid; max-height: 200px; overflow-y: auto; }
+.ps-results button { text-align: left; border: 0; border-bottom: 1px solid var(--line, #eee); background: transparent; color: inherit; font: inherit; font-size: 13px; padding: 8px 6px; cursor: pointer; }
+.ps-results button:hover { background: var(--hover, #f6f8fb); }
+.ps-note { font-size: 12px; }
+.ps-foot { display: flex; justify-content: flex-end; gap: 8px; position: sticky; bottom: -1.25rem; background: var(--surface, #fff); padding: 10px 0 2px; }
+@media (max-width: 520px) { .ps-row2 { grid-template-columns: 1fr; } .ps-grid { grid-template-columns: 1fr; } }
+/* Reminders tab: Send now + Schedule for later */
+.pfr-actions { display: grid; gap: 8px; }
+.pfr-later { width: 100%; padding: 12px; font-weight: 700; border-radius: 12px; }
+.pfr-auto-hint { font-size: 12.5px; background: #fff7e6; color: #7c4a03; border-radius: 8px; padding: 7px 9px; margin: 4px 0 8px; }
+body.dark-mode .pfr-auto-hint { background: #3a2a0c; color: #fcd9a0; }

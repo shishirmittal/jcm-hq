@@ -1,4 +1,5 @@
 import { applyCors } from './_cors.js'
+import { batchList, batchSave, batchOp, inboxScheduleOp, partyFind, runBatches } from './_batches.js'
 import { createClient } from '@supabase/supabase-js'
 import { waConfigured, sendLogged, waSwitches, BANNER, HQ_URL, inr, niceDate } from './_wa-cloud.js'
 import { sendLedger } from './_send-docs.js'
@@ -150,6 +151,23 @@ export default async function handler(req, res) {
     if (action === 'reminder-settings') return await handleReminderSettings(busy, me, body, res, false)
     if (action === 'reminder-settings-save') return await handleReminderSettings(busy, me, body, res, true)
     if (action === 'send-reminders') return await handleSendReminders(busy, body, me, res)
+    // Scheduled reminder lists + Inbox schedules (api/_batches.js, Scheduled tab).
+    if (['batch-list', 'batch-save', 'batch-op', 'inbox-sched-op', 'party-find', 'batch-run'].includes(action)) {
+      try {
+        if (action === 'batch-list') return send(res, 200, await batchList(busy))
+        if (action === 'batch-save') return send(res, 200, await batchSave(busy, body, me))
+        if (action === 'inbox-sched-op') return send(res, 200, await inboxScheduleOp(busy, body, me))
+        if (action === 'party-find') return send(res, 200, await partyFind(busy, body))
+        if (action === 'batch-run') {
+          // "Send now" on a card: send what fits in ~40 s here; the 5-minute WhatsApp tick finishes the rest.
+          if (!waConfigured()) return send(res, 400, { error: 'WhatsApp (Meta) is not set up yet in Vercel.' })
+          const op = await batchOp(busy, { id: body.id, op: 'now', restart: body.restart }, me)
+          const run = await runBatches(busy, await waSwitches(busy), { onlyId: Number(body.id), budgetMs: 40000 })
+          return send(res, 200, { ok: true, run, batch: op.batch })
+        }
+        return send(res, 200, await batchOp(busy, body, me))
+      } catch (err) { return send(res, err.status || 500, { error: err.message }) }
+    }
     return send(res, 400, { error: 'Unknown request.' })
   } catch (err) {
     console.error('collections handler error:', err)
@@ -1133,8 +1151,8 @@ async function closeDailyTaskIfDone(busy, hq, groupName, me) {
   if (!left) await markTaskDone(hq, t.data.task_id, me.id)
 }
 
-// Shared with api/_nexus.js (the HQ assistant).
-export { dueByPerson }
+// Shared with api/_nexus.js (the HQ assistant) and api/_batches.js (scheduled reminder lists).
+export { dueByPerson, reminderContext, planReminder, dispatchReminder }
 
 // One reminder for a schedule set from the WhatsApp Inbox (api/_schedules.js). Same templates and hard
 // skips (DND, check balance, nothing due, no number, 20 h repeat) — but no contact gap, and bills under
