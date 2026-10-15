@@ -2,6 +2,7 @@ import { applyCors } from './_cors.js'
 import { createClient } from '@supabase/supabase-js'
 import { waConfigured, sendLogged, waSwitches, BANNER, inr, niceDate as waDate } from './_wa-cloud.js'
 import { buildPurchasePdf, purchaseFileName } from './_purchase-pdf.js'
+import { handleEmailAction, emailTabId } from './_email-purchases.js'
 
 // Purchase Summary — every purchase bill the accounts team types into Busy, so
 // admins know what material has reached the warehouse: party, bill no. and date,
@@ -118,9 +119,22 @@ export default async function handler(req, res) {
       .eq('id', userData.user.id).maybeSingle(), 'profile')
     if (!profile || profile.active === false) return send(res, 403, { error: 'Your account is not active.' })
     const isAdmin = profile.is_admin === true || profile.role === 'admin'
+    const me = { id: profile.id, name: profile.name || profile.email || 'Someone', whatsapp: profile.whatsapp }
+
+    // Email Purchase Summary (api/_email-purchases.js) shares this function; its own page id.
+    if (action.startsWith('email-')) {
+      const ok = isAdmin || (Array.isArray(profile.allowed_tabs) && profile.allowed_tabs.includes(emailTabId()))
+      if (!ok) return send(res, 403, { error: 'You do not have access to Email Purchase Summary.' })
+      try {
+        return await handleEmailAction(action, body, { busy, hq, me, send, res })
+      } catch (err) {
+        if (err?.status) return send(res, err.status, { error: err.message })
+        throw err
+      }
+    }
+
     const granted = Array.isArray(profile.allowed_tabs) && profile.allowed_tabs.includes(TAB_ID)
     if (!isAdmin && !granted) return send(res, 403, { error: 'You do not have access to Purchase Summary.' })
-    const me = { id: profile.id, name: profile.name || profile.email || 'Someone', whatsapp: profile.whatsapp }
 
     if (action === 'count') return await handleCount(busy, res)
     if (action === 'list') return await handleList(busy, hq, body, res)
@@ -133,8 +147,8 @@ export default async function handler(req, res) {
     return send(res, 400, { error: 'Unknown request.' })
   } catch (err) {
     console.error('purchases handler error:', err)
-    const setup = /purchase_\w+/.test(err?.message || '') && /does not exist|schema cache/.test(err?.message || '')
-    return send(res, 500, { error: setup ? 'Run supabase/purchases-setup.sql in the Busy Supabase project first.' : 'Something went wrong. Try again.' })
+    const setup = /purchase_\w+|email_\w+/.test(err?.message || '') && /does not exist|schema cache/.test(err?.message || '')
+    return send(res, 500, { error: setup ? 'Run the purchases / email-purchases setup SQL in the Busy Supabase project first.' : 'Something went wrong. Try again.' })
   }
 }
 

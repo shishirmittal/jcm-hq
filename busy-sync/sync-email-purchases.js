@@ -193,10 +193,12 @@ async function askClaude(apiKey, mail, pdfs) {
 }
 
 // ---------- Supabase ----------
-async function existingBill(supabase, supplier, invoiceNo) {
-  if (!supplier || !invoiceNo) return null;
+// The same document number from the same brand (whatever the printed company name — Atomberg
+// prints "Technologies Limited" on one PDF and "Private Limited" on another) is one document.
+async function existingBill(supabase, brand, invoiceNo, messageId) {
+  if (!brand || !invoiceNo) return null;
   const { data, error } = await supabase.from('email_bills').select('id, message_id')
-    .ilike('supplier_name', supplier).eq('invoice_no', invoiceNo).limit(1);
+    .eq('brand', brand).eq('invoice_no', invoiceNo).neq('message_id', messageId).limit(1);
   if (error) throw new Error(`checking duplicates: ${error.message}`);
   return data && data[0] ? data[0] : null;
 }
@@ -301,7 +303,7 @@ async function main() {
             const d = docs[i];
             const supplier = txt(d.supplier_name) || c.sender.brand;
             const invNo = txt(d.invoice_no);
-            const dupe = await existingBill(supabase, supplier, invNo);
+            const dupe = await existingBill(supabase, c.sender.brand, invNo, c.messageId);
             if (dupe) { dupes++; noteParts.push(`${invNo} already in (mail ${dupe.message_id})`); continue; }
             const items = Array.isArray(d.items) ? d.items : [];
             const lines = items.map((it, n) => ({

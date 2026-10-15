@@ -23,13 +23,14 @@ const MEANING = {
   myExplain: n => `question${n === 1 ? '' : 's'} waiting for your answer`,
   waUnread: n => `unread WhatsApp message${n === 1 ? '' : 's'}`,
   purchasesToday: n => `purchase bill${n === 1 ? '' : 's'} entered today`,
+  emailBillsToday: n => `invoice mail${n === 1 ? '' : 's'} received today`,
   openLeads: n => `new project lead${n === 1 ? '' : 's'}`,
   pendingQuotes: n => `quotation${n === 1 ? '' : 's'} waiting for the customer`,
 }
 // Most urgent first.
-const ORDER = ['redAlerts', 'myExplain', 'paymentFollowup', 'openTasks', 'waUnread', 'purchasesToday', 'openLeads', 'pendingQuotes']
+const ORDER = ['redAlerts', 'myExplain', 'paymentFollowup', 'openTasks', 'waUnread', 'purchasesToday', 'emailBillsToday', 'openLeads', 'pendingQuotes']
 // Counts that are information rather than work: listed, but not in the bell's number.
-const INFO_ONLY = new Set(['purchasesToday', 'openLeads', 'pendingQuotes'])
+const INFO_ONLY = new Set(['purchasesToday', 'emailBillsToday', 'openLeads', 'pendingQuotes'])
 
 const POLL_MS = 2 * 60 * 1000
 let observer = null

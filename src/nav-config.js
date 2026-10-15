@@ -86,6 +86,10 @@ export const NAV_CONFIG = [
     // busy-sync/sync-purchases.js. Grantable; api/purchases.js checks the same id.
     // Badge = bills entered today.
     { id: 'purchases', label: 'Purchase Summary', icon: 'package', hash: '#purchases', adminOnly: true, badge: 'purchasesToday' },
+    // Brand invoices that arrive by email (Gmail), read by Claude on JCM-Server —
+    // busy-sync/sync-email-purchases.js. Grantable; api/purchases.js (email-* actions)
+    // checks the same id. Badge = invoice mails received today.
+    { id: 'email-purchases', label: 'Email Purchases', icon: 'message', hash: '#email-purchases', adminOnly: true, badge: 'emailBillsToday' },
   ] },
   { section: 'Insights', items: [
     { id: 'control', label: 'Control Centre', icon: 'chart', hash: '#dashboard', adminOnly: true },

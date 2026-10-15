@@ -25,6 +25,7 @@ import { startPhoneTables } from './phone-tables.js'
 import { renderWhatsapp } from './whatsapp.js'
 import './whatsapp.css'
 import { renderPurchases } from './purchases.js'
+import { renderEmailPurchases } from './email-purchases.js'
 import { renderGstRecon } from './gst-recon.js'
 import { renderTaskBoard, unmountTaskBoard } from './task-board.js'
 import { mountPinnedSidebar, unmountPinnedSidebar } from './sidebar.js'
@@ -275,6 +276,8 @@ function route() {
     renderPaymentFollowup(app, hash.split('/')[1] || null)
   } else if (hash === '#purchases') {
     renderPurchases(app)
+  } else if (hash === '#email-purchases') {
+    renderEmailPurchases(app)
   } else if (hash === '#gst-recon') {
     renderGstRecon(app)
   } else if (hash === '#sync-status') {
