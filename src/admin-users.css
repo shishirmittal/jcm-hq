@@ -1,0 +1,46 @@
+/* Manage Users (src/admin.js), redesigned 2026-10-16. Classes um-*. */
+.um-main { max-width: 860px; margin: 0 auto; width: 100%; }
+.um-tools { display: flex; gap: 8px; margin-bottom: 10px; }
+.um-search { flex: 1; display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--muted); }
+.um-search input { flex: 1; min-width: 0; height: 42px; border: 0; background: transparent; color: var(--text); font: inherit; font-size: 15px; }
+.um-search input:focus { outline: none; }
+.um-chips { display: flex; gap: 6px; overflow-x: auto; margin-bottom: 10px; }
+.um-chip { flex-shrink: 0; border: 1px solid var(--line); background: var(--surface); color: var(--body); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; min-height: 0 !important; }
+.um-chip span { color: var(--muted); margin-left: 2px; }
+.um-chip.is-on { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.um-chip.is-on span { color: inherit; opacity: .75; }
+.um-note { font-size: 13px; color: #166534; background: #DCFCE7; border-radius: 10px; padding: 8px 12px; margin-bottom: 10px; }
+
+.um-list { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.um-row { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--line-soft); }
+.um-row:first-child { border-top: 0; }
+.um-row.is-off { opacity: .6; }
+.um-open { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 12px; background: none; border: 0; padding: 0; margin: 0; text-align: left; color: inherit; font: inherit; cursor: pointer; min-height: 0 !important; }
+.um-av { flex-shrink: 0; width: 38px; height: 38px; border-radius: 50%; color: #fff; font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; }
+.um-body { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.um-name { font-size: 15px; font-weight: 600; color: var(--ink); }
+.um-name em { color: var(--muted); font-style: normal; font-weight: 400; font-size: 12px; }
+.um-email { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.um-facts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.um-fact { font-size: 11.5px; color: var(--body); background: var(--line-soft); border-radius: 6px; padding: 2px 7px; }
+.um-fact.is-miss { color: #B45309; background: #FEF3C7; }
+.um-tag { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; border-radius: 6px; padding: 2px 6px; margin-left: 4px; vertical-align: 2px; }
+.um-tag-admin { color: #6B21A8; background: #F3E8FF; }
+.um-tag-off { color: #991B1B; background: #FEE2E2; }
+
+.um-side { flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.um-pin { background: none; border: 1px solid var(--line); border-radius: 8px; padding: 3px 8px; font: inherit; font-size: 12px; font-family: 'IBM Plex Mono', ui-monospace, monospace; color: var(--body); cursor: pointer; min-height: 0 !important; }
+.um-switch { position: relative; width: 40px; height: 22px; display: inline-block; cursor: pointer; }
+.um-switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.um-knob { position: absolute; inset: 0; background: #CBD0D8; border-radius: 999px; transition: background .15s; pointer-events: none; }
+.um-knob::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+.um-switch input:checked + .um-knob { background: #16A34A; }
+.um-switch input:checked + .um-knob::after { transform: translateX(18px); }
+.um-switch.is-disabled { opacity: .45; cursor: default; }
+
+/* Night mode */
+body.dark-mode .um-note { color: #86EFAC; background: #123524; }
+body.dark-mode .um-fact.is-miss { color: #FCD34D; background: #3A2E10; }
+body.dark-mode .um-tag-admin { color: #E9D5FF; background: #3B1F5C; }
+body.dark-mode .um-tag-off { color: #FCA5A5; background: #4A1D1D; }
+body.dark-mode .um-knob { background: #3A4A66; }

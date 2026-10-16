@@ -4,6 +4,8 @@ import { esc } from './utils.js'
 import { NAV_CONFIG } from './nav-config.js'
 import { icon } from './icons.js'
 import { hqAlert } from './hq-dialog.js'
+import { openSidebar, avatarColor } from './sidebar.js'
+import './admin-users.css'
 
 // The tab list is generated from NAV_CONFIG, never a second hardcoded copy --
 // add a tab to the nav and it shows up here to be granted, with no edit here.
@@ -221,22 +223,40 @@ export async function renderAdmin(container, onBack) {
     return
   }
 
+  // Redesigned 2026-10-16 (Shishir: "shabby" on the phone): one-line header like every other
+  // page, search + Active / Off / All chips, compact rows (avatar, name, email, WhatsApp / Busy /
+  // pages chips), PIN hidden until 👁 is tapped, a small On/Off switch instead of a big button.
   container.innerHTML = `
     <div class="app-layout">
       <header class="app-header">
-        <button class="btn-ghost" id="backBtn">← Back</button>
-        <span class="logo-small">Manage users</span>
-        <button class="btn-primary btn-small" id="addUserBtn">+ Add User</button>
+        <div style="display:flex;align-items:center;gap:10px;min-width:0">
+          <button class="btn-ghost btn-hamburger" id="umMenu" aria-label="Menu">☰</button>
+          <span class="logo-small">Manage Users</span>
+        </div>
+        <button class="btn-primary btn-small" id="addUserBtn">${icon('plus', 14)} Add</button>
       </header>
-      <main class="app-main">
+      <main class="app-main um-main">
+        <div class="um-tools">
+          <label class="um-search">${icon('search', 16)}<input id="umQ" type="search" placeholder="Search name, email, mobile, Busy login" autocomplete="off"></label>
+        </div>
+        <div class="um-chips" id="umChips"></div>
+        <div id="umNote"></div>
         <div id="userListWrap"><div class="loading-state">Loading users...</div></div>
       </main>
     </div>
   `
 
-  document.getElementById('backBtn').addEventListener('click', onBack)
+  document.getElementById('umMenu').addEventListener('click', () => openSidebar())
   document.getElementById('addUserBtn').addEventListener('click', () => {
     showUserForm({ onSaved: info => loadUsers(info), users: lastUsers })
+  })
+  let filter = 'active'
+  let query = ''
+  const shownPins = new Set()
+  document.getElementById('umQ').addEventListener('input', e => { query = e.target.value.trim().toLowerCase(); draw() })
+  document.getElementById('umChips').addEventListener('click', e => {
+    const b = e.target.closest('[data-f]'); if (!b) return
+    filter = b.dataset.f; draw()
   })
 
   let lastUsers = []
@@ -258,38 +278,62 @@ export async function renderAdmin(container, onBack) {
       return
     }
 
-    const users = result.data.users || []
+    const users = (result.data.users || []).slice().sort((x, y) => (y.active - x.active) || (y.is_admin - x.is_admin) || String(x.name || x.email).localeCompare(String(y.name || y.email)))
     lastUsers = users
-    const nameById = Object.fromEntries(users.map(u => [u.id, u.name || u.email]))
-    wrap.innerHTML = `
-      ${tabsSavedFor ? `<p class="admin-note">Tab access saved. Changes apply next time ${esc(tabsSavedFor)} reloads the app.</p>` : ''}
-      ${justChangedEmail ? '<p class="admin-note">Email updated — the change took effect immediately, no confirmation step required on this account.</p>' : ''}
-      <div class="user-list">
-        ${users.map(u => `
-          <div class="user-card" data-id="${u.id}">
-            <div class="user-card-main">
-              <div>
-                <div class="user-name">
-                  ${u.name ? esc(u.name) : '<em>Not set</em>'}${u.id === myProfile.id ? ' <em>(you)</em>' : ''}
-                  ${u.is_admin ? '<span class="admin-badge">Admin</span>' : ''}
-                </div>
-                <div class="user-meta">${esc(u.email)}${u.employee_id ? ` · Emp ID ${esc(u.employee_id)}` : ''}</div>
-                <div class="user-meta">WhatsApp: ${u.whatsapp ? `+91 ${esc(u.whatsapp)}` : '<em>Not set</em>'} · Busy login: ${u.busy_login ? esc(u.busy_login) : '<em>Not set</em>'}</div>
-                ${u.reports_to?.length ? `<div class="user-meta">Reports to: ${u.reports_to.map(id => esc(nameById[id] || 'someone removed')).join(', ')}</div>` : ''}
-                <div class="user-meta">PIN: ${u.pin ? esc(u.pin) : '<em>Not set</em>'}</div>
-              </div>
-              <div class="user-card-controls">
-                <button class="btn-ghost active-toggle ${u.active ? '' : 'inactive'}" data-id="${u.id}" data-active="${u.active}" ${u.id === myProfile.id ? 'disabled' : ''}>
-                  ${u.active ? 'Active' : 'Deactivated'}
-                </button>
-                <button class="btn-ghost btn-small edit-user-btn" data-id="${u.id}">Edit</button>
-              </div>
-            </div>
-          </div>
-        `).join('')}
-      </div>
-    `
+    const note = tabsSavedFor ? `Saved. ${esc(tabsSavedFor)} sees the new pages the next time the app is opened.`
+      : justChangedEmail ? 'Email updated — it works straight away.' : ''
+    const noteEl = document.getElementById('umNote')
+    if (noteEl) noteEl.innerHTML = note ? `<div class="um-note">✓ ${note}</div>` : ''
+    draw()
+  }
 
+  function draw() {
+    const wrap = document.getElementById('userListWrap')
+    if (!wrap) return
+    const users = lastUsers
+    const nameById = Object.fromEntries(users.map(u => [u.id, u.name || u.email]))
+    const counts = { active: users.filter(u => u.active).length, off: users.filter(u => !u.active).length, all: users.length }
+    document.getElementById('umChips').innerHTML = [['active', 'Active'], ['off', 'Switched off'], ['all', 'All']]
+      .map(([k, l]) => `<button type="button" class="um-chip${filter === k ? ' is-on' : ''}" data-f="${k}">${l} <span>${counts[k]}</span></button>`).join('')
+    const hay = u => [u.name, u.email, u.whatsapp, u.busy_login, u.employee_id].filter(Boolean).join(' ').toLowerCase()
+    const list = users.filter(u => (filter === 'all' || (filter === 'active') === u.active) && (!query || hay(u).includes(query)))
+    const initials = u => (String(u.name || u.email || '?').match(/[A-Za-z\u0900-\u097F]+/g) || ['?']).slice(0, 2).map(w => w[0]).join('').toUpperCase()
+    wrap.innerHTML = list.length ? `
+      <div class="um-list">
+        ${list.map(u => {
+          const me = u.id === myProfile.id
+          const pages = u.is_admin ? 'All pages' : `${u.allowed_tabs.length} page${u.allowed_tabs.length === 1 ? '' : 's'}`
+          return `
+          <div class="um-row${u.active ? '' : ' is-off'}" data-id="${u.id}">
+            <button type="button" class="um-open edit-user-btn" data-id="${u.id}" aria-label="Edit ${esc(u.name || u.email)}">
+              <span class="um-av" style="background:${avatarColor(u.id)}">${esc(initials(u))}</span>
+              <span class="um-body">
+                <span class="um-name">${u.name ? esc(u.name) : '<em>No name</em>'}${me ? ' <em>(you)</em>' : ''}${u.is_admin ? ' <span class="um-tag um-tag-admin">Admin</span>' : ''}${u.active ? '' : ' <span class="um-tag um-tag-off">Off</span>'}</span>
+                <span class="um-email">${esc(u.email)}${u.employee_id ? ` · Emp ${esc(u.employee_id)}` : ''}</span>
+                <span class="um-facts">
+                  <span class="um-fact${u.whatsapp ? '' : ' is-miss'}">${u.whatsapp ? `WhatsApp ${esc(u.whatsapp)}` : 'No WhatsApp'}</span>
+                  <span class="um-fact${u.busy_login ? '' : ' is-miss'}">${u.busy_login ? `Busy: ${esc(u.busy_login)}` : 'No Busy login'}</span>
+                  <span class="um-fact">${pages}</span>
+                  ${u.reports_to?.length ? `<span class="um-fact">Reports to ${u.reports_to.map(id => esc(nameById[id] || 'someone removed')).join(', ')}</span>` : ''}
+                </span>
+              </span>
+            </button>
+            <div class="um-side">
+              <button type="button" class="um-pin" data-pin="${u.id}" title="Show PIN">${!u.pin ? 'No PIN' : shownPins.has(u.id) ? esc(u.pin) : 'PIN ••••'}</button>
+              <label class="um-switch${me ? ' is-disabled' : ''}" title="${u.active ? 'Can sign in — tap to switch off' : 'Switched off — tap to let them sign in again'}">
+                <input type="checkbox" class="active-toggle" data-id="${u.id}" data-active="${u.active}" ${u.active ? 'checked' : ''} ${me ? 'disabled' : ''}>
+                <span class="um-knob"></span>
+              </label>
+            </div>
+          </div>`
+        }).join('')}
+      </div>` : `<div class="empty-state">${query ? 'Nobody matches that search.' : filter === 'off' ? 'Nobody is switched off.' : 'No users yet.'}</div>`
+
+    wrap.querySelectorAll('[data-pin]').forEach(btn => btn.addEventListener('click', () => {
+      const id = btn.dataset.pin
+      shownPins.has(id) ? shownPins.delete(id) : shownPins.add(id)
+      draw()
+    }))
     wrap.querySelectorAll('.edit-user-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const u = users.find(x => x.id === btn.dataset.id)
@@ -302,12 +346,14 @@ export async function renderAdmin(container, onBack) {
     // rebuilt around, so it stays a direct profiles.active write rather than
     // routing through the new admin-users endpoint.
     wrap.querySelectorAll('.active-toggle').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const nextActive = !(btn.dataset.active === 'true')
+      btn.addEventListener('change', async () => {
+        const nextActive = btn.checked
         btn.disabled = true
         const { error } = await supabase.from('profiles').update({ active: nextActive }).eq('id', btn.dataset.id)
-        if (error) { hqAlert(error.message); btn.disabled = false; return }
-        loadUsers()
+        if (error) { hqAlert(error.message); btn.disabled = false; btn.checked = !nextActive; return }
+        const u = lastUsers.find(x => x.id === btn.dataset.id)
+        if (u) u.active = nextActive
+        draw()
       })
     })
   }
