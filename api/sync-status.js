@@ -1,6 +1,7 @@
 import { applyCors } from './_cors.js'
 import { createClient } from '@supabase/supabase-js'
 import { handleTracker } from './_tracker.js'
+import { drainPush, sendToPeople, pushReady } from './_push.js'
 
 // Sync status (JCM HQ → Admin → #sync-status) — page src/sync-status.js.
 //
@@ -11,6 +12,14 @@ import { handleTracker } from './_tracker.js'
 //
 // Access: admins, or anyone given 'sync-status' in Manage Users.
 // Also serves the Requests Tracker (actions tracker-*, api/_tracker.js, page id 'tracker').
+//
+// Also phone pop-up notifications (api/_push.js, src/push.js):
+//   push-drain                       no sign-in needed — sends what is waiting in push_queue (pinged by
+//                                    the database triggers; reveals nothing, sends only queued rows)
+//   push-register { token, device }  this phone belongs to the signed-in person (anyone signed in)
+//   push-unregister { token }        forget this phone
+//   push-test                        a test pop-up to my own phones
+//   push-status                      admins: who has the app with notifications on
 //
 // Actions (POST JSON):
 //   list                    jobs + whether JCM Sync itself is alive
@@ -37,6 +46,11 @@ export default async function handler(req, res) {
   const hq = createClient(SUPABASE_URL, key, opts)
   const busy = createClient(SUPABASE_BUSY_URL, busyKey, opts)
 
+  if (req.body?.action === 'push-drain') {
+    try { const r = await drainPush({ hq, busy }); return send(res, 200, { ok: r.ok !== false, rows: r.rows || 0 }) }
+    catch (err) { console.error('push-drain:', err); return send(res, 200, { ok: false }) }
+  }
+
   const auth = req.headers.authorization || ''
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : null
   if (!token) return send(res, 401, { error: 'Please sign in again.' })
@@ -52,6 +66,10 @@ export default async function handler(req, res) {
     if (!isAdmin && !(Array.isArray(profile.allowed_tabs) && profile.allowed_tabs.includes('tracker'))) return send(res, 403, { error: 'You do not have access to the Requests Tracker.' })
     try { return send(res, 200, await handleTracker(body.action, body, { hq, me: { name: profile.name || profile.email || 'Someone' } })) }
     catch (err) { console.error('tracker error:', err); return send(res, err.status || 500, { error: err.status ? err.message : 'Something went wrong. Try again.' }) }
+  }
+  if (String(body.action || '').startsWith('push-')) {
+    try { return send(res, 200, await pushAction(body, { hq, profile, isAdmin })) }
+    catch (err) { console.error('push error:', err); return send(res, err.status || 500, { error: err.status ? err.message : 'Something went wrong. Try again.' }) }
   }
   if (!isAdmin && !(Array.isArray(profile.allowed_tabs) && profile.allowed_tabs.includes(TAB_ID))) {
     return send(res, 403, { error: 'You do not have access to Sync status.' })
@@ -87,4 +105,40 @@ export default async function handler(req, res) {
     console.error('sync-status error:', err)
     return send(res, 500, { error: 'Something went wrong. Try again.' })
   }
+}
+
+async function pushAction(body, { hq, profile, isAdmin }) {
+  const token = String(body.token || '').trim().slice(0, 600)
+  if (body.action === 'push-register') {
+    if (token.length < 20) throw Object.assign(new Error('No phone token.'), { status: 400 })
+    // Upsert on the token: a shared phone moves to whoever signed in last.
+    const { error } = await hq.from('push_tokens').upsert({
+      token, profile_id: profile.id, platform: 'android', device: String(body.device || '').slice(0, 80) || null,
+      updated_at: new Date().toISOString(), last_error: null,
+    }, { onConflict: 'token' })
+    if (error) throw error
+    return { ok: true, ready: pushReady() }
+  }
+  if (body.action === 'push-unregister') {
+    if (token) await hq.from('push_tokens').delete().eq('token', token).eq('profile_id', profile.id)
+    return { ok: true }
+  }
+  if (body.action === 'push-test') {
+    if (!pushReady()) throw Object.assign(new Error('Firebase is not set up in Vercel yet (FIREBASE_SERVICE_ACCOUNT).'), { status: 400 })
+    const r = await sendToPeople(hq, [profile.id], { kind: 'test', title: '🔔 JCM HQ test', body: 'Phone notifications are working on this phone.', hash: '#tasks', tag: 'test' })
+    if (!r.phones) throw Object.assign(new Error('This phone is not registered yet. Open the JCM HQ app and allow notifications.'), { status: 400 })
+    return { ok: true, ...r }
+  }
+  if (body.action === 'push-status') {
+    if (!isAdmin) throw Object.assign(new Error('Admins only.'), { status: 403 })
+    const [{ data: toks }, { data: people }] = await Promise.all([
+      hq.from('push_tokens').select('profile_id, device, updated_at, last_sent_at, last_error'),
+      hq.from('profiles').select('id, name, email, active').neq('active', false),
+    ])
+    return {
+      ready: pushReady(),
+      people: (people || []).map(p => ({ id: p.id, name: p.name || p.email, phones: (toks || []).filter(t => t.profile_id === p.id) })),
+    }
+  }
+  throw Object.assign(new Error('Unknown action.'), { status: 400 })
 }

@@ -9,6 +9,7 @@ import { db as ordersDb } from './_orders/lib/db.js'
 import { materialOverview } from './_orders/lib/material.js'
 import { partySearch, scheduleList, scheduleSave, scheduleStop, runSchedules } from './_schedules.js'
 import { runBatches } from './_batches.js'
+import { drainPush } from './_push.js'
 import { runEmailAlerts, runItemAlerts, alertsGet, alertSave, alertRemove, staffPeople } from './_staff-alerts.js'
 
 // WhatsApp via Meta's Cloud API — the HQ "WhatsApp" admin page (src/whatsapp-test.js at #whatsapp-test),
@@ -42,6 +43,11 @@ async function tick(busy, force) {
   try { out.itemAlerts = await runItemAlerts(busy, sw) } catch (err) { out.itemAlerts = { error: String(err.message || err).slice(0, 200) } }
   try { out.schedules = await runSchedules(busy, sw) } catch (err) { out.schedules = { error: String(err.message || err).slice(0, 200) } }
   try { out.batches = await runBatches(busy, sw) } catch (err) { out.batches = { error: String(err.message || err).slice(0, 200) } }
+  // Phone pop-ups (api/_push.js): the database pings HQ on every new row; this catches any lost ping.
+  try {
+    const hq = createClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { autoRefreshToken: false, persistSession: false } })
+    out.push = await drainPush({ hq, busy })
+  } catch (err) { out.push = { error: String(err.message || err).slice(0, 200) } }
   const at = sw.get('orders_daily_at') || '17:30'
   const last = sw.get('last_orders_daily')
   const today = todayIST()

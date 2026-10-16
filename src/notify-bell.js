@@ -13,6 +13,8 @@ import { visibleNav } from './permissions.js'
 import { esc } from './utils.js'
 import { icon } from './icons.js'
 import './notify-bell.css'
+import { pushState, sendTestPush, retryPush } from './push.js'
+import { hqAlert } from './hq-dialog.js'
 
 // What each sidebar badge means, in words. A badge missing here still shows,
 // with its page name.
@@ -83,6 +85,27 @@ function paint() {
 }
 
 function panelHtml(list) {
+  return panelList(list) + pushRowHtml()
+}
+
+// Phone pop-ups (src/push.js): status of this phone + a test button. App only.
+const PUSH_TEXT = {
+  on: ['Phone notifications are on', ''],
+  starting: ['Phone notifications are starting…', ''],
+  denied: ['Phone notifications are off', 'Allow them in Settings → Apps → JCM HQ → Notifications'],
+  'old-app': ['Phone notifications need the new app', 'Uninstall this app and install the latest JCM HQ app'],
+  error: ['Phone notifications are not working', ''],
+}
+function pushRowHtml() {
+  if (pushState.status === 'web') return ''
+  const [title, help] = PUSH_TEXT[pushState.status] || PUSH_TEXT.error
+  const sub = pushState.status === 'error' ? pushState.error : help
+  const btn = pushState.status === 'on' ? '<button type="button" data-push="test">Send test</button>'
+    : pushState.status === 'denied' || pushState.status === 'error' ? '<button type="button" data-push="retry">Try again</button>' : ''
+  return `<div class="nb-push"><span class="nb-push-text">${esc(title)}${sub ? `<small>${esc(sub)}</small>` : ''}</span>${btn}</div>`
+}
+
+function panelList(list) {
   const seen = readSeen()
   if (!list.length) return '<div class="nb-head">Notifications</div><div class="nb-empty">Nothing waiting for you. 🎉</div>'
   return `
@@ -111,7 +134,18 @@ function openPanel(btn) {
   const width = Math.min(360, window.innerWidth - 16)
   const right = Math.max(8, Math.min(Math.round(window.innerWidth - r.right), window.innerWidth - width - 8))
   panel.style.right = `${right}px`
-  panel.addEventListener('click', e => { if (e.target.closest('.nb-item')) closePanel() })
+  panel.addEventListener('click', async e => {
+    if (e.target.closest('.nb-item')) { closePanel(); return }
+    const b = e.target.closest('[data-push]')
+    if (!b) return
+    b.disabled = true
+    const old = b.textContent
+    b.textContent = '…'
+    try {
+      if (b.dataset.push === 'test') { await sendTestPush(); b.textContent = 'Sent ✓' }
+      else { await retryPush(); paint() }
+    } catch (err) { b.textContent = old; b.disabled = false; hqAlert(err.message) }
+  })
   // Opening the bell = "I have seen these numbers".
   writeSeen(Object.fromEntries(items().map(i => [i.key, i.n])))
   paint()

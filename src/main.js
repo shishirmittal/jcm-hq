@@ -34,6 +34,7 @@ import { renderTaskBoard, unmountTaskBoard } from './task-board.js'
 import { mountPinnedSidebar, unmountPinnedSidebar } from './sidebar.js'
 import { startNotifyBell, stopNotifyBell } from './notify-bell.js'
 import { startNexus, stopNexus } from './nexus.js'
+import { startPush, stopPush } from './push.js'
 import { renderStock, unmountStock } from './stock.js'
 import { getCurrentProfile as loadProfileForOrders } from './supabase.js'
 import { IS_NATIVE } from './native.js'
@@ -94,6 +95,7 @@ async function init() {
       unmountNativeShell()
       stopNotifyBell()
       stopNexus()
+      stopPush()
       renderLogin(app, pendingLoginMessage)
       pendingLoginMessage = null
     }
@@ -126,6 +128,7 @@ async function enterApp() {
   // never started in the phone app on a fresh open (16 Oct). Both are safe to call twice.
   startNotifyBell()
   startNexus()
+  startPush() // phone pop-ups (app only; asks once for permission)
   if (IS_NATIVE) {
     mountNativeShell()
     mountBackButton()

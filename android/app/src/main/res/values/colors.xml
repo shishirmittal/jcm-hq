@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Gold accent on JCM HQ pop-up notifications (AndroidManifest default_notification_color). -->
+    <color name="jcm_gold">#D9AE55</color>
+</resources>

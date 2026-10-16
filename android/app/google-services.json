@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "905419540553",
+    "project_id": "jcm-hq",
+    "storage_bucket": "jcm-hq.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:905419540553:android:83d8576b84d464c7331798",
+        "android_client_info": {
+          "package_name": "com.jcmretails.hq"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAJVHk9hvWwfe_xZn0ztAtqBmzEMc_TbG0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
