@@ -290,3 +290,5 @@ body.pf-modal-open { overflow: hidden; }
 /* "Hide resting" button on Follow-up calls (2026-10-16). */
 .pf-rest-toggle { margin-left: auto; border: 1px solid var(--line, #d7dbe0); background: var(--surface, #fff); color: inherit; border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
 .pf-rest-toggle.on { background: #eef2ff; border-color: #a5b4fc; color: #3730a3; }
+.pf-noremind { display: inline-flex; gap: 5px; align-items: center; font-size: 12.5px; white-space: nowrap; color: var(--muted); }
+.pf-noremind input:checked + * , .pf-noremind:has(input:checked) { color: #b91c1c; font-weight: 600; }

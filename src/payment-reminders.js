@@ -34,6 +34,7 @@ const STATUS_TEXT = {
   recent_credit: 'Nothing over 20 days',
   under_40: 'Nothing over 40 days',
   recent: 'Already reminded today',
+  no_reminders: 'Group set to No reminders',
   contacted: 'Contacted recently — skipped',
   no_dates: 'Bill dates not synced',
   not_found: 'Not in dues list',
@@ -257,7 +258,7 @@ export function renderPaymentReminders(container) {
       const dnd = m.groups.find(g => g.dnd)
       const allTotal = sendable.reduce((s, g) => s + g.total, 0)
       const allCount = sendable.reduce((s, g) => s + g.parties, 0)
-      const opt = g => `<option value="${esc(g.group_name)}">${esc(g.group_name)} — ${g.parties} · ${esc(shortRupees(g.total))}</option>`
+      const opt = g => `<option value="${esc(g.group_name)}">${esc(g.group_name)} — ${g.parties} · ${esc(shortRupees(g.total))}${g.noReminders ? ' · no reminders' : ''}</option>`
       const seg = name => sendable.filter(g => g.segment === name)
       const other = sendable.filter(g => !['Retail', 'Distribution'].includes(g.segment))
       $('pfrGroup').innerHTML = `
@@ -308,6 +309,7 @@ export function renderPaymentReminders(container) {
 
   // Why a party can't be ticked (null = it can).
   function blockReason(p) {
+    if (state.meta?.groups?.some(g => g.noReminders && g.group_name === p.group_name)) return 'No reminders (group)'
     if (p.needs_review) return 'Check balance'
     if (!p.whatsapp) return 'No number'
     if (p.last_reminder && Date.now() - Date.parse(p.last_reminder) < 20 * 3600e3) return 'Reminded today'

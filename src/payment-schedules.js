@@ -18,7 +18,7 @@ const REPEAT = [['none', 'Once'], ['daily', 'Daily'], ['weekly', 'Weekly'], ['mo
 const REPEAT_TEXT = { none: 'once', daily: 'every day', weekly: 'every week', monthly: 'every month' }
 const RESULT_TEXT = {
   sent: 'Sent', failed: 'Failed', no_number: 'No number', dnd: 'DND', needs_review: 'Check balance', nothing_due: 'Nothing due',
-  recent_credit: 'Nothing over 20 days', under_40: 'Nothing over 40 days', recent: 'Already reminded today',
+  recent_credit: 'Nothing over 20 days', under_40: 'Nothing over 40 days', recent: 'Already reminded today', no_reminders: 'Group: no reminders',
   contacted: 'Contacted recently', no_dates: 'Bill dates missing', not_found: 'Not in dues list', off: 'Switched off',
 }
 const when = iso => iso ? new Date(iso).toLocaleString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', ...IST }) : ''
@@ -254,7 +254,7 @@ export function openBatchEditor({ batch = null, parties = null, tier = 20, respe
       const all = st.groups.reduce((a, g) => ({ parties: a.parties + g.parties, total: a.total + g.total }), { parties: 0, total: 0 })
       sel.innerHTML = `<option value="">Pick a group to add its parties…</option>
         <option value="__all">All groups (except DND) — ${all.parties} parties · ${shortRupees(all.total)}</option>` +
-        st.groups.map(g => `<option value="${esc(g.group_name)}">${esc(g.group_name)} — ${g.parties} · ${esc(shortRupees(g.total))}${g.byStep?.[20] ? ` (over 20 d: ${g.byStep[20].parties} · ${esc(shortRupees(g.byStep[20].total))})` : ''}</option>`).join('')
+        st.groups.map(g => `<option value="${esc(g.group_name)}">${esc(g.group_name)}${g.noReminders ? ' (no reminders)' : ''} — ${g.parties} · ${esc(shortRupees(g.total))}${g.byStep?.[20] ? ` (over 20 d: ${g.byStep[20].parties} · ${esc(shortRupees(g.byStep[20].total))})` : ''}</option>`).join('')
     }).catch(e => { const sel = q('[data-group]'); if (sel) sel.innerHTML = `<option value="">${esc(e.message)}</option>` })
     async function addGroup(name) {
       const sel = q('[data-group]'), note = q('[data-gnote]')
@@ -267,7 +267,8 @@ export function openBatchEditor({ batch = null, parties = null, tier = 20, respe
           const code = String(p.party_code)
           if (st.list.some(x => x.code === code)) continue
           const od = Math.min(Number(p.overdueBy?.[tierNow()] ?? p.overdue ?? p.balance) || 0, p.balance)
-          const why = !p.whatsapp ? 'No number' : p.needs_review ? 'Check balance' : od < 1 ? `Nothing over ${tierNow()} d` : gap && p.hold ? 'Resting' : null
+          const quietGroup = st.groups.some(g => g.noReminders && g.group_name === (p.group_name || name))
+          const why = quietGroup ? 'No reminders (group)' : !p.whatsapp ? 'No number' : p.needs_review ? 'Check balance' : od < 1 ? `Nothing over ${tierNow()} d` : gap && p.hold ? 'Resting' : null
           st.list.push({ code, name: p.party_name, group: p.group_name || name, balance: Number(p.balance) || 0, overdueBy: p.overdueBy || null, note: why })
           if (!why) { st.ticked.add(code); ticked++ }
           added++

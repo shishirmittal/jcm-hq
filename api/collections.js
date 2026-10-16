@@ -392,6 +392,9 @@ async function handleMeta(busy, me, res) {
     map.set(name, g)
   }
   const groups = [...map.values()].sort((a, b) => b.total - a.total)
+  const quietRows = await busy.from('collection_group_owners').select('group_name, no_reminders').eq('no_reminders', true)
+  const quiet = new Set((quietRows.error ? [] : quietRows.data || []).map(r => r.group_name))
+  for (const g of groups) g.noReminders = quiet.has(g.group_name)
   let dueCount = 0
   let setupNeeded = false
   let dueMine = 0
@@ -616,11 +619,12 @@ async function handleOwners(busy, hq, me, res) {
   // Groups given to someone earlier but with nothing due right now stay listed.
   for (const [name] of owners.byGroup) if (!map.has(name)) map.set(name, { group_name: name, segment: '', parties: 0, total: 0 })
   // Dealer / Retail type per group (column added by collections-group-kind.sql).
-  const kr = await busy.from('collection_group_owners').select('group_name, kind')
+  const kr = await busy.from('collection_group_owners').select('group_name, kind, no_reminders')
   const kindReady = !kr.error
   const kinds = new Map((kr.data || []).map(r => [r.group_name, r.kind === 'retail' ? 'retail' : 'dealer']))
+  const quiet = new Set((kr.data || []).filter(r => r.no_reminders === true).map(r => r.group_name))
   for (const name of kinds.keys()) if (!map.has(name)) map.set(name, { group_name: name, segment: '', parties: 0, total: 0 })
-  const groups = [...map.values()].map(g => ({ ...g, hq_user_id: owners.byGroup.get(g.group_name) || null, kind: kinds.get(g.group_name) || 'dealer' }))
+  const groups = [...map.values()].map(g => ({ ...g, hq_user_id: owners.byGroup.get(g.group_name) || null, kind: kinds.get(g.group_name) || 'dealer', no_reminders: quiet.has(g.group_name) }))
     .sort((a, b) => b.total - a.total)
   return send(res, 200, { groups, kindReady, defaultOwner: owners.defaultOwner, people: people.map(p => ({ id: p.id, name: p.name })) })
 }
@@ -634,6 +638,7 @@ async function handleOwnersSave(busy, me, body, res) {
     .map(o => {
       const r = { group_name: o.group_name.slice(0, 200), hq_user_id: uuid(o.hq_user_id), updated_by: me.name, updated_at: new Date().toISOString() }
       if (o.kind === 'dealer' || o.kind === 'retail') r.kind = o.kind
+      if (typeof o.no_reminders === 'boolean') r.no_reminders = o.no_reminders
       return r
     })
   if (rows.length) check(await busy.from('collection_group_owners').upsert(rows, { onConflict: 'group_name' }), 'owners save')
@@ -739,7 +744,7 @@ async function reminderContext(busy, codes) {
     dueFreshness(busy),
     ageingFor(busy, codes),
     ageingFor(busy, codes, 40),
-    busy.from('collection_group_owners').select('group_name, kind'),
+    busy.from('collection_group_owners').select('group_name, kind, no_reminders'),
   ])
   const latestOf = rows => { const m = new Map(); for (const r of rows) { const k = String(r.party_code); if (!m.has(k) || m.get(k) < r.created_at) m.set(k, r.created_at) } return m }
   return {
@@ -752,18 +757,22 @@ async function reminderContext(busy, codes) {
     ag20: new Map(ag20.map(a => [String(a.party_code), a])),
     ag40: new Map(ag40.map(a => [String(a.party_code), a])),
     kinds: new Map((kr.error ? [] : kr.data || []).map(r => [r.group_name, r.kind])),
+    // Assign groups → "No reminders" (e.g. Family Accounts, 2026-10-16): never in bulk / automatic / scheduled sends.
+    noRemind: new Set((kr.error ? [] : kr.data || []).filter(r => r.no_reminders === true).map(r => r.group_name)),
   }
 }
 
 // Decide for one party. Returns { ok: true, plan } or { ok: false, skip, why }.
 //   minOver: 20 = anyone with something over 20 days, 40 = only parties with something over 40 days.
-function planReminder(ctx, code, { minOver = 20, respectGap = true, allowRecent = false } = {}) {
+function planReminder(ctx, code, { minOver = 20, respectGap = true, allowRecent = false, single = false } = {}) {
   const s = ctx.seg.get(code)
   const p = ctx.pd.get(code) || {}
   const c = ctx.cu.get(code) || {}
   if (!s || s.due_type !== 'Receivable') return { ok: false, skip: 'not_found', why: 'No dues in Busy' }
   const balance = Number(s.outstanding_balance) || 0
   if (isDnd(s)) return { ok: false, skip: 'dnd', why: 'JCM Due DND group' }
+  // A person pressing WhatsApp on one card still may (they decided); everything else skips these groups.
+  if (!single && ctx.noRemind?.has(s.group_name)) return { ok: false, skip: 'no_reminders', why: `"${s.group_name}" is set to No reminders (Assign groups)` }
   if (p.needs_review === true) return { ok: false, skip: 'needs_review', why: 'Balance flagged "Check balance"' }
   if (balance <= 0 || ctx.fresh.stale.has(code)) return { ok: false, skip: 'nothing_due', why: 'Nothing due right now' }
   // allowRecent (scheduled reminders the customer agreed to): bills under 20 days count as due too.
@@ -826,7 +835,7 @@ async function handleSendTemplate(busy, body, me, res) {
   if (!/^\d{1,9}$/.test(code)) return send(res, 400, { error: 'No party chosen.' })
   const ctx = await reminderContext(busy, [code])
   // A person pressing the button has decided; only the 20-hour repeat guard and the hard skips apply.
-  const d = planReminder(ctx, code, { respectGap: false })
+  const d = planReminder(ctx, code, { respectGap: false, single: true })
   if (!d.ok) return send(res, 400, { error: d.why + '.' })
   const r = await dispatchReminder(busy, d.plan, me)
   if (r.status !== 'sent') return send(res, 502, { error: r.error || 'Could not send.' })
@@ -1166,7 +1175,8 @@ export { dueByPerson, reminderContext, planReminder, dispatchReminder }
 // 20 days count, because the customer was spoken to and the date was agreed.
 export async function sendScheduledReminder(busy, code, switches) {
   const ctx = await reminderContext(busy, [code])
-  const d = planReminder(ctx, code, { respectGap: false, allowRecent: true })
+  // A reminder someone set for this one customer (WhatsApp Inbox) is deliberate — it goes even in a No-reminders group.
+  const d = planReminder(ctx, code, { respectGap: false, allowRecent: true, single: true })
   if (!d.ok) return { status: 'skip', skip: d.skip, why: d.why }
   const r = await dispatchReminder(busy, d.plan, { id: null, name: 'Scheduled reminder' }, switches)
   return { status: r.status, error: r.error, mobile: d.plan.mobile, template: d.plan.template, balance: d.plan.balance }

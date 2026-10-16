@@ -26,7 +26,7 @@ import { hqConfirm } from './hq-dialog.js'
 const BULK_TEXT = {
   sent: 'Sent', failed: 'Failed', no_number: 'No number', off: 'Switched off', dnd: 'DND — not sent',
   needs_review: 'Check balance — not sent', nothing_due: 'Nothing due — not sent', recent_credit: 'Nothing over 20 days',
-  under_40: 'Nothing over 40 days', recent: 'Already reminded today',
+  under_40: 'Nothing over 40 days', recent: 'Already reminded today', no_reminders: 'group set to No reminders',
 }
 
 const TAB_ID = 'payment-followup'
@@ -754,6 +754,7 @@ export function renderPaymentFollowup(container, sub, { standalone = false } = {
                 ${ownersData.kindReady ? `<select class="pf-select" data-kind="${i}" title="Dealer = reminders show total outstanding and overdue. Retail = one amount due.">
                   <option value="dealer" ${g.kind === 'dealer' ? 'selected' : ''}>Dealer</option>
                   <option value="retail" ${g.kind === 'retail' ? 'selected' : ''}>Retail</option></select>` : ''}
+                ${g.dnd ? '' : `<label class="pf-noremind" title="This group never gets bulk, scheduled or automatic WhatsApp reminders. One card's WhatsApp button still works."><input type="checkbox" data-quiet="${i}" ${g.no_reminders ? 'checked' : ''}> No reminders</label>`}
               </div>
             </div>`).join('')}
           ${ownersData.kindReady ? '' : '<div class="pf-muted">To set Dealer / Retail, run supabase/collections-group-kind.sql in Supabase first.</div>'}
@@ -769,8 +770,9 @@ export function renderPaymentFollowup(container, sub, { standalone = false } = {
   async function saveOwners() {
     if (!ownersData) return
     const kindOf = i => $('pfOwnersBody').querySelector(`[data-kind="${i}"]`)?.value
-    const owners = ownersData.groups.map((g, i) => ({ group_name: g.group_name, hq_user_id: $('pfOwnersBody').querySelector(`[data-owner="${i}"]`).value || null, kind: kindOf(i), _i: i }))
-      .filter(o => o.hq_user_id !== (ownersData.groups[o._i].hq_user_id || null) || (o.kind && o.kind !== ownersData.groups[o._i].kind))
+    const quietOf = i => { const c = $('pfOwnersBody').querySelector(`[data-quiet="${i}"]`); return c ? c.checked : undefined }
+    const owners = ownersData.groups.map((g, i) => ({ group_name: g.group_name, hq_user_id: $('pfOwnersBody').querySelector(`[data-owner="${i}"]`).value || null, kind: kindOf(i), no_reminders: quietOf(i), _i: i }))
+      .filter(o => o.hq_user_id !== (ownersData.groups[o._i].hq_user_id || null) || (o.kind && o.kind !== ownersData.groups[o._i].kind) || (o.no_reminders !== undefined && o.no_reminders !== !!ownersData.groups[o._i].no_reminders))
     $('pfOwnersSave').disabled = true
     try {
       await call({ action: 'owners-save', owners, default_owner: $('pfOwnerDefault').value || null })
