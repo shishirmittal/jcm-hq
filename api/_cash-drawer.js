@@ -171,10 +171,14 @@ async function dayData(busy, body) {
       note: e.note || '', by: e.created_by_name || '', by_id: e.created_by, at: e.created_at,
       deleted_at: e.deleted_at, deleted_by: e.deleted_by_name || '', delete_reason: e.delete_reason || '',
     })),
+    // Difference is worked out LIVE against today's expected (Shishir, 16 Oct): Busy entries that
+    // arrive after the day was closed change B / C, so the difference stored at closing goes stale.
     closing: closeRow && closeRow.counted != null ? {
       counted: r2(closeRow.counted), denominations: closeRow.denominations || null,
-      expected: closeRow.expected == null ? null : r2(closeRow.expected),
-      difference: closeRow.difference == null ? null : r2(closeRow.difference),
+      expected: expected != null ? expected : (closeRow.expected == null ? null : r2(closeRow.expected)),
+      difference: expected != null ? r2(Number(closeRow.counted) - expected) : (closeRow.difference == null ? null : r2(closeRow.difference)),
+      expected_at_close: closeRow.expected == null ? null : r2(closeRow.expected),
+      difference_at_close: closeRow.difference == null ? null : r2(closeRow.difference),
       note: closeRow.close_note || '', by: closeRow.closed_by_name || '', at: closeRow.closed_at,
     } : null,
     printed_at: closeRow?.printed_at || null,

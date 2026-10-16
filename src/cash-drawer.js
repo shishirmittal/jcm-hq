@@ -161,6 +161,7 @@ export async function renderCashDrawer(container) {
           <div class="cw-tile-v">${money(closed.counted)}</div>
           <div class="cw-tile-s">${Math.abs(closed.difference) < 1 ? '✓ Tallied' : (closed.difference < 0 ? `Short ${money(-closed.difference)}` : `Extra ${money(closed.difference)}`)}
             · ${esc(closed.by)} ${esc(fmtTime(closed.at))}</div>
+          ${closed.difference_at_close != null && Math.abs(closed.difference_at_close - closed.difference) >= 1 ? `<div class="cw-tile-s">At closing it was ${Math.abs(closed.difference_at_close) < 1 ? 'tallied' : (closed.difference_at_close < 0 ? `short ${money(-closed.difference_at_close)}` : `extra ${money(closed.difference_at_close)}`)} — Busy entries came in after</div>` : ''}
         </div>` : ''}
       </section>
 
