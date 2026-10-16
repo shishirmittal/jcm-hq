@@ -11,6 +11,9 @@ import { buildDueListPdf } from './_duelist-pdf.js'
 import { materialOverview } from './_orders/lib/material.js'
 import { db as ordersDb } from './_orders/lib/db.js'
 
+// Ledger-only accounts (never a customer): same list as api/_wa-outbox.js / sync-transactions.js.
+const LEDGER_ONLY_REPLY = new Set(['40355', '65494', '56680'])
+
 // Answers the quick-reply buttons on the payment-reminder templates (QR Code / Ledger / Last 3 Invoices).
 // Called from the WhatsApp webhook in api/whatsapp.js. Never throws to the caller.
 
@@ -200,8 +203,15 @@ export async function handleIncoming(value) {
         await sendText(from, 'Thank you. Our team will send this to you here shortly.')
         continue
       }
+      // Cash (Retail) / Nexus Enterprises / Silver Electric House are ledger-only accounts: a tap on a message about
+      // a counter sale billed on them must never send that ledger, and must not show the ledger's name (2026-10-16).
+      const ledgerOnly = LEDGER_ONLY_REPLY.has(String(parsed.code))
+      if (ledgerOnly && ['ledger', 'portal', 'invoices'].includes(parsed.kind)) {
+        await sendText(from, 'Thank you. Our team will help you with your account here shortly.\n*धन्यवाद। हमारी टीम जल्द ही यहाँ आपकी मदद करेगी।*')
+        continue
+      }
       if (parsed.kind === 'qr') {
-        const png = await qrPng(name)
+        const png = await qrPng(ledgerOnly ? 'JCM Retail sale' : name)
         await sendMedia(from, png, {
           kind: 'image', mime: 'image/png', filename: 'JCM-payment-details.png',
           caption: '*Scan the QR to pay, or use the bank details.*\nAfter paying, please send the payment screenshot here.\n*भुगतान के बाद कृपया भुगतान की जानकारी यहाँ भेजें।*',
@@ -226,17 +236,17 @@ export async function handleIncoming(value) {
       } else if (parsed.kind === 'so') {
         const hq = hqClient()
         const data = hq ? await loadOrder(hq, parsed.ref) : null
-        if (!data) await sendText(from, `*${name}*\nOur team will send you a copy of order ${parsed.ref} here shortly.`)
+        if (!data) await sendText(from, `${ledgerOnly ? '' : `*${name}*\n`}Our team will send you a copy of order ${parsed.ref} here shortly.`)
         else {
-          const pdf = await buildOrderPdf({ partyName: name, ...data })
+          const pdf = await buildOrderPdf({ partyName: ledgerOnly ? (data.order?.party_name || 'Customer') : name, ...data })
           await sendMedia(from, pdf, { kind: 'document', mime: 'application/pdf', filename: `JCM-Order-${safeName(parsed.ref)}.pdf`,
             caption: `*Copy of your order ${parsed.ref} is attached.*\n*आपके ऑर्डर की कॉपी संलग्न है।*` })
         }
       } else if (parsed.kind === 'invpdf') {
         const data = await loadInvoice(busy, parsed.ref)
-        if (!data) await sendText(from, `*${name}*\nInvoice ${parsed.ref} will be on the portal by tomorrow morning:\n${PORTAL}\n\nPlease log in with your registered mobile number.`)
+        if (!data) await sendText(from, `${ledgerOnly ? '' : `*${name}*\n`}Invoice ${parsed.ref} will be on the portal by tomorrow morning:\n${PORTAL}\n\nPlease log in with your registered mobile number.`)
         else {
-          const pdf = await buildInvoicePdf({ partyName: name, ...data })
+          const pdf = await buildInvoicePdf({ partyName: ledgerOnly ? (data.invoice?.customer_name || 'Customer') : name, ...data })
           await sendMedia(from, pdf, { kind: 'document', mime: 'application/pdf', filename: `JCM-Invoice-${safeName(parsed.ref)}.pdf`,
             caption: `*Copy of invoice ${parsed.ref} is attached.*\n*आपके बिल की कॉपी संलग्न है।*` })
         }
