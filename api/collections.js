@@ -42,8 +42,8 @@ import { sendLedger } from './_send-docs.js'
 //           (Dealer groups payment_reminder_20d/40d, Retail groups retail_reminder_20d/40d; red when
 //           something is over 40 days, else amber). Logged in collection_followups (channel 'reminder').
 //   send-reminders { party_codes[], tier }   the same template, for ticked parties (max 25 per call).
-//   reminder-plan { tier }         who the automatic run would message right now, and why others are skipped.
-//   reminder-settings / reminder-settings-save (admins)  automatic daily reminders: on/off, time, tiers, cap.
+//   (Automatic daily reminders were REMOVED 2026-10-16 at Shishir's request — reminders go out only
+//    when a person sends them or from a Scheduled list they made.)
 //   All reminder sends re-check: DND group, "check balance", nothing over 20 days, no number,
 //   any reminder in the last 20 h, and the contact gap (over 40 days: nothing in the last 6 days,
 //   over 20 days: nothing in the last 13 days — calls, notes and reminders all count).
@@ -146,7 +146,7 @@ export default async function handler(req, res) {
     if (action === 'owners') return await handleOwners(busy, hq, me, res)
     if (action === 'daily-now') {
       if (!me.isAdmin) return send(res, 403, { error: 'Only admins can send these.' })
-      const which = body.which === 'evening' ? 'evening' : body.which === 'reminders' ? 'reminders' : 'morning'
+      const which = body.which === 'evening' ? 'evening' : 'morning'
       return send(res, 200, { ok: true, ...(await runDaily(busy, hq, which)) })
     }
     if (action === 'owners-save') return await handleOwnersSave(busy, me, body, res)
@@ -154,9 +154,6 @@ export default async function handler(req, res) {
     if (action === 'save') return await handleSave(busy, hq, body, me, res)
     if (action === 'send-template') return await handleSendTemplate(busy, body, me, res)
     if (action === 'send-ledger') { const r = await sendLedger(busy, body, me.name || me.email || 'HQ'); return send(res, r.error ? 400 : 200, r) }
-    if (action === 'reminder-plan') return await handleReminderPlan(busy, body, me, res)
-    if (action === 'reminder-settings') return await handleReminderSettings(busy, me, body, res, false)
-    if (action === 'reminder-settings-save') return await handleReminderSettings(busy, me, body, res, true)
     if (action === 'send-reminders') return await handleSendReminders(busy, body, me, res)
     // Scheduled reminder lists + Inbox schedules (api/_batches.js, Scheduled tab).
     if (['batch-list', 'batch-save', 'batch-op', 'inbox-sched-op', 'party-find', 'batch-run'].includes(action)) {
@@ -710,7 +707,7 @@ async function handleSave(busy, hq, body, me, res) {
 }
 
 // ---------------------------------------------------------------------------
-// WhatsApp payment reminders (Meta templates) — one party, ticked parties, or the daily automatic run
+// WhatsApp payment reminders (Meta templates) — one party, ticked parties, or a Scheduled list
 // ---------------------------------------------------------------------------
 const REMINDER_GAP_HOURS = 20
 const MAX_PER_CALL = 25
@@ -720,7 +717,6 @@ const MAX_PER_CALL = 25
 // over 40 days → 7 days, over 20 days → 14 days (same as the follow-up rhythm). Notes don't count.
 const CONTACT_GAP = { 40: 7, 20: 14 }
 const isContact = r => ['call', 'whatsapp', 'visit'].includes(r.channel) || (r.channel === 'reminder' && r.outcome === 'sent')
-const AUTO_DEFAULTS = { reminders_on: false, reminders_at: '11:00', reminders_tiers: '20,40', reminders_max: 150 }
 
 const rupeesText = n => '₹' + inr(n)
 const daysSince = iso => Math.max(0, Math.round((Date.parse(todayIST()) - Date.parse(String(iso).slice(0, 10))) / 86400000))
@@ -865,82 +861,6 @@ async function handleSendReminders(busy, body, me, res) {
   return send(res, 200, { results, sentAt: new Date().toISOString() })
 }
 
-// Who would get an automatic reminder right now (admins' preview on the reminders tab).
-async function autoCandidates(busy, settings) {
-  const tiers = String(settings.reminders_tiers || AUTO_DEFAULTS.reminders_tiers).split(',').map(Number).filter(n => n === 20 || n === 40)
-  const minOver = tiers.includes(20) ? 20 : 40
-  const rows = await fetchAll(receivables(busy, 'party_code'), 'dues')
-  const codes = rows.map(r => String(r.party_code)).filter(c => /^\d{1,9}$/.test(c))
-  const ctx = await reminderContext(busy, codes)
-  const plans = []
-  const skipped = {}
-  for (const code of codes) {
-    const d = planReminder(ctx, code, { minOver })
-    if (d.ok) plans.push(d.plan)
-    else if (!['nothing_due', 'recent_credit', 'not_found'].includes(d.skip)) skipped[d.skip] = (skipped[d.skip] || 0) + 1
-  }
-  plans.sort((a, b) => (b.red - a.red) || b.overdue - a.overdue)
-  const max = Math.max(1, Math.min(500, Number(settings.reminders_max) || AUTO_DEFAULTS.reminders_max))
-  return { plans: plans.slice(0, max), beyondCap: Math.max(0, plans.length - max), skipped, tiers, max }
-}
-
-async function handleReminderPlan(busy, body, me, res) {
-  if (!me.isAdmin) return send(res, 403, { error: 'Only admins can see this.' })
-  const settings = check(await busy.from('collection_settings').select('*').eq('id', 1), 'settings')[0] || {}
-  const c = await autoCandidates(busy, settings)
-  return send(res, 200, {
-    parties: c.plans.map(p => ({ party_code: p.code, party_name: p.name, group_name: p.group, mobile: p.mobile, balance: p.balance, overdue: p.overdue, tone: p.red ? 'red' : 'amber', kind: p.retail ? 'retail' : 'dealer', template: p.template })),
-    beyondCap: c.beyondCap, skipped: c.skipped, tiers: c.tiers, max: c.max,
-  })
-}
-
-async function handleReminderSettings(busy, me, body, res, save) {
-  if (!me.isAdmin) return send(res, 403, { error: 'Only admins can change this.' })
-  if (save) {
-    const patch = { updated_at: new Date().toISOString() }
-    if (typeof body.reminders_on === 'boolean') patch.reminders_on = body.reminders_on
-    if (/^\d{2}:\d{2}$/.test(String(body.reminders_at || ''))) patch.reminders_at = body.reminders_at
-    if (Array.isArray(body.reminders_tiers)) patch.reminders_tiers = body.reminders_tiers.map(Number).filter(n => n === 20 || n === 40).join(',') || '20,40'
-    if (Number.isFinite(Number(body.reminders_max))) patch.reminders_max = Math.max(1, Math.min(500, Math.round(Number(body.reminders_max))))
-    const r = await busy.from('collection_settings').update(patch).eq('id', 1)
-    if (r.error) return send(res, 500, { error: /column/i.test(r.error.message) ? 'Run the reminder-scheduler SQL in Supabase first.' : r.error.message })
-  }
-  const row = check(await busy.from('collection_settings').select('*').eq('id', 1), 'settings')[0] || {}
-  const last = await busy.from('collection_followups').select('created_at, outcome').eq('channel', 'reminder').eq('created_by_name', 'Auto reminders')
-    .order('created_at', { ascending: false }).limit(1)
-  return send(res, 200, {
-    settings: {
-      reminders_on: row.reminders_on === true,
-      reminders_at: row.reminders_at || AUTO_DEFAULTS.reminders_at,
-      reminders_tiers: String(row.reminders_tiers || AUTO_DEFAULTS.reminders_tiers).split(',').map(Number),
-      reminders_max: row.reminders_max || AUTO_DEFAULTS.reminders_max,
-      last_reminders: row.last_reminders || null,
-      ready: 'reminders_on' in row,
-    },
-    lastRun: last.data?.[0] || null,
-    contactGap: CONTACT_GAP,
-  })
-}
-
-// The automatic daily run (from runDaily, once a day after reminders_at).
-async function runAutoReminders(busy, settings) {
-  if (!waConfigured()) return { skipped: 'WhatsApp not configured' }
-  const c = await autoCandidates(busy, settings)
-  const switches = await waSwitches(busy)
-  const me = { id: null, name: 'Auto reminders' }
-  const counts = { sent: 0, failed: 0, no_number: 0 }
-  const queue = [...c.plans]
-  async function worker() {
-    while (queue.length) {
-      const plan = queue.shift()
-      const r = await dispatchReminder(busy, plan, me, switches)
-      counts[r.status] = (counts[r.status] || 0) + 1
-    }
-  }
-  await Promise.all([worker(), worker(), worker()])
-  return { ...counts, planned: c.plans.length, beyondCap: c.beyondCap, skipped: c.skipped }
-}
-
 // ---------------------------------------------------------------------------
 // Daily WhatsApps + Task Board tasks (JCM-Server timer, or admins from the Today tab)
 // ---------------------------------------------------------------------------
@@ -960,7 +880,7 @@ const nowISTClock = () => new Date(Date.now() + 5.5 * 3600 * 1000).toISOString()
 // Claim today's run so two timers can never both send: the update only goes
 // through if last_<which> still holds the value we read (compare-and-set).
 async function claimRun(busy, which, today, previous) {
-  const col = which === 'morning' ? 'last_morning' : which === 'reminders' ? 'last_reminders' : 'last_evening'
+  const col = which === 'morning' ? 'last_morning' : 'last_evening'
   let q = busy.from('collection_settings').update({ [col]: today }).eq('id', 1)
   q = previous ? q.eq(col, previous) : q.is(col, null)
   const r = await q.select('id')
@@ -981,11 +901,7 @@ async function runDaily(busy, hq, force) {
   if (force === 'evening' || (!force && clock >= eveningAt && settings.last_evening !== today)) {
     if (force || await claimRun(busy, 'evening', today, settings.last_evening)) out.evening = await runEvening(busy, hq, today)
   }
-  const remAt = settings.reminders_at || AUTO_DEFAULTS.reminders_at
-  if (force === 'reminders' || (!force && settings.reminders_on === true && clock >= remAt && settings.last_reminders !== today)) {
-    if (force || await claimRun(busy, 'reminders', today, settings.last_reminders)) out.reminders = await runAutoReminders(busy, settings)
-  }
-  if (!out.morning && !out.evening && !out.reminders) out.note = `nothing to do (morning ${morningAt}, evening ${eveningAt}, reminders ${settings.reminders_on ? remAt : 'off'}, last ${settings.last_morning || '-'} / ${settings.last_evening || '-'} / ${settings.last_reminders || '-'})`
+  if (!out.morning && !out.evening) out.note = `nothing to do (morning ${morningAt}, evening ${eveningAt}, last ${settings.last_morning || '-'} / ${settings.last_evening || '-'})`
   return out
 }
 

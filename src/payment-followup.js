@@ -754,7 +754,7 @@ export function renderPaymentFollowup(container, sub, { standalone = false } = {
                 ${ownersData.kindReady ? `<select class="pf-select" data-kind="${i}" title="Dealer = reminders show total outstanding and overdue. Retail = one amount due.">
                   <option value="dealer" ${g.kind === 'dealer' ? 'selected' : ''}>Dealer</option>
                   <option value="retail" ${g.kind === 'retail' ? 'selected' : ''}>Retail</option></select>` : ''}
-                ${g.dnd ? '' : `<label class="pf-noremind" title="This group never gets bulk, scheduled or automatic WhatsApp reminders. One card's WhatsApp button still works."><input type="checkbox" data-quiet="${i}" ${g.no_reminders ? 'checked' : ''}> No reminders</label>`}
+                ${g.dnd ? '' : `<label class="pf-noremind" title="This group never gets bulk or scheduled-list WhatsApp reminders. One card's WhatsApp button still works."><input type="checkbox" data-quiet="${i}" ${g.no_reminders ? 'checked' : ''}> No reminders</label>`}
               </div>
             </div>`).join('')}
           ${ownersData.kindReady ? '' : '<div class="pf-muted">To set Dealer / Retail, run supabase/collections-group-kind.sql in Supabase first.</div>'}
@@ -1034,7 +1034,7 @@ export function renderPaymentFollowup(container, sub, { standalone = false } = {
     const wa = p.whatsapp
     const tags = [
       state.view !== 'group' && p.group_name ? `<span class="pf-tag">${esc(p.group_name)}</span>` : '',
-      p.dnd ? '<span class="pf-tag pf-tag-dnd" title="This group never gets automatic WhatsApp reminders">DND</span>' : '',
+      p.dnd ? '<span class="pf-tag pf-tag-dnd" title="This group never gets WhatsApp reminders">DND</span>' : '',
       p.owner_name && !(state.mode === 'today' && state.person !== 'all') ? `<span class="pf-tag pf-tag-owner" title="Follows up this group">${esc(p.owner_name)}</span>` : '',
       p.needs_review ? '<span class="pf-tag pf-tag-review" title="Balance flagged for checking in the dues sync">Check balance</span>' : '',
     ].join('')

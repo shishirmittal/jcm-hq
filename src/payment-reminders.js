@@ -1,10 +1,8 @@
 // Payment Follow-up → WhatsApp reminders (#payment-followup/reminders)
 //
-// Two things on this tab (2026-10-12, Meta templates — no free text any more):
-//   1. Automatic daily reminders (admins): on/off, time, which tiers, cap per day. HQ runs it once
-//      a day after the time (api/collections.js runDaily → runAutoReminders, asked every 15 min by
-//      JCM Sync's followup-notify job). Preview shows exactly who would get one right now.
-//   2. Send now: pick a group, tick parties, Send — the same approved template goes out.
+// Pick a group, tick parties, then Send now or ⏰ Schedule for later (Meta templates).
+// The "Automatic daily reminders" box was REMOVED 2026-10-16 (Shishir): nothing is ever sent
+// unless a person sends it or puts it in a Scheduled list.
 // Which template: Dealer group → payment_reminder_20d / _40d, Retail group → retail_reminder_20d / _40d
 // (Assign groups on the Today tab sets Dealer / Retail); red when something is over 40 days, else amber.
 //
@@ -51,8 +49,6 @@ export function renderPaymentReminders(container) {
     results: {},          // party_code -> status from the last send
     minAmount: Number(store('pfr.min')) || 0,
     respectGap: true,
-    auto: null,          // automatic-reminder settings (admins)
-    plan: null,          // preview of the automatic run
     sending: false,
     today: todayIST(),
     overDays: 20,        // 20 / 40, or 0 = any dues; not remembered: always starts at 20
@@ -92,7 +88,6 @@ export function renderPaymentReminders(container) {
           </section>
 
           <aside class="pfr-right">
-            <section class="pfr-auto" id="pfrAuto" hidden></section>
             <div class="pfr-preview-label">What goes out</div>
             <div class="pfr-preview" id="pfrPreview"></div>
             <p class="pf-error" id="pfrError" hidden></p>
@@ -129,8 +124,6 @@ export function renderPaymentReminders(container) {
     state.overDays = Number(e.target.value) || 0
     resetSelection(); draw()
   })
-  $('pfrAuto').addEventListener('click', onAutoClick)
-  $('pfrAuto').addEventListener('change', e => { if (e.target.closest('[data-auto]')) saveAuto() })
   $('pfrBulk').addEventListener('click', e => {
     const b = e.target.closest('[data-bulk]')
     if (!b || state.sending) return
@@ -159,86 +152,6 @@ export function renderPaymentReminders(container) {
 
   loadMeta()
   loadList()
-
-  // ---- Automatic daily reminders (admins) ----------------------------------
-  async function loadAuto() {
-    if (!state.meta?.me?.isAdmin) return
-    try {
-      const d = await call({ action: 'reminder-settings' })
-      state.auto = d
-      drawAuto()
-    } catch (err) {
-      $('pfrAuto').hidden = false
-      $('pfrAuto').innerHTML = `<div class="pf-muted">${esc(err.message)}</div>`
-    }
-  }
-  function drawAuto() {
-    const a = state.auto
-    if (!a) return
-    const st = a.settings
-    const el = $('pfrAuto')
-    el.hidden = false
-    if (!st.ready) {
-      el.innerHTML = '<h3>Automatic daily reminders</h3><div class="pf-warn">Not set up yet — run the reminder-scheduler SQL in Supabase (ask in the HQ chat).</div>'
-      return
-    }
-    const last = a.lastRun ? `Last automatic send ${esc(fmtDateTime(a.lastRun.created_at))}` : 'Never run yet'
-    el.innerHTML = `
-      <h3>Automatic daily reminders</h3>
-      <label class="pfr-auto-row"><input type="checkbox" data-auto="on" ${st.reminders_on ? 'checked' : ''}> <strong>${st.reminders_on ? 'On' : 'Off'}</strong> — HQ sends by itself every day</label>
-      <div class="pfr-auto-hint">This one picks parties <b>by itself</b> from all groups every day — it does <b>not</b> use the tick boxes on the left. To send the ticked parties at a time you choose, use <b>⏰ Schedule for later</b> below.</div>
-      <div class="pfr-auto-grid">
-        <label>At <input type="time" data-auto="at" value="${esc(st.reminders_at)}"></label>
-        <label><input type="checkbox" data-auto="t20" ${st.reminders_tiers.includes(20) ? 'checked' : ''}> over 20 days (amber)</label>
-        <label><input type="checkbox" data-auto="t40" ${st.reminders_tiers.includes(40) ? 'checked' : ''}> over 40 days (red)</label>
-        <label>Max per day <input type="number" data-auto="max" min="1" max="500" value="${st.reminders_max}"></label>
-      </div>
-      <div class="pf-muted">Skips anyone contacted in the last ${a.contactGap[40]} days (over 40 d) or ${a.contactGap[13] ?? a.contactGap[20]} days (over 20 d), the DND group, "check balance" and anyone reminded in the last 20 h. ${last}.</div>
-      <div class="pfr-auto-actions">
-        <button type="button" class="btn-ghost btn-small" data-act="preview">Who gets it today?</button>
-        <button type="button" class="btn-ghost btn-small" data-act="run">Run now</button>
-      </div>
-      <div id="pfrPlan"></div>`
-  }
-  async function saveAuto() {
-    const el = $('pfrAuto')
-    const v = sel => el.querySelector(`[data-auto="${sel}"]`)
-    try {
-      state.auto = await call({ action: 'reminder-settings-save',
-        reminders_on: v('on').checked, reminders_at: v('at').value,
-        reminders_tiers: [v('t20').checked ? 20 : null, v('t40').checked ? 40 : null].filter(Boolean),
-        reminders_max: Number(v('max').value) || 150 })
-      drawAuto()
-    } catch (err) { showError(err.message) }
-  }
-  async function onAutoClick(e) {
-    const b = e.target.closest('[data-act]')
-    if (!b) return
-    const out = $('pfrPlan')
-    if (b.dataset.act === 'preview') {
-      out.innerHTML = '<div class="loading-state">Working it out…</div>'
-      try {
-        const d = await call({ action: 'reminder-plan' })
-        const skipped = Object.entries(d.skipped || {}).map(([k, n]) => `${n} ${(STATUS_TEXT[k] || k).toLowerCase()}`).join(' · ')
-        out.innerHTML = `
-          <div><strong>${d.parties.length}</strong> would be sent now${d.beyondCap ? ` (${d.beyondCap} more wait for tomorrow — cap ${d.max})` : ''}.${skipped ? ` Skipped: ${esc(skipped)}.` : ''}</div>
-          <div class="pfr-plan-list">${d.parties.slice(0, 200).map(p => `
-            <div class="pfr-plan-row"><span class="pf-pill pf-tone-${p.tone === 'red' ? 'red' : 'amb'}">${p.tone}</span> ${esc(p.party_name)} <span class="pf-muted">${esc(p.group_name || '')} · ${p.kind}</span><span class="pfr-amount">${esc(rupees(p.balance))}</span></div>`).join('')}
-            ${d.parties.length > 200 ? `<div class="pf-muted">…and ${d.parties.length - 200} more</div>` : ''}</div>`
-      } catch (err) { out.innerHTML = `<div class="pf-error">${esc(err.message)}</div>` }
-    }
-    if (b.dataset.act === 'run') {
-      if (!await hqConfirm('Send today\'s automatic reminders now? This sends real WhatsApps to customers and cannot be taken back.')) return
-      b.disabled = true; b.textContent = 'Sending…'
-      try {
-        const r = await call({ action: 'daily-now', which: 'reminders' })
-        const x = r.reminders || {}
-        out.innerHTML = `<div><strong>Done:</strong> ${x.sent || 0} sent · ${x.failed || 0} failed · ${x.no_number || 0} no number${x.beyondCap ? ` · ${x.beyondCap} left for tomorrow` : ''}.</div>`
-        loadAuto()
-      } catch (err) { out.innerHTML = `<div class="pf-error">${esc(err.message)}</div>` }
-      finally { b.disabled = false; b.textContent = 'Run now' }
-    }
-  }
 
   // -------------------------------------------------------------------------
   async function loadMeta() {
@@ -275,7 +188,6 @@ export function renderPaymentReminders(container) {
         Parties marked “check balance”, with nothing due or with no number are skipped too.
         ${m.whatsappReady ? '' : '<div class="pf-warn">WhatsApp (Meta) is not set up yet in Vercel. You can still look at the list.</div>'}`
       drawSend()
-      loadAuto()
     } catch (err) {
       $('pfrGroup').innerHTML = `<option>${esc(err.message)}</option>`
     }
