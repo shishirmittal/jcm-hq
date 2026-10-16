@@ -29,6 +29,7 @@ import { renderPurchases } from './purchases.js'
 import { renderEmailPurchases } from './email-purchases.js'
 import { renderGstRecon } from './gst-recon.js'
 import { renderCashDiscount } from './cash-discount.js'
+import { renderCashDrawer } from './cash-drawer.js'
 import { renderTaskBoard, unmountTaskBoard } from './task-board.js'
 import { mountPinnedSidebar, unmountPinnedSidebar } from './sidebar.js'
 import { startNotifyBell, stopNotifyBell } from './notify-bell.js'
@@ -291,6 +292,8 @@ function route() {
     renderGstRecon(app)
   } else if (hash === '#cash-discount') {
     renderCashDiscount(app)
+  } else if (hash === '#cash-drawer') {
+    renderCashDrawer(app)
   } else if (hash === '#sync-status') {
     renderSyncStatus(app)
   } else if (hash === '#tracker') {

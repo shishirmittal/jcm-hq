@@ -4,6 +4,7 @@ import { waConfigured, sendLogged, waSwitches, BANNER, inr, niceDate as waDate }
 import { buildPurchasePdf, purchaseFileName } from './_purchase-pdf.js'
 import { handleEmailAction, emailTabId } from './_email-purchases.js'
 import { handleCdAction } from './_cash-discount.js'
+import { handleCashAction, cashTabId } from './_cash-drawer.js'
 
 // Purchase Summary — every purchase bill the accounts team types into Busy, so
 // admins know what material has reached the warehouse: party, bill no. and date,
@@ -145,6 +146,18 @@ export default async function handler(req, res) {
       }
     }
 
+    // Cash Drawer (api/_cash-drawer.js) shares this function; its own page id.
+    if (action.startsWith('cash-')) {
+      const ok = isAdmin || (Array.isArray(profile.allowed_tabs) && profile.allowed_tabs.includes(cashTabId()))
+      if (!ok) return send(res, 403, { error: 'You do not have access to the Cash Drawer.' })
+      try {
+        return await handleCashAction(action, body, { busy, hq, me, send, res })
+      } catch (err) {
+        if (err?.status) return send(res, err.status, { error: err.message })
+        throw err
+      }
+    }
+
     const granted = Array.isArray(profile.allowed_tabs) && profile.allowed_tabs.includes(TAB_ID)
     if (!isAdmin && !granted) return send(res, 403, { error: 'You do not have access to Purchase Summary.' })
 
@@ -159,7 +172,7 @@ export default async function handler(req, res) {
     return send(res, 400, { error: 'Unknown request.' })
   } catch (err) {
     console.error('purchases handler error:', err)
-    const setup = /purchase_\w+|email_\w+|cd_\w+/.test(err?.message || '') && /does not exist|schema cache/.test(err?.message || '')
+    const setup = /purchase_\w+|email_\w+|cd_\w+|cash_\w+/.test(err?.message || '') && /does not exist|schema cache/.test(err?.message || '')
     return send(res, 500, { error: setup ? 'Run the purchases / email-purchases / cash-discount setup SQL in the Busy Supabase project first.' : 'Something went wrong. Try again.' })
   }
 }

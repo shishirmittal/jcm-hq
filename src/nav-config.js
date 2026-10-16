@@ -51,6 +51,7 @@ export const NAV_CONFIG = [
     { id: 'electricians', label: 'Electricians', icon: 'bolt', hash: '#electricians' },
   ] },
   { section: 'Accounts', items: [
+    { id: 'cash-drawer', label: 'Cash Drawer', icon: 'rupee', hash: '#cash-drawer', adminOnly: true },
     { id: 'payments', label: 'Payments', icon: 'rupee', hash: '#payments', adminOnly: true },
     { id: 'gst-recon', label: 'GSTR-2A Reconciliation', icon: 'percent', hash: '#gst-recon', adminOnly: true },
     { id: 'cash-discount', label: 'Signify Cash Discount', icon: 'percent', hash: '#cash-discount', adminOnly: true, grantable: false },

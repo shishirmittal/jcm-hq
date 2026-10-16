@@ -5,7 +5,7 @@
 export const PAGES = {
   '': 'Dashboard', '#tasks': 'Task Board', '#explain': 'My Explanations',
   '#customers': 'Customer Card', '#quotations': 'Quotations', '#leads': 'Project Leads', '#architects': 'Architects', '#electricians': 'Electricians',
-  '#payment-followup': 'Payment Follow-up', '#followups': "Today's Follow-ups", '#payments': 'Payments', '#gst-recon': 'GSTR-2A Reconciliation', '#cash-discount': 'Signify Cash Discount',
+  '#payment-followup': 'Payment Follow-up', '#followups': "Today's Follow-ups", '#payments': 'Payments', '#gst-recon': 'GSTR-2A Reconciliation', '#cash-discount': 'Signify Cash Discount', '#cash-drawer': 'Cash Drawer',
   '#floor-orders': 'Orders', '#material': 'Pending Material', '#stock': 'Stock', '#order-log': 'Order Log',
   '#purchases': 'Purchase Summary', '#email-purchases': 'Email Purchases', '#order-planning': 'Reorder Planning', '#price-update': 'Price Update', '#items-management': 'Items Management',
   '#dashboard': 'Control Centre', '#red-alerts': 'Red Alerts',
@@ -24,7 +24,7 @@ SIDEBAR (Favourites, top row, then six groups — one group open at a time)
 Favourites: every person stars (☆) the pages they use most; they show at the very top in their own order (Edit → ▲ ▼ to reorder, ✕ to remove) and stay in their usual group too. Saved to their profile, so the same on phone and computer.
 Top: Dashboard · Today's Follow-ups · Task Board · My Explanations.
 Sales: Customer Card · Quotations · Project Leads · Architects · Electricians.
-Accounts: Payments · GSTR-2A Reconciliation · Signify Cash Discount.
+Accounts: Cash Drawer · Payments · GSTR-2A Reconciliation · Signify Cash Discount.
 Warehouse: Orders · Pending Material · Stock · Order Log.
 Purchase: Purchase Summary · Email Purchases · Reorder Planning · Price Update · Items Management.
 Reports: Control Centre · Red Alerts.
@@ -40,6 +40,7 @@ PAGES
 - Today's Follow-ups (#followups): the staff page — your follow-up list for today (over 40 days every 7 days, over 20 days every 14 days, or the date someone typed); Call, WhatsApp, Ledger, save the outcome. Same list as Payment Follow-up → Today's follow-ups.
 - Payments (#payments): payment records from the old CRM.
 - GSTR-2A Reconciliation (#gst-recon): Busy purchases vs the 2A data Busy downloads. Red flags: Missing in Busy, Not in 2A (→ "GSTR-1 reminder" WhatsApp to the supplier), Amount mismatch, Doc no. mismatch, Odd numbering, ₹0 value. Done / Ignore per row, Download Excel, Send to staff (PDF). Someone must press Busy's 2A download around the 14th each month.
+- Cash Drawer (#cash-drawer, admins + people given the page; kept open on the counter PC): the counter's daily cash register. A (opening = last night's counted cash) + B (cash in) = C (cash out) + D (counted tonight). Cash sales / receipts / payments made in Busy on Cash (Retail) are read from Busy (copied every 30 min — 'Get Busy entries now' asks the server to copy at once). Cash that Busy never sees is typed here: amount on the keypad (or keyboard) → click a card (Transfer to Admin Office, COD Parcel, Transport Bill, Chartered Bus, Auto Freight, Tea / Snacks, Other Payment, Other Cash In) → Enter. Remove an entry with ✕ + a reason (it stays, struck out). At 8 PM a banner asks to Print & close day: A4 sheet with every entry and a hand-fill note count, then the closing balance pop-up (note counts add up by themselves) shows Tallied / Short / Extra. D carries forward as tomorrow's A. Admins: change an opening, edit the cards (Cards button), re-close a day; past days via the date box.
 - Signify Cash Discount (#cash-discount, admins only — Dilip's monthly claim): Signify scheme from 1 Aug 2026 — paid within 0–5 days of invoice 1.5%, 6–10 days 1.0%, later 0%, FIFO, only fully cleared invoices, on GST-inclusive value. Pick invoice dates + Signify accounts → each invoice with the payment that cleared it, days, CD %, CD amount; totals; Download Excel; "Send to Signify" emails it (CC jc.mittal@hotmail.com). Settings: slabs, opening overrides, extra credit.
 - Orders (#floor-orders): the warehouse floor screen. Sales Orders from Busy move NEW → PICKING → INVOICED → CHECKED → READY FOR DISPATCH → DISPATCHED. Each person sees only the jobs given to them (pick, check, ready, dispatch, material). Print box labels, upload the LR photo at dispatch (customer gets a WhatsApp). WAIT FOR MATERIAL parks an order whose items are short.
 - Pending Material (#material): parties waiting for material (red = not all ordered, green = ordered with expected date) and items to order by supplier; Mark ordered (with expected date), Clear lines, Pick anyway. 17:30 daily email to the owners.
