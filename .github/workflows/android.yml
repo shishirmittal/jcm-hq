@@ -8,6 +8,9 @@ name: Android APK
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build debug APK
@@ -75,3 +78,15 @@ jobs:
           # builds do not pile up against the storage quota.
           retention-days: 30
           if-no-files-found: error
+
+      # One fixed public link for staff (Shishir, 2026-10-16): the newest APK always sits at
+      # https://github.com/shishirmittal/jcm-hq/releases/download/apk-latest/JCM-HQ.apk
+      - name: Copy to the public download link
+        run: cp out/*.apk out/JCM-HQ.apk
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-latest
+          name: JCM HQ app (latest)
+          body: Newest JCM HQ Android app. Built from ${{ github.sha }}.
+          files: out/JCM-HQ.apk
+          make_latest: true
