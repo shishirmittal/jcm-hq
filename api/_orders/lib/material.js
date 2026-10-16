@@ -381,6 +381,30 @@ export async function clearManyOrders(dbc, { orders }, profileId, now = new Date
   }
 }
 
+// CLEAR on the Items to order tab (Shishir, 2026-10-16): cancel an item instead of ordering it.
+// Clears that item's pending lines on every open order that needs it (same as Clear on each
+// party), then closes its pending-material row so it leaves the list at once (the sync would
+// close it on its next run anyway — cleared lines never count).
+export async function clearItem(dbc, { id }, profileId, now = new Date()) {
+  const key = String(id || '')
+  const row = (await must(dbc.from('procurement').select('id, item_code, item_name').eq('id', key).is('closed_at', null), 'reading item'))[0]
+  if (!row) return { status: 404, error: 'That item is no longer on the list.' }
+  const ov = await materialOverview(dbc, now)
+  const orders = ov.parties
+    .map(p => ({ orderId: p.id, lineNos: p.pending.filter(l => l.itemCode === row.item_code).map(l => l.lineNo) }))
+    .filter(o => o.lineNos.length)
+  const results = []
+  for (let i = 0; i < orders.length; i += 5) {
+    results.push(...await Promise.all(orders.slice(i, i + 5).map(o => clearLines(dbc, o, profileId, now, { overview: false }))))
+  }
+  const ok = results.filter(r => r.status === 200)
+  await must(dbc.from('procurement').update({ closed_at: now.toISOString() }).eq('id', row.id).is('closed_at', null).select('id'), 'closing item')
+  return {
+    status: 200, item: row.item_name, orders: ok.length, cleared: ok.reduce((s, r) => s + r.cleared, 0), closed: ok.filter(r => r.closed).length,
+    overview: await materialOverview(dbc, now),
+  }
+}
+
 // Every line cleared in the portal between two days (IST), for the Excel export.
 export async function clearedLines(dbc, { from, to }) {
   const start = new Date(`${from}T00:00:00+05:30`).toISOString()

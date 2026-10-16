@@ -166,6 +166,21 @@ function OwnerPanels({ session, onExpired }) {
     })
   }
   // Bulk: CLEAR ALL PENDING on the ticked orders — red button, tapped twice.
+  // Items tab Clear: cancel the item instead of ordering it — off every order that waits for it.
+  const askClearItem = it => {
+    const who = O.liveParties(dataRef.current || data).filter(p => p.pending.some(l => !l.gone && l.itemCode === it.itemCode))
+    setAsk({
+      name: it.item, danger: true, confirmLabel: 'CLEAR',
+      line: `Clear this item from ${who.length ? plural(who.length, 'order', 'orders') : 'the list'}? It will not be ordered. Busy's sales orders do not change.`,
+      list: who.map(p => p.name),
+      exec: () => run({
+        body: { op: 'clear_item', id: it.id },
+        optimistic: d => O.clearItem(d, it),
+        ok: d => `${d.item}: cleared${d.orders ? ` on ${plural(d.orders, 'order', 'orders')}` : ''}.${d.closed ? ` ${plural(d.closed, 'order', 'orders')} closed (nothing else pending).` : ''} It is under “Export cleared lines” on the logs page.`,
+      }),
+    })
+  }
+
   const askClearMany = () => {
     const ps = O.liveParties(data).filter(p => selParties.has(p.id)).map(p => ({ p, lines: O.clearableLines(p) })).filter(x => x.lines.length)
     const total = ps.reduce((s, x) => s + x.lines.length, 0)
@@ -239,7 +254,7 @@ function OwnerPanels({ session, onExpired }) {
                 </div>
                 {g.items.map(it => <ItemRow key={it.id} it={it} today={data.today} busy={running}
                   selected={selItems.has(it.id)} onSelect={on => toggle(selItems, setSelItems, [it.id], on)}
-                  onOrdered={c => askOrdered(it, c)} onUndo={() => askUndo(it)} />)}
+                  onOrdered={c => askOrdered(it, c)} onUndo={() => askUndo(it)} onClear={() => askClearItem(it)} />)}
               </div>
             )
           })}
@@ -424,7 +439,7 @@ function OrderDetail({ o }) {
   )
 }
 
-function ItemRow({ it, today, busy, selected, onSelect, onOrdered, onUndo }) {
+function ItemRow({ it, today, busy, selected, onSelect, onOrdered, onUndo, onClear }) {
   const [asking, setAsking] = useState(false)
   const who = it.orders.length ? it.orders : it.forParties.map(name => ({ name }))
   const gone = !!it.gone
@@ -442,8 +457,8 @@ function ItemRow({ it, today, busy, selected, onSelect, onOrdered, onUndo }) {
         {!gone && (asking
           ? <WhenChoices today={today} onChoose={c => { setAsking(false); onOrdered(c) }} onCancel={() => setAsking(false)} />
           : it.orderedAt
-            ? <span className="jo-row"><button className="jo-link" disabled={busy} onClick={() => setAsking(true)}>Change date</button><button className="jo-link" disabled={busy} onClick={onUndo}>Undo</button></span>
-            : <button className="jo-btn" disabled={busy} onClick={() => setAsking(true)}>Mark ordered</button>)}
+            ? <span className="jo-row"><button className="jo-link" disabled={busy} onClick={() => setAsking(true)}>Change date</button><button className="jo-link" disabled={busy} onClick={onUndo}>Undo</button><button className="jo-link jo-link-danger" disabled={busy} onClick={onClear}>Clear</button></span>
+            : <span className="jo-row"><button className="jo-btn jo-btn-outline jo-btn-clear" disabled={busy} onClick={onClear}>Clear</button><button className="jo-btn" disabled={busy} onClick={() => setAsking(true)}>Mark ordered</button></span>)}
       </div>
     </div>
   )

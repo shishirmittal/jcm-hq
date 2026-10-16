@@ -226,3 +226,6 @@
   .jo-bulkbar .jo-btn-big { flex: 1 1 100%; }
   .jo-confirm-btns { gap: 32px; }
 }
+/* Items to order: Clear (cancel the item instead of ordering it), 2026-10-16 */
+.jo-link.jo-link-danger, .jo-btn.jo-btn-clear { color: #B3261E; }
+.jo-btn.jo-btn-clear { border-color: #B3261E; }

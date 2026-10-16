@@ -1,7 +1,7 @@
 import { db, must } from '../lib/db.js'
 import { send, fail, findAdmin, nameMap } from '../lib/auth.js'
 import { withTiming } from '../lib/timing.js'
-import { materialOverview, markOrdered, markManyOrdered, unmarkOrdered, clearLines, clearManyOrders, pickAnyway, waitForMaterial, readLines, openQty } from '../lib/material.js'
+import { materialOverview, markOrdered, markManyOrdered, unmarkOrdered, clearLines, clearManyOrders, clearItem, pickAnyway, waitForMaterial, readLines, openQty } from '../lib/material.js'
 
 // Admin only — the /owner page.
 //   GET  /api/admin/owner                       → { today, parties, items } (see _lib/material.js)
@@ -15,6 +15,7 @@ import { materialOverview, markOrdered, markManyOrdered, unmarkOrdered, clearLin
 //   POST { op: 'wait', orderId }                WAIT FOR MATERIAL on a NEW order (amber band), as on the tablet
 //   POST { op: 'ordered_many', ids, days | date }   MARK N ORDERED: ticked items, one arrival date
 //   POST { op: 'clear_many', orders: [{ orderId, lineNos }] }   CLEAR ALL PENDING on ticked orders
+//   POST { op: 'clear_item', id }                              Items tab Clear: that item off every order + the list
 const body = req => (typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {})
 
 async function handler(req, res) {
@@ -39,6 +40,7 @@ async function handler(req, res) {
         unordered: () => unmarkOrdered(dbc, b),
         clear: () => clearLines(dbc, b, admin.id),
         clear_many: () => clearManyOrders(dbc, b, admin.id),
+        clear_item: () => clearItem(dbc, b, admin.id),
         pick_anyway: () => pickAnyway(dbc, b, admin.id),
         wait: () => waitFromOwner(dbc, b, admin.id),
       }

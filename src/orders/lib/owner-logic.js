@@ -61,6 +61,12 @@ export function clearMany(data, orders) {
     return done ? { ...p, pending, gone: 'Cleared' } : { ...p, pending }
   })
 }
+// Items tab Clear: the item greyed out, and its lines on every order cleared.
+export function clearItem(data, it) {
+  const items = data.items.map(g => ({ ...g, items: g.items.map(x => (x.id === it.id ? { ...x, gone: 'Cleared' } : x)) }))
+  const orders = data.parties.filter(p => !p.gone).map(p => ({ orderId: p.id, lineNos: p.pending.filter(l => !l.gone && l.itemCode === it.itemCode).map(l => l.lineNo) })).filter(o => o.lineNos.length)
+  return clearMany({ ...data, items }, orders)
+}
 export const clearLines = (data, partyId, lineNos) => clearMany(data, [{ orderId: partyId, lineNos }])
 
 // PICK ANYWAY: back to NEW — amber in place while something is short, else greyed "Back to NEW".
