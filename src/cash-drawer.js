@@ -249,7 +249,7 @@ export async function renderCashDrawer(container) {
     return `
       <div class="cw-row is-busy">
         <span class="cw-row-time"><span class="cw-busytag">Busy</span></span>
-        <span class="cw-row-main"><strong>${esc(r.type)}</strong> ${esc(r.vch_no)}${r.party ? ` — ${esc(r.party)}` : ''}</span>
+        <span class="cw-row-main"><strong>${esc(r.type)}</strong> ${esc(r.vch_no)}${r.party ? ` — ${esc(r.party)}` : ''}${r.late ? `<small class="cw-late">Late entry — dated ${esc(fmtDate(r.date))} in Busy, typed after that day was closed</small>` : ''}</span>
         <span class="cw-row-amt">${money(amt)}</span>
       </div>`
   }
@@ -265,6 +265,7 @@ export async function renderCashDrawer(container) {
     const busy = d.busy.filter(r => r.in)
     if (!typed.length && !busy.length) return `<div class="cw-empty">No cash in yet. Cash bills and receipts made in Busy show here (copied every ${d.busy_sync?.every === 5 ? 5 : 30} min).</div>`
     return typed.slice().reverse().map(e => entryRow(e, d)).join('') + busy.map(r => busyRow(r, r.in)).join('')
+      + (d.busy_moved?.length ? `<div class="cw-busynote">Entered in Busy after this day was closed, so counted on the next day: ${d.busy_moved.map(r => `${esc(r.vch_no)} ${money(r.in || r.out)}`).join(', ')}</div>` : '')
   }
 
   // ---------- first day ----------
@@ -474,10 +475,10 @@ export async function renderCashDrawer(container) {
     const line = (a, b, c, amt) => `<tr><td>${a}</td><td>${b}</td><td class="sh-r">${c}</td><td class="sh-amt">${amt}</td></tr>`
     const outRows = [
       ...outTyped.map(e => line(esc(fmtTime(e.at)), `<strong>${esc(e.label)}</strong>${e.note ? ` — ${esc(e.note)}` : ''}`, esc(e.by), money(e.amount))),
-      ...busyOut.map(r => line('Busy', `<strong>${esc(r.type)}</strong> ${esc(r.vch_no)}${r.party ? ` — ${esc(r.party)}` : ''}`, '', money(r.out))),
+      ...busyOut.map(r => line(r.late ? `Busy<br>late` : 'Busy', `<strong>${esc(r.type)}</strong> ${esc(r.vch_no)}${r.party ? ` — ${esc(r.party)}` : ''}${r.late ? ` <em>(dated ${esc(fmtDate(r.date))})</em>` : ''}`, '', money(r.out))),
     ]
     const inRows = [
-      ...busyIn.map(r => line('Busy', `<strong>${esc(r.type)}</strong> ${esc(r.vch_no)}${r.party ? ` — ${esc(r.party)}` : ''}`, '', money(r.in))),
+      ...busyIn.map(r => line(r.late ? `Busy<br>late` : 'Busy', `<strong>${esc(r.type)}</strong> ${esc(r.vch_no)}${r.party ? ` — ${esc(r.party)}` : ''}${r.late ? ` <em>(dated ${esc(fmtDate(r.date))})</em>` : ''}`, '', money(r.in))),
       ...inTyped.map(e => line(esc(fmtTime(e.at)), `<strong>${esc(e.label)}</strong>${e.note ? ` — ${esc(e.note)}` : ''}`, esc(e.by), money(e.amount))),
     ]
     // totals per out card, for a quick look

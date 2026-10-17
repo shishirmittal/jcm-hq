@@ -150,23 +150,58 @@ function cashJob(rows) {
   return { ...latest, running: !!fast.running, every: 5 }
 }
 
+// Which Busy cash-book rows belong to `day` (Shishir, 17 Oct: receipts typed in Busy the next morning but
+// DATED the day before landed on an already-closed day and never reached the drawer's total).
+// A closed day keeps the exact set of Busy vouchers it counted (summary.busy_codes). Anything dated on or
+// before a closed day that is not in any closed day's set arrived late → it is counted on the next open day
+// (today), shown as "late". Days closed before this rule (no busy_codes) count their own dated rows.
+async function busyRowsFor(busy, s, day, closeRow) {
+  const from = s.start_day && s.start_day < day ? s.start_day : day
+  const [rows, closed] = await Promise.all([
+    busyRows(busy, s.account_code, from, day),
+    from < day ? busy.from('cash_days').select('day, summary').gte('day', from).lte('day', day).not('counted', 'is', null)
+      .then(r => check(r, 'cash_days')) : Promise.resolve(closeRow && closeRow.counted != null ? [closeRow] : []),
+  ])
+  const codesOf = c => Array.isArray(c?.summary?.busy_codes) ? new Set(c.summary.busy_codes.map(Number)) : null
+  const own = rows.filter(r => r.vch_date === day)
+  const mine = codesOf(closeRow && closeRow.counted != null ? closeRow : null)
+  if (mine) {
+    // A closed day: exactly what it counted, plus a note of its own rows that went on to a later day.
+    return { rows: rows.filter(r => mine.has(Number(r.vch_code))), moved: own.filter(r => !mine.has(Number(r.vch_code))) }
+  }
+  // Open day (or a day closed before the rule): its own rows + late rows from earlier closed days.
+  const taken = new Set(), closedDays = new Set()
+  for (const c of closed) {
+    if (c.day >= day) continue
+    closedDays.add(c.day)
+    const set = codesOf(c)
+    const list = set ? rows.filter(r => set.has(Number(r.vch_code))) : rows.filter(r => r.vch_date === c.day)
+    for (const r of list) taken.add(Number(r.vch_code))
+  }
+  const late = closeRow && closeRow.counted != null ? [] // legacy closed day: no late rows pulled in
+    : rows.filter(r => r.vch_date < day && closedDays.has(r.vch_date) && !taken.has(Number(r.vch_code)))
+  return { rows: [...late, ...own], moved: [] }
+}
+
 async function dayData(busy, body) {
   const s = await settings(busy)
   const day = isDate(body.day) ? body.day : todayIST()
-  const [opening, bl, entries, closeRow, cats, job] = await Promise.all([
+  const closeRow = check(await busy.from('cash_days').select('*').eq('day', day).maybeSingle(), 'cash_days')
+  const [opening, picked, entries, cats, job] = await Promise.all([
     openingFor(busy, s, day),
-    busyRows(busy, s.account_code, day, day),
+    busyRowsFor(busy, s, day, closeRow),
     entryRows(busy, day, day, true),
-    busy.from('cash_days').select('*').eq('day', day).maybeSingle().then(r => check(r, 'cash_days')),
     busy.from('cash_categories').select('*').order('sort').order('id').then(r => check(r, 'cash_categories')),
     busy.from('sync_jobs').select('job_id, last_ok_at, last_finished_at, running, run_requested_at').in('job_id', ['cash-book', 'ledger']).then(r => cashJob(r.data)),
   ])
-  const names = await namesFor(busy, [...new Set(bl.map(r => r.vch_code))])
-  const busyList = bl.map(r => ({
+  const bl = picked.rows
+  const names = await namesFor(busy, [...new Set([...bl, ...picked.moved].map(r => r.vch_code))])
+  const asItem = r => ({
     vch_code: r.vch_code, type: r.vch_type_name || '', vch_no: r.vch_no || '',
-    party: names.get(r.vch_code) || '',
+    party: names.get(r.vch_code) || '', date: r.vch_date, late: r.vch_date !== day,
     in: r2(r.debit), out: r2(r.credit),
-  })).filter(r => r.in || r.out)
+  })
+  const busyList = bl.map(asItem).filter(r => r.in || r.out)
   const f = flows(bl, entries)
   const A = opening.amount
   const expected = A == null ? null : r2(A + f.totalIn - f.totalOut)
@@ -176,6 +211,7 @@ async function dayData(busy, body) {
     print_at: s.print_at, start_day: s.start_day,
     opening, flows: f, expected,
     busy: busyList,
+    busy_moved: picked.moved.map(asItem).filter(r => r.in || r.out),
     entries: entries.map(e => ({
       id: e.id, kind: e.kind, category_id: e.category_id, label: e.category_label, amount: r2(e.amount),
       note: e.note || '', by: e.created_by_name || '', by_id: e.created_by, at: e.created_at,
@@ -265,7 +301,7 @@ async function closeDay(busy, body, me) {
   const difference = r2(counted - expected)
   check(await busy.from('cash_days').upsert({
     day, counted, denominations, expected, difference,
-    summary: { A: d.opening.amount, opening_source: d.opening.source, ...d.flows },
+    summary: { A: d.opening.amount, opening_source: d.opening.source, ...d.flows, busy_codes: [...new Set(d.busy.map(r => r.vch_code))] },
     close_note: String(body.note || '').trim().slice(0, 300) || null,
     closed_by_name: me.name, closed_at: new Date().toISOString(), updated_at: new Date().toISOString(),
   }, { onConflict: 'day' }), 'cash_days')
