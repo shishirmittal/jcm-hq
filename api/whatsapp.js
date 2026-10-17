@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { waConfigured, sendTemplate, wabaSubscription, toWaNumber, waSwitches, sendLogged, BANNER, HQ_URL, niceDate, listTemplates, fetchMedia } from './_wa-cloud.js'
 import { handleIncoming, busyClient, ledgerNameByCode, qrPng } from './_wa-replies.js'
 import { runOutbox, TXN } from './_wa-outbox.js'
-import { listConversations, loadThread, replyText, replyMedia, unreadCount, convOp, markAllRead, quickReplies, quickRepliesSave, LABELS } from './_wa-inbox.js'
+import { listConversations, loadThread, loadThreads, replyText, replyMedia, unreadCount, convOp, markAllRead, quickReplies, quickRepliesSave, LABELS } from './_wa-inbox.js'
 import { sendLedger } from './_send-docs.js'
 import { db as ordersDb } from './_orders/lib/db.js'
 import { materialOverview } from './_orders/lib/material.js'
@@ -274,6 +274,10 @@ export default async function handler(req, res) {
         return send(res, 200, { conversations, quick, labels: LABELS, me: { id: me.id, isAdmin: me.isAdmin }, ...(people ? { people: people.map(p => ({ id: p.id, name: p.name })) } : {}) })
       }
       catch (err) { if (err.message === 'SETUP') return send(res, 200, { conversations: [], setup: true }); throw err }
+    }
+    if (body.action === 'threads') {
+      try { return send(res, 200, { threads: await loadThreads(busy, Array.isArray(body.numbers) ? body.numbers : []) }) }
+      catch (err) { return send(res, 200, { threads: {} }) }
     }
     if (body.action === 'thread') {
       try { return send(res, 200, await loadThread(busy, String(body.number || ''))) }

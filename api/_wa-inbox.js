@@ -219,6 +219,8 @@ export async function quickRepliesSave(busy, list) {
 // One thread: wa_messages (in + out) merged with wa_log template sends to that number.
 export async function loadThread(busy, number, { markSeen = true } = {}) {
   const n = toWaNumber(number) || String(number)
+  // Marking their messages seen runs alongside the two reads (one wait instead of two).
+  const seen = markSeen ? busy.from('wa_messages').update({ seen_at: new Date().toISOString() }).eq('number', n).eq('direction', 'in').is('seen_at', null).then(r => r, e => ({ error: e })) : null
   const [m, l] = await Promise.all([
     busy.from('wa_messages').select('*').eq('number', n).order('created_at', { ascending: true }).limit(500),
     busy.from('wa_log').select('id, created_at, kind, template, status, error, params, ref, ref_name, sent_by, delivered_at, read_at').eq('to_number', n).order('created_at', { ascending: true }).limit(300),
@@ -230,9 +232,36 @@ export async function loadThread(busy, number, { markSeen = true } = {}) {
   items.sort((a, b) => a.at.localeCompare(b.at))
   const lastIn = [...(m.data || [])].reverse().find(x => x.direction === 'in')?.created_at || null
   if (markSeen) {
-    const u = await busy.from('wa_messages').update({ seen_at: new Date().toISOString() }).eq('number', n).eq('direction', 'in').is('seen_at', null)
-    if (u.error) console.error('wa seen update failed:', u.error.message)
+    const u = await seen
+    if (u?.error) console.error('wa seen update failed:', u.error.message)
   }
+  return { number: n, items, lastIn, windowOpen: !!lastIn && Date.now() - Date.parse(lastIn) < WINDOW_H * 3600e3 }
+}
+
+// Several chats in one go (the Inbox fetches the top of its list in the background so taps open at
+// once). Same shape as loadThread per number; nothing is marked seen.
+export async function loadThreads(busy, numbers) {
+  const ns = [...new Set((numbers || []).map(x => toWaNumber(x) || String(x)).filter(Boolean))].slice(0, 20)
+  if (!ns.length) return {}
+  const [m, l] = await Promise.all([
+    busy.from('wa_messages').select('*').in('number', ns).order('created_at', { ascending: true }).limit(3000),
+    busy.from('wa_log').select('id, created_at, kind, template, status, error, params, ref, ref_name, sent_by, delivered_at, read_at, to_number').in('to_number', ns).order('created_at', { ascending: true }).limit(3000),
+  ])
+  if (m.error) throw new Error(m.error.message)
+  const out = {}
+  for (const n of ns) {
+    const mm = (m.data || []).filter(x => x.number === n).slice(-500)
+    const ll = (l.data || []).filter(x => x.to_number === n).slice(-300)
+    out[n] = shapeThread(n, mm, ll)
+  }
+  return out
+}
+function shapeThread(n, mrows, lrows) {
+  const items = []
+  for (const x of mrows) items.push({ id: `m${x.id}`, mid: x.id, direction: x.direction, kind: x.kind, text: x.text, payload: x.payload, media: !!x.media_id, at: x.created_at, status: x.status, error: x.error, by: x.sent_by, read_at: x.read_at, delivered_at: x.delivered_at })
+  for (const x of lrows) items.push({ id: `l${x.id}`, direction: 'out', kind: 'template', template: x.template, text: `[${x.template}] ${(x.params || []).join(' · ')}`, at: x.created_at, status: x.status, error: x.error, by: x.sent_by, ref: x.ref, ref_name: x.ref_name, read_at: x.read_at, delivered_at: x.delivered_at })
+  items.sort((a, b) => a.at.localeCompare(b.at))
+  const lastIn = [...mrows].reverse().find(x => x.direction === 'in')?.created_at || null
   return { number: n, items, lastIn, windowOpen: !!lastIn && Date.now() - Date.parse(lastIn) < WINDOW_H * 3600e3 }
 }
 

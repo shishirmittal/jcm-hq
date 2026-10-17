@@ -114,7 +114,7 @@ function renderInbox(el, number) {
       </aside>
       <section class="wa-thread" id="waThread"><div class="empty-state">Pick a conversation.</div></section>
     </div>`
-  const state = { convs: [], number: number || null, timer: null, thread: null, filter: store.get('wa.filter', 'open'), label: '', quick: [], labels: [], me: null, people: null, party: {}, media: {}, att: null, sig: null, convSig: null }
+  const state = { convs: [], number: number || null, timer: null, thread: null, filter: store.get('wa.filter', 'open'), label: '', quick: [], labels: [], me: null, people: null, party: {}, media: {}, att: null, sig: null, convSig: null, threads: {} }
   if (!FILTERS.some(f => f[0] === state.filter)) state.filter = 'open'
   const $ = id => el.querySelector('#' + id)
   // The chat panel. On a phone it is lifted out of the page onto the whole screen (setFull), so nothing
@@ -148,6 +148,7 @@ function renderInbox(el, number) {
         $('waLabelF').insertAdjacentHTML('beforeend', d.labels.map(l => `<option>${esc(l)}</option>`).join(''))
       }
       if (changed || !silent) drawConvs()
+      if (!silent) prefetchThreads()
       if (!state.number && state.convs.length && window.innerWidth > 800) { const first = visible()[0]; if (first) openThread(first.number) }
     } catch (err) { if (!silent) $('waConvs').innerHTML = `<div class="empty-state">${esc(err.message)}</div>` }
   }
@@ -250,21 +251,36 @@ function renderInbox(el, number) {
     setFull(false)
     drawConvs()
   }
+  // Fast open (2026-10-17, Shishir: "very long delay to open"): a chat opened before shows at once
+  // from memory and refreshes quietly; a new one shows its header straight away while the messages
+  // load; the top chats of the list are fetched in one go in the background so most taps are instant.
   async function openThread(number, silent = false) {
     const th = TH
     const quiet = silent && state.number === number && th.querySelector('#waMsgs')
+    let shown = false
     if (!quiet) {
       state.number = number
       state.att = null; state.media = {}
       drawConvs()
       history.replaceState(null, '', `#whatsapp/inbox/${number}`)
-      th.innerHTML = '<div class="loading-state">Loading…</div>'
+      const cached = state.threads[number]
+      if (cached) { renderFull(number, cached); shown = true }
+      else {
+        const c = conv(number)
+        th.innerHTML = `<div class="wa-thread-head"><button type="button" class="wa-back" id="waBack" aria-label="Back to chats">‹</button>
+          <div class="wa-head-info"><div class="wa-conv-name">${esc(c.name || c.display || number)}</div><div class="wa-muted wa-head-sub">${esc(c.display || number)}</div></div></div>
+          <div class="wa-msgs" id="waMsgs"><div class="loading-state">Loading messages…</div></div>`
+        th.querySelector('#waBack').addEventListener('click', closeThread)
+        el.classList.add('wa-show-thread')
+        setFull(true)
+      }
     }
     try {
       const t = await call({ action: 'thread', number })
+      state.threads[number] = t
       if (!el.isConnected || state.number !== number) return
       const sig = threadSig(t)
-      if (quiet) {
+      if (quiet || shown) {
         if (sig === state.sig) return
         if (t.windowOpen === state.thread?.windowOpen) {
           const box = th.querySelector('#waMsgs')
@@ -276,117 +292,131 @@ function renderInbox(el, number) {
           return
         }
       }
-      const typed = th.querySelector('#waReplyText')?.value || ''
-      state.thread = t; state.sig = sig
-      const c = conv(number)
-      for (const x of state.convs) if (x.number === number) x.unread = 0
-      drawConvs(); refreshNavBadges?.()
-      const rows = msgsHtml(t)
-      const fill = s => s.replace(/\{name\}/g, c.name || '')
-      th.innerHTML = `
-        <div class="wa-thread-head">
-          <button type="button" class="wa-back" id="waBack" aria-label="Back to chats">‹</button>
-          <div class="wa-head-info"><div class="wa-conv-name">${c.pinned ? '📌 ' : ''}${esc(c.name || c.display || number)}</div><div class="wa-muted wa-head-sub">${esc(c.display || number)}${c.nameHow ? `<span class="wa-name-how"> · name from ${esc(c.nameHow === 'maybe' ? 'a matching customer record (maybe)' : c.nameHow === 'whatsapp profile' ? 'their WhatsApp profile' : c.nameHow === 'staff' ? 'Manage Users (our staff)' : 'the last ' + (KIND_LABEL[c.nameHow] || c.nameHow).toLowerCase() + ' we sent')}</span>` : ''}</div></div>
-          <div class="wa-head-acts">
-            ${c.code ? `<a class="btn-ghost btn-small wa-hbtn" href="#customers/${esc(c.code)}" title="Customer card" aria-label="Customer card">👤<span class="wa-btn-text"> Customer card</span></a>` : ''}
-            <button type="button" class="btn-primary btn-small wa-hbtn wa-hbtn-main" id="waSched" ${c.staff ? 'hidden' : ''} title="Schedule payment reminder" aria-label="Schedule reminder">⏰<span class="wa-btn-text"> Schedule reminder</span></button>
-            <button type="button" class="btn-ghost btn-small wa-hbtn wa-more-btn" id="waMore" title="More: Done, Pin, Assign, Label, Ledger, QR" aria-label="More" aria-expanded="false">⋯</button>
-          </div>
+      renderFull(number, t)
+    } catch (err) { if (!shown) th.innerHTML = `<div class="empty-state">${esc(err.message)}</div>` }
+  }
+  // Background: the chats at the top of the list, in one request.
+  async function prefetchThreads() {
+    const nums = visible().slice(0, 15).map(c => c.number).filter(n => !state.threads[n])
+    if (!nums.length) return
+    try {
+      const d = await call({ action: 'threads', numbers: nums })
+      for (const [n, t] of Object.entries(d.threads || {})) if (!state.threads[n]) state.threads[n] = t
+    } catch { /* taps still load one by one */ }
+  }
+  function renderFull(number, t) {
+    const th = TH
+    const sig = threadSig(t)
+    const typed = th.querySelector('#waReplyText')?.value || ''
+    state.thread = t; state.sig = sig
+    const c = conv(number)
+    for (const x of state.convs) if (x.number === number) x.unread = 0
+    drawConvs(); refreshNavBadges?.()
+    const rows = msgsHtml(t)
+    const fill = s => s.replace(/\{name\}/g, c.name || '')
+    th.innerHTML = `
+      <div class="wa-thread-head">
+        <button type="button" class="wa-back" id="waBack" aria-label="Back to chats">‹</button>
+        <div class="wa-head-info"><div class="wa-conv-name">${c.pinned ? '📌 ' : ''}${esc(c.name || c.display || number)}</div><div class="wa-muted wa-head-sub">${esc(c.display || number)}${c.nameHow ? `<span class="wa-name-how"> · name from ${esc(c.nameHow === 'maybe' ? 'a matching customer record (maybe)' : c.nameHow === 'whatsapp profile' ? 'their WhatsApp profile' : c.nameHow === 'staff' ? 'Manage Users (our staff)' : 'the last ' + (KIND_LABEL[c.nameHow] || c.nameHow).toLowerCase() + ' we sent')}</span>` : ''}</div></div>
+        <div class="wa-head-acts">
+          ${c.code ? `<a class="btn-ghost btn-small wa-hbtn" href="#customers/${esc(c.code)}" title="Customer card" aria-label="Customer card">👤<span class="wa-btn-text"> Customer card</span></a>` : ''}
+          <button type="button" class="btn-primary btn-small wa-hbtn wa-hbtn-main" id="waSched" ${c.staff ? 'hidden' : ''} title="Schedule payment reminder" aria-label="Schedule reminder">⏰<span class="wa-btn-text"> Schedule reminder</span></button>
+          <button type="button" class="btn-ghost btn-small wa-hbtn wa-more-btn" id="waMore" title="More: Done, Pin, Assign, Label, Ledger, QR" aria-label="More" aria-expanded="false">⋯</button>
         </div>
-        <div class="wa-sched-chip" id="waSchedChip"></div>
-        <div class="wa-tools" id="waTools"></div>
-        <div class="wa-cust" id="waCust"></div>
-        <div class="wa-msgs" id="waMsgs">${rows}</div>
-        <div class="wa-reply">
-          ${t.windowOpen
-            ? `${state.quick.length || state.me?.isAdmin ? `<div class="wa-quick">${state.quick.map((q, i) => `<button type="button" class="wa-chip" data-quick="${i}" title="${esc(fill(q))}">${esc(fill(q).slice(0, 34))}${q.length > 34 ? '…' : ''}</button>`).join('')}${state.me?.isAdmin ? '<button type="button" class="wa-chip wa-chip-edit" id="waQuickEdit" title="Change the saved replies">✎ Edit</button>' : ''}</div>` : ''}
-               <div class="wa-att-prev" id="waAttPrev" hidden></div>
-               <div class="wa-reply-row">
-                 <label class="wa-attach" title="Send a photo, PDF, Excel or Word file">📎<input type="file" id="waFile" accept="image/*,application/pdf,.pdf,.xlsx,.xls,.docx,.doc,.txt" hidden></label>
-                 <label class="wa-attach wa-cam" title="Take a photo">📷<input type="file" id="waCam" accept="image/*" capture="environment" hidden></label>
-                 <textarea id="waReplyText" rows="2" placeholder="Type a reply…"></textarea>
-                 <button class="btn-primary btn-small" id="waReplySend">Send</button>
-               </div>`
-            : `<div class="wa-muted">They have not written in the last 24 hours, so WhatsApp allows only an approved template now. Use 📄 Send ledger above, ⏰ Schedule reminder, or a payment reminder from Payment Follow-up.</div>`}
-          <p class="pf-error" id="waReplyErr" hidden></p>
-        </div>`
-      drawTools(); drawCust(t)
-      if (c.code && !state.party[c.code]) call({ action: 'schedule-list', party_code: c.code }).then(d => {
-        state.party[c.code] = d.party
-        if (state.number === number) drawCust(t)
-        const a = d.schedules.find(x => x.status === 'active'); const chip = th.querySelector('#waSchedChip'); if (a && chip) chip.textContent = scheduleChip(a)
-      }).catch(() => {})
-      else if (c.code) call({ action: 'schedule-list', party_code: c.code }).then(d => { const a = d.schedules.find(x => x.status === 'active'); const chip = th.querySelector('#waSchedChip'); if (a && chip) chip.textContent = scheduleChip(a) }).catch(() => {})
-      th.querySelector('#waMsgs').scrollTop = 1e9
-      th.querySelector('#waBack').addEventListener('click', closeThread)
-      th.querySelector('#waMore').addEventListener('click', e => { const on = th.classList.toggle('wa-tools-open'); e.currentTarget.setAttribute('aria-expanded', String(on)) })
-      el.classList.add('wa-show-thread')
-      setFull(true)
-      th.querySelector('#waTools').addEventListener('click', e => {
-        const b = e.target.closest('button[data-t]')
-        if (!b) return
-        const x = conv(number), t2 = b.dataset.t
-        if (t2 === 'unread') return op({ op: 'unread' }, () => { x.unread = 1; closeThread(); th.innerHTML = '<div class="empty-state">Marked unread.</div>'; refreshNavBadges?.() })
-        op({ op: t2 }, () => { if (t2 === 'done') { x.done = true; x.doneBy = 'you'; x.waiting = null } if (t2 === 'reopen') x.done = false; if (t2 === 'pin') x.pinned = true; if (t2 === 'unpin') x.pinned = false })
-      })
-      th.querySelector('#waTools').addEventListener('change', e => {
-        const s = e.target.closest('select[data-t]')
-        if (!s) return
-        const x = conv(number)
-        if (s.dataset.t === 'assign') op({ op: 'assign', person: s.value }, () => { x.assignedTo = s.value || null; x.assignedName = s.value ? s.selectedOptions[0].textContent : null })
-        else op({ op: 'label', label: s.value }, () => { x.label = s.value || null })
-      })
-      th.querySelector('#waCust').addEventListener('click', async e => {
-        const b = e.target.closest('[data-send]')
-        if (!b) return
-        const x = conv(number), what = b.dataset.send
-        if (!await hqConfirm(what === 'ledger' ? `Send the ledger statement of ${x.name || 'this customer'} to ${x.display}?` : `Send the payment QR card of ${x.name || 'this customer'} to ${x.display}?`)) return
-        b.disabled = true; const label = b.textContent; b.textContent = 'Sending…'
-        try { await call({ action: what === 'ledger' ? 'chat-ledger' : 'chat-qr', number, code: x.code }); b.textContent = '✓ Sent'; setTimeout(() => { if (state.number === number) openThread(number) }, 1200) }
-        catch (err) { b.disabled = false; b.textContent = label; hqAlert(err.message) }
-      })
-      th.querySelector('.wa-quick')?.addEventListener('click', async e => {
-        if (e.target.closest('#waQuickEdit')) {
-          const v = await hqPrompt('Saved replies — one per line. {name} is replaced by the chat name.', state.quick.join('\n'))
-          if (v == null) return
-          try { const d = await call({ action: 'quick-save', quick: v.split('\n') }); state.quick = d.quick; openThread(number) } catch (err) { hqAlert(err.message) }
-          return
+      </div>
+      <div class="wa-sched-chip" id="waSchedChip"></div>
+      <div class="wa-tools" id="waTools"></div>
+      <div class="wa-cust" id="waCust"></div>
+      <div class="wa-msgs" id="waMsgs">${rows}</div>
+      <div class="wa-reply">
+        ${t.windowOpen
+          ? `${state.quick.length || state.me?.isAdmin ? `<div class="wa-quick">${state.quick.map((q, i) => `<button type="button" class="wa-chip" data-quick="${i}" title="${esc(fill(q))}">${esc(fill(q).slice(0, 34))}${q.length > 34 ? '…' : ''}</button>`).join('')}${state.me?.isAdmin ? '<button type="button" class="wa-chip wa-chip-edit" id="waQuickEdit" title="Change the saved replies">✎ Edit</button>' : ''}</div>` : ''}
+             <div class="wa-att-prev" id="waAttPrev" hidden></div>
+             <div class="wa-reply-row">
+               <label class="wa-attach" title="Send a photo, PDF, Excel or Word file">📎<input type="file" id="waFile" accept="image/*,application/pdf,.pdf,.xlsx,.xls,.docx,.doc,.txt" hidden></label>
+               <label class="wa-attach wa-cam" title="Take a photo">📷<input type="file" id="waCam" accept="image/*" capture="environment" hidden></label>
+               <textarea id="waReplyText" rows="2" placeholder="Type a reply…"></textarea>
+               <button class="btn-primary btn-small" id="waReplySend">Send</button>
+             </div>`
+          : `<div class="wa-muted">They have not written in the last 24 hours, so WhatsApp allows only an approved template now. Use 📄 Send ledger above, ⏰ Schedule reminder, or a payment reminder from Payment Follow-up.</div>`}
+        <p class="pf-error" id="waReplyErr" hidden></p>
+      </div>`
+    drawTools(); drawCust(t)
+    if (c.code && !state.party[c.code]) call({ action: 'schedule-list', party_code: c.code }).then(d => {
+      state.party[c.code] = d.party
+      if (state.number === number) drawCust(t)
+      const a = d.schedules.find(x => x.status === 'active'); const chip = th.querySelector('#waSchedChip'); if (a && chip) chip.textContent = scheduleChip(a)
+    }).catch(() => {})
+    else if (c.code) call({ action: 'schedule-list', party_code: c.code }).then(d => { const a = d.schedules.find(x => x.status === 'active'); const chip = th.querySelector('#waSchedChip'); if (a && chip) chip.textContent = scheduleChip(a) }).catch(() => {})
+    th.querySelector('#waMsgs').scrollTop = 1e9
+    th.querySelector('#waBack').addEventListener('click', closeThread)
+    th.querySelector('#waMore').addEventListener('click', e => { const on = th.classList.toggle('wa-tools-open'); e.currentTarget.setAttribute('aria-expanded', String(on)) })
+    el.classList.add('wa-show-thread')
+    setFull(true)
+    th.querySelector('#waTools').addEventListener('click', e => {
+      const b = e.target.closest('button[data-t]')
+      if (!b) return
+      const x = conv(number), t2 = b.dataset.t
+      if (t2 === 'unread') return op({ op: 'unread' }, () => { x.unread = 1; closeThread(); th.innerHTML = '<div class="empty-state">Marked unread.</div>'; refreshNavBadges?.() })
+      op({ op: t2 }, () => { if (t2 === 'done') { x.done = true; x.doneBy = 'you'; x.waiting = null } if (t2 === 'reopen') x.done = false; if (t2 === 'pin') x.pinned = true; if (t2 === 'unpin') x.pinned = false })
+    })
+    th.querySelector('#waTools').addEventListener('change', e => {
+      const s = e.target.closest('select[data-t]')
+      if (!s) return
+      const x = conv(number)
+      if (s.dataset.t === 'assign') op({ op: 'assign', person: s.value }, () => { x.assignedTo = s.value || null; x.assignedName = s.value ? s.selectedOptions[0].textContent : null })
+      else op({ op: 'label', label: s.value }, () => { x.label = s.value || null })
+    })
+    th.querySelector('#waCust').addEventListener('click', async e => {
+      const b = e.target.closest('[data-send]')
+      if (!b) return
+      const x = conv(number), what = b.dataset.send
+      if (!await hqConfirm(what === 'ledger' ? `Send the ledger statement of ${x.name || 'this customer'} to ${x.display}?` : `Send the payment QR card of ${x.name || 'this customer'} to ${x.display}?`)) return
+      b.disabled = true; const label = b.textContent; b.textContent = 'Sending…'
+      try { await call({ action: what === 'ledger' ? 'chat-ledger' : 'chat-qr', number, code: x.code }); b.textContent = '✓ Sent'; setTimeout(() => { if (state.number === number) openThread(number) }, 1200) }
+      catch (err) { b.disabled = false; b.textContent = label; hqAlert(err.message) }
+    })
+    th.querySelector('.wa-quick')?.addEventListener('click', async e => {
+      if (e.target.closest('#waQuickEdit')) {
+        const v = await hqPrompt('Saved replies — one per line. {name} is replaced by the chat name.', state.quick.join('\n'))
+        if (v == null) return
+        try { const d = await call({ action: 'quick-save', quick: v.split('\n') }); state.quick = d.quick; openThread(number) } catch (err) { hqAlert(err.message) }
+        return
+      }
+      const q = e.target.closest('[data-quick]')
+      if (!q) return
+      const ta = th.querySelector('#waReplyText')
+      ta.value = (ta.value ? ta.value.trimEnd() + ' ' : '') + fill(state.quick[Number(q.dataset.quick)] || '')
+      ta.focus()
+    })
+    th.querySelector('#waMsgs').addEventListener('click', async e => {
+      const b = e.target.closest('[data-media]')
+      if (!b) return
+      b.disabled = true
+      try {
+        const d = await call({ action: 'media', id: Number(b.dataset.media) })
+        const img = TH.querySelector(`#waImg${b.dataset.media}`)
+        if (img && d.mime.startsWith('image/') && !img.innerHTML) {
+          // Photos show right in the chat; tap the photo to see it full screen (Save / share there).
+          state.media[b.dataset.media] = d
+          showLoadedImages(TH)
+        } else if (/pdf|^image\//.test(d.mime)) {
+          await openPdfViewer(d) // opens on screen; "Save / share" button inside
+        } else {
+          await shareBase64(d.base64, d.filename, d.mime) // other files (Excel, Word …): phone opens them via the share sheet
         }
-        const q = e.target.closest('[data-quick]')
-        if (!q) return
-        const ta = th.querySelector('#waReplyText')
-        ta.value = (ta.value ? ta.value.trimEnd() + ' ' : '') + fill(state.quick[Number(q.dataset.quick)] || '')
-        ta.focus()
-      })
-      th.querySelector('#waMsgs').addEventListener('click', async e => {
-        const b = e.target.closest('[data-media]')
-        if (!b) return
-        b.disabled = true
-        try {
-          const d = await call({ action: 'media', id: Number(b.dataset.media) })
-          const img = TH.querySelector(`#waImg${b.dataset.media}`)
-          if (img && d.mime.startsWith('image/') && !img.innerHTML) {
-            // Photos show right in the chat; tap the photo to see it full screen (Save / share there).
-            state.media[b.dataset.media] = d
-            showLoadedImages(TH)
-          } else if (/pdf|^image\//.test(d.mime)) {
-            await openPdfViewer(d) // opens on screen; "Save / share" button inside
-          } else {
-            await shareBase64(d.base64, d.filename, d.mime) // other files (Excel, Word …): phone opens them via the share sheet
-          }
-        } catch (err) {
-          if (staleChunk(err)) { location.reload(); return } // HQ was updated since this page opened
-          hqAlert(err.message)
-        }
-        finally { b.disabled = false }
-      })
-      th.querySelector('#waSched').addEventListener('click', () => openScheduler({ number, code: c.code, name: c.name, onSaved: sch => { const chip = th.querySelector('#waSchedChip'); if (chip) chip.textContent = scheduleChip(sch) } }))
-      if (typed && th.querySelector('#waReplyText')) th.querySelector('#waReplyText').value = typed
-      for (const id of ['waFile', 'waCam']) th.querySelector('#' + id)?.addEventListener('change', e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) pickFile(f) })
-      th.querySelector('#waAttPrev')?.addEventListener('click', e => { if (e.target.closest('[data-att-x]')) { state.att = null; drawAtt() } })
-      th.querySelector('#waReplySend')?.addEventListener('click', sendReply)
-      th.querySelector('#waReplyText')?.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) sendReply() })
-    } catch (err) { th.innerHTML = `<div class="empty-state">${esc(err.message)}</div>` }
+      } catch (err) {
+        if (staleChunk(err)) { location.reload(); return } // HQ was updated since this page opened
+        hqAlert(err.message)
+      }
+      finally { b.disabled = false }
+    })
+    th.querySelector('#waSched').addEventListener('click', () => openScheduler({ number, code: c.code, name: c.name, onSaved: sch => { const chip = th.querySelector('#waSchedChip'); if (chip) chip.textContent = scheduleChip(sch) } }))
+    if (typed && th.querySelector('#waReplyText')) th.querySelector('#waReplyText').value = typed
+    for (const id of ['waFile', 'waCam']) th.querySelector('#' + id)?.addEventListener('change', e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) pickFile(f) })
+    th.querySelector('#waAttPrev')?.addEventListener('click', e => { if (e.target.closest('[data-att-x]')) { state.att = null; drawAtt() } })
+    th.querySelector('#waReplySend')?.addEventListener('click', sendReply)
+    th.querySelector('#waReplyText')?.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) sendReply() })
   }
   // Photo / file reply (2026-10-16): photos are shrunk on the phone (1600 px JPEG) so they pass through HQ fast.
   async function pickFile(f) {
