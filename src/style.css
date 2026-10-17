@@ -2184,6 +2184,18 @@ body.native-app .print-sheet.qv-capturing .print-page {
   margin-bottom: 24px;
 }
 
+
+/* Phone browsers (2026-10-17): body.qv-narrow (set by quotation-view.js at ≤ 600 px) gets the app's narrow quotation layout. */
+body.qv-narrow .app-header.qv-header { height: auto; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding-top: 10px; padding-bottom: 10px; }
+body.qv-narrow .qv-actions { width: 100%; gap: 6px; }
+body.qv-narrow .qv-actions .btn-small { flex: 1 1 auto; min-height: 38px; padding: 0 10px; font-size: 12.5px; white-space: nowrap; width: auto; min-width: 0; height: auto; }
+body.qv-narrow .qv-label-long { display: none; }
+body.qv-narrow .qv-label-short { display: inline; }
+body.qv-narrow .print-sheet { --sheet-scale: 1; align-items: flex-start; gap: 0; }
+body.qv-narrow .print-sheet .print-page { transform: scale(var(--sheet-scale)); transform-origin: top left; margin-right: calc(-210mm * (1 - var(--sheet-scale))); margin-bottom: calc(14px - 297mm * (1 - var(--sheet-scale))); box-shadow: 0 2px 14px rgba(0, 0, 0, 0.12); }
+body.qv-narrow .print-sheet.qv-capturing .print-page { transform: none; margin-right: 0; margin-bottom: 24px; }
+@media print { body.qv-narrow .print-sheet .print-page { transform: none !important; margin: 0 !important; box-shadow: none !important; } }
+
 /* ---- Quotations list: phone layout ---- */
 /* Eight columns cannot be made to fit a phone, and scrolling them sideways is
    what produced the stuck-scroll report. Below this width every row becomes a

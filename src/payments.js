@@ -1,3 +1,4 @@
+import { icon } from './icons.js'
 import { supabase } from './supabase.js'
 import { showMore } from './show-more.js'
 import { openSidebar } from './sidebar.js'
@@ -39,7 +40,7 @@ export async function renderPayments(container, tab) {
           <button class="btn-ghost btn-hamburger" id="hamburgerBtn" aria-label="Menu">☰</button>
           <span class="logo-small">Payments</span>
         </div>
-        <button class="btn-ghost" id="payRefreshBtn">Refresh</button>
+        <button class="btn-ghost btn-small" id="payRefreshBtn" aria-label="Refresh">${icon('refresh', 14)} Refresh</button>
       </header>
       <main class="app-main">
         <div class="stats-grid" id="paySummary"><div class="loading-state">Loading summary...</div></div>

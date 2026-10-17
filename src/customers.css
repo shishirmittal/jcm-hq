@@ -128,3 +128,13 @@ button.cu-act { border: 0; font-family: inherit; cursor: pointer; }
   .cu-led-bal { font-size: 12px; color: var(--muted); white-space: nowrap; margin-top: 2px; }
 }
 body.dark-mode .cu-led-amt.is-cr { color: #4ADE80; }
+
+/* Phones (2026-10-17): title wins over the sync chip in the header; bill dates on one line. */
+@media (max-width: 600px) {
+  .cu-page .app-header #cuSync { display: none; }
+  .cu-table td:first-child { white-space: nowrap; }
+}
+@media (max-width: 420px) {
+  .cu-bill-act .pf-link { font-size: 0; }
+  .cu-bill-act .pf-link svg { width: 18px; height: 18px; }
+}

@@ -272,7 +272,11 @@ body.native-app { --hq-header-h: calc(56px + env(safe-area-inset-top)); }
 
 /* Wide tables as one card per row on phones (src/phone-tables.js adds data-label). */
 @media (max-width: 599px) {
-  table.hq-stacked, table.hq-stacked tbody, table.hq-stacked tr, table.hq-stacked td { display: block; width: 100%; box-sizing: border-box; }
+  table.hq-stacked, table.hq-stacked tbody, table.hq-stacked tfoot, table.hq-stacked tr, table.hq-stacked td { display: block; width: 100%; box-sizing: border-box; }
+  table.hq-stacked { min-width: 0 !important; table-layout: auto !important; }
+  table.hq-stacked td:empty { display: none; }
+  table.hq-stacked td { text-align: left !important; }
+  table.hq-stacked tfoot tr { border-top: 2px solid var(--line); }
   table.hq-stacked thead { display: none; }
   table.hq-stacked tr { padding: 10px 2px; border-top: 1px solid var(--line); }
   table.hq-stacked tr:first-child { border-top: 0; }
@@ -309,3 +313,28 @@ body.native-app { --hq-header-h: calc(56px + env(safe-area-inset-top)); }
 .nav-fav-row { gap: 3px; }
 .nav-fav-row button { width: 22px; height: 24px; font-size: 9.5px; border-radius: 6px; padding: 0; }
 .nav-fav-row .nav-row-icon { margin-right: 4px; }
+
+/* Phone sweep 2026-10-17: Control Centre (React, inline styles) header + padding. */
+@media (max-width: 600px) {
+  .cc-head { padding: 0 12px !important; }
+  .cc-head .cc-title { font-size: 18px !important; }
+  .cc-head-act .hq-sync { display: none; }
+  .cc-body { padding: 12px !important; }
+}
+
+/* ---- Items Management on phones (2026-10-17 phone sweep) ----
+   A desk tool (drag-to-size columns), but it must still open cleanly on a phone:
+   buttons wrap under the title, the group tree sits on top (scrolls by itself),
+   items below (the table scrolls sideways inside its panel), Ask AI covers the screen. */
+@media (max-width: 760px) {
+  .im-page { height: auto; min-height: 100vh; }
+  .im-topbar { height: auto !important; flex-wrap: wrap; gap: 8px; padding: 8px 12px; padding-top: max(8px, env(safe-area-inset-top)); }
+  .im-topbar-actions { flex-wrap: wrap; gap: 6px; width: 100%; }
+  .im-topbar-actions button { flex: 1 1 auto; padding: 8px 10px; }
+  .im-layout { flex-direction: column; }
+  .im-tree-panel { width: auto; max-height: 42vh; border-right: 0; border-bottom: 1px solid #d8dde3; }
+  .im-items-panel { padding: 0 0 20px; overflow-x: auto; }
+  .im-chat-panel { position: fixed; inset: 0; width: auto; z-index: 90; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+}
+
+.im-secondary-btn:disabled { color: var(--faint); border-color: var(--line); }

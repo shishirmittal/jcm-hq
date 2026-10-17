@@ -1,3 +1,4 @@
+import { icon } from './icons.js'
 import { supabase, getCurrentProfile, fetchAllRows } from './supabase.js'
 import { esc, formatDate, formatMoney, formatMoneyCompact, skeletonList } from './utils.js'
 import { openSidebar } from './sidebar.js'
@@ -39,7 +40,7 @@ export async function renderQuotations(container) {
           <button class="btn-ghost btn-hamburger" id="hamburgerBtn" aria-label="Menu">☰</button>
           <span class="logo-small">Quotations</span>
         </div>
-        <button class="btn-primary btn-small" id="newQuotationBtn">+ New quotation</button>
+        <button class="btn-primary btn-small" id="newQuotationBtn" aria-label="New quotation">${icon('plus', 14)} New quotation</button>
       </header>
       <main class="app-main">
         <div class="qtn-tabs" role="tablist">

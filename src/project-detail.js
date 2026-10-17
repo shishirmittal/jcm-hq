@@ -1,3 +1,4 @@
+import { icon } from './icons.js'
 import { supabase } from './supabase.js'
 import { renderProjectForm } from './project-form.js'
 import { esc, slug, telHref, waHref, PROJECT_STATUSES, PRODUCT_STAGES, todayISO, formatDate } from './utils.js'
@@ -49,7 +50,7 @@ export async function renderProjectDetail(container, projectId, onBack) {
   container.innerHTML = `
     <div class="app-layout">
       <header class="app-header">
-        <button class="btn-ghost" id="backBtn">← Back</button>
+        <button class="btn-ghost btn-small hq-back" id="backBtn" aria-label="Back">${icon('chevron-left', 18)}<span class="hq-back-txt">Back</span></button>
         <div style="display:flex;gap:8px">
           <button class="btn-ghost" id="editBtn">Edit</button>
           <button class="btn-danger" id="deleteBtn">Delete</button>

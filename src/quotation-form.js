@@ -1,3 +1,4 @@
+import { icon } from './icons.js'
 import { supabase, fetchAllRows } from './supabase.js'
 import { esc, digitsOnly, formatMoney as money } from './utils.js'
 import { renderQuotationView } from './quotation-view.js'
@@ -540,7 +541,7 @@ function showForm(container, ctx) {
   container.innerHTML = `
     <div class="app-layout">
       <header class="app-header">
-        <button class="btn-ghost" id="backBtn">← Back</button>
+        <button class="btn-ghost btn-small hq-back" id="backBtn" aria-label="Back">${icon('chevron-left', 18)}<span class="hq-back-txt">Back</span></button>
         <span class="logo-small">${isEditing ? 'Edit quotation' : 'New quotation'}</span>
         <span style="width:70px"></span>
       </header>

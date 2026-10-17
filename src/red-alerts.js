@@ -180,8 +180,8 @@ export async function renderRedAlerts(container) {
           <span class="logo-small ra-title">${icon('alert-triangle', 18)} Red Alerts</span>
         </div>
         <div class="ra-header-actions">
-          <button class="btn-ghost btn-small" id="raSettingsBtn">Skip lists</button>
-          <button class="btn-ghost btn-small" id="raRefreshBtn">Refresh</button>
+          <button class="btn-ghost btn-small" id="raSettingsBtn" aria-label="Skip lists">${icon('layers', 14)} Skip lists</button>
+          <button class="btn-ghost btn-small" id="raRefreshBtn" aria-label="Refresh">${icon('refresh', 14)} Refresh</button>
         </div>
       </header>
       <main class="app-main">

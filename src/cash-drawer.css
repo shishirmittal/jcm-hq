@@ -181,3 +181,10 @@
   .cw-sheet { display: block !important; }
   .cw-pp { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* Phones (2026-10-17): keep the title visible — Cards is a desk job, the date box shrinks. */
+@media (max-width: 600px) {
+  #cwCardsBtn, #cwRefreshBtn { display: none !important; }
+  .cw-dayinput { width: 118px; padding: 0 4px; font-size: 12px; }
+}
+@media (max-width: 600px) { .app-header .pur-title svg { display: none; } }

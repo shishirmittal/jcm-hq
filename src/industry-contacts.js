@@ -1,3 +1,4 @@
+import { icon } from './icons.js'
 import { supabase, getCurrentProfile } from './supabase.js'
 import { showMore } from './show-more.js'
 import { esc, telHref, waHref, slug } from './utils.js'
@@ -37,7 +38,7 @@ async function renderContactList(container, contactType) {
           <button class="btn-ghost btn-hamburger" id="hamburgerBtn" aria-label="Menu">☰</button>
           <span class="logo-small">${esc(label)}s</span>
         </div>
-        <button class="btn-primary btn-small" id="icAddBtn">+ Add ${esc(label)}</button>
+        <button class="btn-primary btn-small" id="icAddBtn" aria-label="Add ${esc(label)}">${icon('plus', 14)} Add ${esc(label)}</button>
       </header>
       <main class="app-main">
         <div class="controls-bar">
@@ -134,7 +135,7 @@ async function renderContactDetail(container, contactType, contactId) {
   container.innerHTML = `
     <div class="app-layout">
       <header class="app-header">
-        <button class="btn-ghost" id="backBtn">← Back</button>
+        <button class="btn-ghost btn-small hq-back" id="backBtn" aria-label="Back">${icon('chevron-left', 18)}<span class="hq-back-txt">Back</span></button>
         <div style="display:flex;gap:8px">
           <button class="btn-ghost" id="editBtn">Edit</button>
           <button class="btn-danger" id="deleteBtn">Delete</button>
@@ -232,12 +233,12 @@ function showContactForm(contactType, onDone, existing) {
           <label>Firm</label>
           <input type="text" id="ic_firm" value="${esc(existing?.firm || '')}" placeholder="Firm / company name" />
         </div>
-        <div style="display:flex;gap:10px">
-          <div class="form-group" style="flex:1">
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <div class="form-group" style="flex:1 1 160px;min-width:0">
             <label>Phone</label>
             <input type="text" id="ic_phone" value="${esc(existing?.phone || '')}" placeholder="Phone number" />
           </div>
-          <div class="form-group" style="flex:1">
+          <div class="form-group" style="flex:1 1 160px;min-width:0">
             <label>City</label>
             <input type="text" id="ic_city" value="${esc(existing?.city || '')}" placeholder="City" />
           </div>

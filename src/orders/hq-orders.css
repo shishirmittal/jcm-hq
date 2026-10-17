@@ -111,3 +111,13 @@ body.has-tabbar .tb-hq .tb-sheet { padding-bottom: calc(var(--app-nav-h, 64px) +
 .tb-marks { justify-self: start; display: inline-flex; flex-wrap: wrap; gap: 8px; }
 .tb-phone .tb-marks { grid-area: mark; gap: 6px; }
 .tb-hq .tb-item { grid-template-columns: minmax(0, 1fr) 90px auto; }
+
+/* Phone sweep 2026-10-17: a wrapped header (title + sync chip) grows instead of spilling;
+   confirm buttons sit closer and may wrap their words on a narrow phone. */
+@media (max-width: 760px) {
+  .jo-hq .jo-hqhead { height: auto; min-height: 56px; flex-wrap: wrap; padding-top: 8px; padding-bottom: 8px; }
+}
+@media (max-width: 480px) {
+  .jo-confirm-btns { gap: 12px !important; }
+  .jo-confirm-btns .jo-btn { height: auto; min-height: 52px; padding: 8px 10px; white-space: normal; line-height: 1.15; }
+}

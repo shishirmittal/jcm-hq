@@ -1,3 +1,4 @@
+import { icon } from './icons.js'
 import { supabase, getCurrentProfile } from './supabase.js'
 import { showMore } from './show-more.js'
 import { renderProjectForm } from './project-form.js'
@@ -19,7 +20,7 @@ export async function renderProjectLeads(container) {
           <button class="btn-ghost btn-hamburger" id="hamburgerBtn" aria-label="Menu">☰</button>
           <span class="logo-small">Project Leads</span>
         </div>
-        <button class="btn-primary btn-small" id="addProjectBtn">+ Add project</button>
+        <button class="btn-primary btn-small" id="addProjectBtn" aria-label="Add project">${icon('plus', 14)} Add project</button>
       </header>
       <main class="app-main">
         <div class="stats-grid" id="statsGrid"></div>

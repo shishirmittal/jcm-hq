@@ -106,14 +106,14 @@ export default function ControlCentreApp({ isAdmin }) {
 
   return (
     <Shell>
-      <div style={{ background: C.card, borderBottom: `1px solid ${C.line}`, padding: "0 20px", height: 64, gap: 10,
+      <div className="cc-head" style={{ background: C.card, borderBottom: `1px solid ${C.line}`, padding: "0 20px", height: 64, gap: 10,
                     display: "flex", alignItems: "center", justifyContent: "space-between",
                     position: "sticky", top: 0, zIndex: 30 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
           <button className="cc-hamb" onClick={() => openSidebar({ isAdmin })} style={hamburgerStyle} aria-label="Menu">☰</button>
-          <span style={{ fontWeight: 800, fontSize: 20, letterSpacing: "-0.02em", color: "var(--ink)" }}>Control Centre</span>
+          <span className="cc-title" style={{ fontWeight: 800, fontSize: 20, letterSpacing: "-0.02em", color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>Control Centre</span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div className="cc-head-act" style={{ display: "flex", alignItems: "center", gap: 10, flex: "none" }}>
           {synced && <SyncChip at={synced} />}
           <button onClick={load} style={btn(false)}>Refresh</button>
         </div>
@@ -131,7 +131,7 @@ export default function ControlCentreApp({ isAdmin }) {
         ))}
       </div>
 
-      <div style={{ padding: 20, maxWidth: 1280, margin: "0 auto" }}>
+      <div className="cc-body" style={{ padding: 20, maxWidth: 1280, margin: "0 auto" }}>
 
         {tab === "Overview" && (
           <Col>
@@ -435,10 +435,10 @@ const Msg = ({ t, s }) => (
 
 const Col = ({ children }) => <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>{children}</div>;
 const Grid = ({ children, min = 200 }) => (
-  <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fit,minmax(${min}px,1fr))`, gap: 12 }}>{children}</div>
+  <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fit,minmax(min(${min}px,100%),1fr))`, gap: 12 }}>{children}</div>
 );
 const Two = ({ children }) => (
-  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(340px,1fr))", gap: 16 }}>{children}</div>
+  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(340px,100%),1fr))", gap: 16 }}>{children}</div>
 );
 
 const btn = (on) => ({

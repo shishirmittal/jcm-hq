@@ -1,3 +1,4 @@
+import { icon } from './icons.js'
 import { supabase, getCurrentProfile } from './supabase.js'
 import { esc } from './utils.js'
 import { loadCatalog, clearCatalogCache } from './catalog.js'
@@ -444,7 +445,7 @@ export async function renderPriceUpdate(container, onBack) {
   container.innerHTML = `
     <div class="app-layout">
       <header class="app-header">
-        <button class="btn-ghost" id="backBtn">← Back</button>
+        <button class="btn-ghost btn-small hq-back" id="backBtn" aria-label="Back">${icon('chevron-left', 18)}<span class="hq-back-txt">Back</span></button>
         <span class="logo-small">Price Update</span>
         <span></span>
       </header>

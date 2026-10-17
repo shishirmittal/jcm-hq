@@ -1,3 +1,4 @@
+import { icon } from './icons.js'
 import { supabase } from './supabase.js'
 import { esc, formatMoney, numberToWordsIndian, waHref, skeletonList } from './utils.js'
 import { renderQuotationForm } from './quotation-form.js'
@@ -271,7 +272,10 @@ function fitSheet() {
 }
 
 // Rotation, and the keyboard opening and closing, both change the width.
-if (IS_NATIVE) window.addEventListener('resize', fitSheet)
+// Phone browsers get the same narrow layout as the app (2026-10-17 phone sweep).
+const narrowWeb = () => !IS_NATIVE && window.innerWidth <= 600
+function applyNarrow() { document.body.classList.toggle('qv-narrow', narrowWeb()); if (IS_NATIVE || narrowWeb()) fitSheet() }
+window.addEventListener('resize', () => { if (IS_NATIVE) fitSheet(); else applyNarrow() })
 
 export async function renderQuotationView(container, quotationId, onBack, autoAction) {
   container.innerHTML = skeletonList(2)
@@ -327,7 +331,7 @@ export async function renderQuotationView(container, quotationId, onBack, autoAc
   container.innerHTML = `
     <div class="app-layout">
       <header class="app-header qv-header">
-        <button class="btn-ghost" id="backBtn">← Back</button>
+        <button class="btn-ghost btn-small hq-back" id="backBtn" aria-label="Back">${icon('chevron-left', 18)}<span class="hq-back-txt">Back</span></button>
         <span class="logo-small">${esc(quotation.quote_no || 'Quotation')}</span>
         <div class="qv-actions">
           <button class="btn-ghost btn-small" id="editBtn">Edit</button>
@@ -354,7 +358,7 @@ export async function renderQuotationView(container, quotationId, onBack, autoAc
     </div>
   `
 
-  if (IS_NATIVE) fitSheet()
+  if (IS_NATIVE) fitSheet(); else applyNarrow()
 
   document.getElementById('backBtn').addEventListener('click', onBack)
   document.getElementById('printBtn').addEventListener('click', () => window.print())
