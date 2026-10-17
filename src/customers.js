@@ -307,7 +307,7 @@ function ledgerHtml(l) {
   const closing = Number(l.closing) || 0
   return `${l.asOf ? `<div class="cu-pad cu-ledger-sync">${syncChip('Ledger', l.asOf, 3)}</div>` : ''}
     <div class="cu-pad cu-ledger-sum">${closing < 0 ? `<b>Credit balance in their favour: ${bal(closing)}</b> — advance lying with us` : closing > 0 ? `<b>Due from them: ${bal(closing)}</b>` : '<b>Fully settled</b> — nothing due'}<span class="cu-muted cu-small"> · opening 1 April ${bal(Number(l.opening) || 0)}</span></div>
-    <table class="cu-table">
+    <table class="cu-table cu-led-table">
       <thead><tr><th>Date</th><th>Entry</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr></thead>
       <tbody>${l.rows.map(r => `<tr>
         <td>${esc(day(r.date))}</td>
@@ -316,7 +316,20 @@ function ledgerHtml(l) {
         <td class="num">${r.credit ? esc(formatMoney(r.credit)) : ''}</td>
         <td class="num">${r.balance === null || r.balance === undefined ? '' : esc(formatMoney(Math.abs(r.balance))) + (r.balance < 0 ? ' Cr' : ' Dr')}</td>
       </tr>`).join('')}</tbody>
-    </table>${pager(l)}`
+    </table>
+    <div class="cu-led-list">${l.rows.map(r => `
+      <div class="cu-led-row">
+        <div class="cu-led-l">
+          <div class="cu-led-top"><span class="cu-led-day">${esc(day(r.date))}</span> ${esc(r.type || '')}</div>
+          <div class="cu-led-no">${esc(r.no || '')}</div>
+          ${r.narration ? `<div class="cu-muted cu-small">${esc(r.narration)}</div>` : ''}
+        </div>
+        <div class="cu-led-r">
+          ${r.debit ? `<div class="cu-led-amt">${esc(formatMoney(r.debit))} <small>Dr</small></div>` : ''}
+          ${r.credit ? `<div class="cu-led-amt is-cr">${esc(formatMoney(r.credit))} <small>Cr</small></div>` : ''}
+          ${r.balance === null || r.balance === undefined ? '' : `<div class="cu-led-bal">Bal ${esc(formatMoney(Math.abs(r.balance)))} ${r.balance < 0 ? 'Cr' : 'Dr'}</div>`}
+        </div>
+      </div>`).join('')}</div>${pager(l)}`
 }
 
 function ordersHtml(rows) {

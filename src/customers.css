@@ -110,3 +110,21 @@ button.cu-act { border: 0; font-family: inherit; cursor: pointer; }
 /* Last follow-up strip + promise (2026-10-16) */
 .cu-lastc { margin-top: 10px; padding: 7px 10px; border-radius: 8px; background: var(--red-bg, #fef2f2); color: var(--red-dk, #991b1b); border-left: 4px solid var(--red, #dc2626); font-size: 13px; }
 .cu-prom { margin-top: 6px; padding: 7px 10px; border-radius: 8px; background: var(--grn-bg, #f0fdf4); color: var(--grn-dk, #166534); border-left: 4px solid var(--grn, #16a34a); font-size: 13px; }
+
+/* Ledger on phones (2026-10-17): one card-row per entry instead of a 5-column table. */
+.cu-led-list { display: none; }
+@media (max-width: 640px) {
+  .cu-led-table { display: none; }
+  .cu-led-list { display: block; }
+  .cu-led-row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 14px; border-top: 1px solid var(--line-soft); }
+  .cu-led-l { min-width: 0; }
+  .cu-led-top { font-size: 14px; color: var(--text); font-weight: 600; }
+  .cu-led-day { color: var(--muted); font-weight: 500; margin-right: 4px; }
+  .cu-led-no { font-size: 12.5px; color: var(--muted); font-family: 'IBM Plex Mono', ui-monospace, monospace; word-break: break-all; }
+  .cu-led-r { flex-shrink: 0; text-align: right; }
+  .cu-led-amt { font-size: 15px; font-weight: 600; color: var(--text); white-space: nowrap; }
+  .cu-led-amt small { font-size: 11px; color: var(--muted); font-weight: 500; }
+  .cu-led-amt.is-cr { color: #15803D; }
+  .cu-led-bal { font-size: 12px; color: var(--muted); white-space: nowrap; margin-top: 2px; }
+}
+body.dark-mode .cu-led-amt.is-cr { color: #4ADE80; }
