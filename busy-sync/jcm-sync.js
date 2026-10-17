@@ -46,6 +46,8 @@ const JOBS = [
   { id: 'email-purchases', name: 'Email Purchase Summary (Gmail)', args: ['sync-email-purchases.js'], every: 15, timeout: 14 },
   { id: 'dues', name: 'Dues (Payment Follow-up)', args: ['-r', './dues-env.js', 'sync-dues-final.js'], every: 30, timeout: 25, logFile: 'dues.log' },
   { id: 'ledger', name: 'Customer ledger', args: ['sync-ledger.js'], every: 30, timeout: 25 },
+  // Cash Drawer page (#cash-drawer): only the counter cash account, last 3 days, into party_ledger — so a cash bill / receipt shows within 5 min.
+  { id: 'cash-book', name: 'Cash Drawer (Cash (Retail) entries)', args: ['sync-cash-book.js'], every: 5, timeout: 4 },
   // Signify accounts' ledger (bills + payments) for the Signify Cash Discount page (#cash-discount).
   { id: 'cd-ledger', name: 'Signify ledger (Cash Discount)', args: ['sync-cd-ledger.js'], every: 30, timeout: 10 },
   // Payment Follow-up: 10:00 WhatsApp + Task Board task per person, 19:00 summary to admins.

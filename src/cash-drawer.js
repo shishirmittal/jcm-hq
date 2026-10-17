@@ -123,7 +123,7 @@ export async function renderCashDrawer(container) {
     const A = d.opening.amount
     const closed = d.closing
     const dueBanner = isToday && !closed && nowHHMM() >= (d.print_at || '20:00')
-    const busyLate = d.busy_sync?.last_ok_at && (Date.now() - new Date(d.busy_sync.last_ok_at).getTime()) > 45 * 60000
+    const busyLate = d.busy_sync?.last_ok_at && (Date.now() - new Date(d.busy_sync.last_ok_at).getTime()) > (d.busy_sync.every === 5 ? 15 : 45) * 60000
 
     body.innerHTML = `
       ${dueBanner ? `
@@ -263,7 +263,7 @@ export async function renderCashDrawer(container) {
   function inListHtml(d) {
     const typed = d.entries.filter(e => e.kind === 'in')
     const busy = d.busy.filter(r => r.in)
-    if (!typed.length && !busy.length) return `<div class="cw-empty">No cash in yet. Cash bills and receipts made in Busy show here (copied every 30 min).</div>`
+    if (!typed.length && !busy.length) return `<div class="cw-empty">No cash in yet. Cash bills and receipts made in Busy show here (copied every ${d.busy_sync?.every === 5 ? 5 : 30} min).</div>`
     return typed.slice().reverse().map(e => entryRow(e, d)).join('') + busy.map(r => busyRow(r, r.in)).join('')
   }
 
@@ -313,7 +313,8 @@ export async function renderCashDrawer(container) {
       btn.disabled = true
       try {
         await call({ action: 'cash-refresh' })
-        hqAlert('Asked the office server to copy Busy now. It takes about 4–5 minutes — press Refresh after that.')
+        hqAlert('Asked the office server to copy Busy now. It takes under a minute — the page refreshes by itself.')
+        setTimeout(() => load(true), 45000); setTimeout(() => load(true), 90000)
       } catch (err) { hqAlert(err.message) } finally { btn.disabled = false }
     })
   }
@@ -441,7 +442,7 @@ export async function renderCashDrawer(container) {
     if (!d.start_day) { hqAlert('Set the opening balance first.'); return }
     // fresh numbers for the sheet
     try { d = state.data = await call({ action: 'cash-day', day: state.day }); draw() } catch { /* print what we have */ }
-    const late = d.busy_sync?.last_ok_at && (Date.now() - new Date(d.busy_sync.last_ok_at).getTime()) > 35 * 60000
+    const late = d.busy_sync?.last_ok_at && (Date.now() - new Date(d.busy_sync.last_ok_at).getTime()) > (d.busy_sync.every === 5 ? 10 : 35) * 60000
     if (late && d.day === d.today) {
       const go = await hqConfirm(`Busy entries were last copied ${ago(d.busy_sync.last_ok_at)}. Bills made after that are not on the sheet yet. Print anyway?`,
         { okText: 'Print anyway', cancelText: 'Wait' })

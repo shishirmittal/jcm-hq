@@ -24,7 +24,7 @@
 //   cash-opening    day, amount, note   set the opening balance (first day, or a correction — admins after day one)
 //   cash-close      day, counted, denominations, note    D for the day → difference; can be done again (admins)
 //   cash-printed    day                 remember when the sheet was printed
-//   cash-refresh                        ask JCM-Server to copy Busy's ledger now (JCM Sync job 'ledger')
+//   cash-refresh                        ask JCM-Server to copy the cash account now (JCM Sync job 'cash-book', every 5 min)
 //   cash-cat-save   id?, kind, label, emoji, needs_note, sort, active   (admins) add / change a card
 
 const TAB_ID = 'cash-drawer'
@@ -140,6 +140,16 @@ async function namesFor(busy, codes) {
   return m
 }
 
+// The fast cash-account copy (job 'cash-book', every 5 min) once the server runs it; the 30-min ledger until then.
+// Both write the same rows, so whichever finished last is when the page's Busy entries are from.
+function cashJob(rows) {
+  if (!Array.isArray(rows) || !rows.length) return null
+  const fast = rows.find(r => r.job_id === 'cash-book'), slow = rows.find(r => r.job_id === 'ledger')
+  if (!fast || !fast.last_ok_at) return slow || fast || null
+  const latest = !slow?.last_ok_at || fast.last_ok_at > slow.last_ok_at ? fast : slow
+  return { ...latest, running: !!fast.running, every: 5 }
+}
+
 async function dayData(busy, body) {
   const s = await settings(busy)
   const day = isDate(body.day) ? body.day : todayIST()
@@ -149,7 +159,7 @@ async function dayData(busy, body) {
     entryRows(busy, day, day, true),
     busy.from('cash_days').select('*').eq('day', day).maybeSingle().then(r => check(r, 'cash_days')),
     busy.from('cash_categories').select('*').order('sort').order('id').then(r => check(r, 'cash_categories')),
-    busy.from('sync_jobs').select('last_ok_at, last_finished_at, running, run_requested_at').eq('job_id', 'ledger').maybeSingle().then(r => r.data || null),
+    busy.from('sync_jobs').select('job_id, last_ok_at, last_finished_at, running, run_requested_at').in('job_id', ['cash-book', 'ledger']).then(r => cashJob(r.data)),
   ])
   const names = await namesFor(busy, [...new Set(bl.map(r => r.vch_code))])
   const busyList = bl.map(r => ({
@@ -271,7 +281,7 @@ async function markPrinted(busy, body) {
 async function requestRefresh(busy, me) {
   const { error } = await busy.from('sync_jobs')
     .update({ run_requested_at: new Date().toISOString(), run_requested_by: me.name || 'Cash Drawer' })
-    .eq('job_id', 'ledger')
+    .eq('job_id', (await busy.from('sync_jobs').select('job_id').eq('job_id', 'cash-book').maybeSingle()).data ? 'cash-book' : 'ledger')
   if (error) fail(500, 'Could not ask the server to refresh.')
   return { ok: true }
 }
